@@ -237,6 +237,25 @@ In the application folder, create `notes.md`:
 - Use corporate jargon you wouldn't say out loud
 - Claim familiarity with tools/methods you've only heard of
 
+## Memory & Rules Sync
+
+Claude maintains a persistent memory system at `~/.claude/projects/.../memory/`. All memory files are mirrored in `memory/` in this repo for version control.
+
+**Rule**: Whenever a memory file is created or updated (feedback rules, user context, experience clarifications), also update the copy in `memory/` and commit to Git.
+
+Files tracked in `memory/`:
+- `MEMORY.md` — master index
+- `EXPERIENCE-REFERENCE.md` — verified experience facts
+- `feedback_*.md` — workflow and resume rules
+- `user_location.md` — location and logistics preferences
+
+```bash
+# After updating a memory file in ~/.claude/.../memory/:
+cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md memory/
+git add memory/
+git commit -m "Update memory: [what changed]"
+```
+
 ## Efficiency Tips
 
 1. **Build your templates library**: As you write strong bullets or paragraphs, save them to [templates/](templates/) for reuse
