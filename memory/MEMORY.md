@@ -169,6 +169,15 @@ Job search tracking system with profile-based approach for customizing applicati
 
 **CRITICAL**: Always use this exact contact information in all generated resumes and cover letters.
 
+## Memory Sync Rule
+Memory files are mirrored in `memory/` in the Git repo at `/Users/shermanwood/Documents/Job-Search-2026/` for version control. After creating or updating any memory file, copy it to `memory/` and commit:
+```bash
+cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md \
+   /Users/shermanwood/Documents/Job-Search-2026/memory/
+git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
+git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+```
+
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
