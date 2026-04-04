@@ -1,0 +1,41 @@
+/* One-page resume overrides — applied on top of resume.css */
+@page {
+    margin: 0.40in 0.50in 0.40in 0.50in;
+}
+
+body {
+    font-size: 9.2pt;
+    line-height: 1.26;
+}
+
+h1 + p {
+    margin: 0 0 5px 0;
+}
+
+h2 {
+    margin: 7px 0 3px 0;
+}
+
+h3 {
+    margin: 5px 0 0 0;
+}
+
+h3 + p {
+    margin: 0 0 2px 0;
+}
+
+p {
+    margin: 2px 0;
+}
+
+ul {
+    margin: 1px 0 2px 0;
+}
+
+li {
+    margin-bottom: 1px;
+}
+
+hr {
+    margin: 3px 0 4px 0;
+}

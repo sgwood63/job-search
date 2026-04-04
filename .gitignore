@@ -1,0 +1,20 @@
+# Applications — tracked in Google Drive, not Git
+applications/
+
+# Application tracker — contains personal application history
+application-tracker.md
+
+# Base documents — personal resume PDFs and LinkedIn exports
+base-documents/*.pdf
+base-documents/*.html
+base-documents/Sherman*
+base-documents/Jobs*
+base-documents/AI\ Architect*
+base-documents/linkedin-job-listing-page.html
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Scratchpad
+scripts/scratchpad

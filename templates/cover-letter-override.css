@@ -1,0 +1,4 @@
+/* Cover letter overrides — applied on top of resume.css */
+p {
+    margin: 0 0 1em 0;
+}
