@@ -131,6 +131,7 @@ Job search tracking system with profile-based approach for customizing applicati
 - **Integration engineering** (hands-on, across roles): n8n workflow automation (LatticeFlow — AI risk report pipeline via OpenAI GPT); HubSpot (Pyramid — AWS Marketplace → HubSpot integration); Salesforce/SOQL (Jaspersoft — Jasper4Salesforce SaaS BI product on SFDC App Exchange); REST/SOAP connectors (Jaspersoft); SSO/RBAC (Jaspersoft); Talend ETL (Jaspersoft); AWS Marketplace provisioning integration (Pyramid); TIBCO middleware and AWS SNS notification pipelines (Jaspersoft/TIBCO); voice/text/email notification platforms (Jaspersoft/TIBCO, Pyramid Analytics, CRM systems)
 - **Apache Kafka**: Solace (2022–2023) — CTO Group Architect at enterprise event streaming company; worked with Kafka architectures and event-driven integration patterns across large enterprise customers
 - **JavaScript/TypeScript/Node.js**: Built JS/TS and Node.js systems at Jaspersoft; used JavaScript for front-end integrations
+- **Java**: Jaspersoft was a Java house — has Java background from Jaspersoft period (2005–2020), but has not worked in Java since. Foundational familiarity, not current proficiency.
 - **Cloud**: AWS (certified), multi-cloud aware
 - **Education**: Bachelor's (NOT Master's/PhD - disqualifier for some roles)
 - **Financial Services**: Deep FS background — IT at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU, 1985-1996); Morgan Stanley, Thomas Weisel Partners (US, 1997-1999); front/mid/back office systems. See EXPERIENCE-REFERENCE.md for full details.
