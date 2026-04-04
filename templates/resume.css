@@ -1,0 +1,114 @@
+@page {
+    margin: 0.5in 0.65in 0.5in 0.65in;
+    size: letter;
+}
+
+body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.3;
+    color: #1a1a1a;
+}
+
+/* Name */
+h1 {
+    font-size: 22pt;
+    font-weight: 700;
+    margin: 0 0 2px 0;
+    letter-spacing: -0.3px;
+    color: #000;
+}
+
+/* Contact line under name */
+h1 + p {
+    font-size: 9.5pt;
+    color: #444;
+    margin: 0 0 10px 0;
+}
+
+h1 + p strong {
+    font-weight: 400;
+}
+
+hr {
+    border: none;
+    border-top: 1.5px solid #222;
+    margin: 4px 0 8px 0;
+}
+
+/* Headline / title */
+h2:first-of-type {
+    font-size: 11pt;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #222;
+    margin: 0 0 6px 0;
+    border-bottom: none;
+}
+
+/* Section headers */
+h2 {
+    font-size: 9.5pt;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #222;
+    border-bottom: 1px solid #bbb;
+    margin: 10px 0 4px 0;
+    padding-bottom: 2px;
+}
+
+/* Job title */
+h3 {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #000;
+    margin: 6px 0 0px 0;
+}
+
+/* Sub-header (e.g. Early Career sub-sections) */
+h4 {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #333;
+    margin: 6px 0 2px 0;
+}
+
+/* Company / date line (bold text following h3) */
+h3 + p {
+    font-size: 9.5pt;
+    color: #444;
+    margin: 0 0 4px 0;
+}
+
+p {
+    margin: 4px 0;
+}
+
+ul {
+    margin: 2px 0 3px 0;
+    padding-left: 14px;
+}
+
+li {
+    margin-bottom: 1px;
+}
+
+strong {
+    font-weight: 700;
+}
+
+em {
+    font-style: italic;
+}
+
+/* Avoid page breaks inside job entries */
+h3, h4 {
+    page-break-after: avoid;
+}
+
+ul, p {
+    orphans: 3;
+    widows: 3;
+}
