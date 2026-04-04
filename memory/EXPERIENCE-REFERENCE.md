@@ -232,6 +232,24 @@ Referenced from MEMORY.md for space efficiency.
 
 ---
 
+## Distributed Systems Background (Full History)
+
+A 30+ year lineage in message-oriented middleware and distributed systems — genuine depth, not recent exposure:
+
+| Era | Technology | Context |
+|-----|-----------|---------|
+| ~1990s | **TIBCO Rendezvous** | Macquarie Bank (AU) — distributed trades and market data across front-office position-keeping instances |
+| 2001–2003 | **IBM MQSeries** | Fireman's Fund (consulting) — communicated with mainframes via MQ for enterprise data integration |
+| 2005–2020 | **SOAP / message bus** | Jaspersoft — SOAP messages against a message bus to retrieve data for reporting and analytics |
+| 2012–2020 | **TIBCO middleware / AWS SNS** | Jaspersoft/TIBCO — TIBCO middleware integrations and AWS SNS notification pipelines |
+| 2022–2023 | **Apache Kafka / event streaming** | Solace — CTO Group Architect at enterprise event streaming company; Kafka architectures and event-driven patterns across large enterprise customers |
+
+**Why this matters**: Not a recent convert to distributed systems — has been working with message-oriented middleware since the 1990s across trading systems, enterprise integration, analytics platforms, and cloud-native event streaming. Directly relevant for Temporal (workflow orchestration), Solace, Kafka-ecosystem, and any role requiring distributed systems credibility with technical engineering audiences.
+
+**Note on Fireman's Fund**: Consulting engagement 2001–2003 (pre-GalenWorks). Falls in "Earlier Career (1999–2003)" period.
+
+---
+
 ## Financial Services Background
 
 ### Early Career: Financial Services IT (1985–1999)
@@ -239,7 +257,7 @@ Referenced from MEMORY.md for space efficiency.
 **Australia (1985–1996)** — IT roles at three major financial institutions:
 - **Bank of New Zealand** — IT
 - **Midland Montagu** — IT (UK merchant bank, subsidiary of Midland Bank / HSBC)
-- **Macquarie Bank** — IT
+- **Macquarie Bank** — IT; used **TIBCO Rendezvous** to distribute trades and market data across front-office position-keeping instances
 - Covered **front, middle, and back office systems** across these institutions
 - Deep domain knowledge of investment banking, capital markets, and banking operations technology
 
