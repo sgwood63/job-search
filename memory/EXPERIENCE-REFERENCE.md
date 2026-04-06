@@ -101,6 +101,12 @@ Referenced from MEMORY.md for space efficiency.
 
 ### LatticeFlow AI (2023–2025)
 - **n8n workflow automation**: Built n8n jobs managing the full workflow and document creation pipeline for AI risk reports — automated orchestration of OpenAI GPT calls, document generation, and report delivery
+- **AWS CDK**: Deployed insights.latticeflow.ai production website using AWS CDK (private repo)
+
+### Jaspersoft / TIBCO — Open Source & Public Code
+- **js-docker** (github.com/TIBCOSoftware/js-docker): Created the Docker/Kubernetes containerization framework for TIBCO JasperReports Server. 156 stars, 161 forks, 298 commits, last release January 2026 — actively maintained production infrastructure in enterprise use. Strongest public code credential.
+- **REST API client libraries**: Built jrs-rest-java-client (Java), jrs-rest-php-client (PHP), and JavaScript clients for JasperReports Server REST API — developer-facing tooling used by the integration community
+- **AWS Quick Start projects**: quickstart-tibco-jaspersoft, quickstart-linux-bastion (Shell) — enterprise deployment automation on AWS
 
 **Why these matter for RevOps/SE roles (e.g., Reevo)**:
 - n8n ✅ — hands-on workflow automation (directly listed in Reevo JD as relevant tool)
