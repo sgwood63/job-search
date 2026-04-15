@@ -1,121 +1,192 @@
-# Quick Start Guide
+# Quick Start — Setting Up a New Job Search
 
-Get your job search system up and running in ~30 minutes.
+This guide covers how to bootstrap this system from scratch. If the system is already running, skip to **Daily Use**.
 
-## Step 1: Add Your Base Documents (10 min)
+---
 
-1. Copy your current resume to [base-documents/](base-documents/)
-   - Name it `resume-master.pdf` (and keep source file)
-   - Review and polish it - this is your foundation
+## Phase 1: Foundation (One-time setup, ~2 hours)
 
-2. Copy or create your base cover letter in [base-documents/](base-documents/)
-   - Name it `cover-letter-master.pdf` (and keep source file)
-   - Make sure it sounds like you
+### 1. Establish your experience baseline
 
-## Step 2: Define Your Job Profiles (15 min)
+Create `base-documents/EXPERIENCE-REFERENCE.md` — the canonical, verified source of every claim you will make in any resume.
 
-1. Think about the 2-4 types of roles you're targeting
+Include for each role:
+- Exact title, company, dates
+- What the company did (one sentence)
+- What you specifically did — your actual contributions, not generic job duties
+- Technologies, platforms, tools you genuinely used
+- Any public credentials (repos, publications, certifications)
 
-2. For each profile:
-   - Copy [profiles/TEMPLATE.md](profiles/TEMPLATE.md) to a new file
-   - Name it descriptively (e.g., `product-manager-b2b.md`)
-   - Fill in the key sections (you can expand later)
+**Rule**: If you're not certain a claim is accurate, mark it as unverified and clarify before using it. This file is the ground truth. Resumes are generated from it — not the other way around.
 
-3. Focus on:
-   - What makes you strong for this type of role
-   - Common requirements you meet
-   - Keywords to use
+### 2. Define your job profiles
 
-## Step 3: Build Your Templates Library (5 min)
+Identify 2–5 types of roles you're targeting. For each, create:
 
-1. Review your resume for your 5 strongest achievement bullets
+**`profiles/[profile-name].md`** — Strategy document:
+- What makes you strong for this type of role
+- How to frame your experience for this audience
+- What to emphasize, what to compress
+- Target companies and environments
 
-2. Copy them to [templates/achievements-example.md](templates/achievements-example.md)
-   - Keep the authentic phrasing
-   - Note when each is most relevant
+**`profiles/[profile-name]-CONTENT.md`** — Pre-compiled content library:
+- Resume bullets organized by role, ready to pull from
+- Eliminates re-extraction from PDFs for every application
+- Update when base resume changes, not per application
 
-3. You'll add more as you go
+**`profiles/PROFILES-QUICK-REFERENCE.md`** — One-page matching guide:
+- Summary of each profile with key signals
+- Used for fast initial matching when screening a JD
 
-## Step 4: Try the Workflow (Your first application)
+### 3. Set up resume generation
 
-When you find a job to apply for:
+Install PDF generation dependencies:
+```bash
+pip install weasyprint
+brew install pandoc
+```
 
-1. Run: `./scripts/new-application.sh "Company" "Role" "profile"`
+Verify `templates/resume.css` is present — this is the shared stylesheet. All resumes use it.
 
-2. Follow the checklist created in your application folder
+Test with any `.md` file:
+```bash
+pandoc test.md -o test.pdf --pdf-engine=weasyprint --css=templates/resume.css
+pdfinfo test.pdf | grep Pages
+```
 
-3. Use the [workflow.md](workflow.md) guide for detailed steps
+### 4. Configure storage locations
 
-## Daily/Weekly Habits
+This system writes to two locations — keep both in sync after every file generation:
 
-### When You Find a Job to Apply For
-1. Read the full posting
-2. Match to a profile
-3. Create application folder with script
-4. Follow the workflow
-5. Update tracker immediately after submitting
+- **Local**: `~/Documents/Job-Search-2026/`
+- **Google Drive**: `~/Library/CloudStorage/GoogleDrive-.../My Drive/Job Search 2026/`
 
-### Weekly Review (15 min)
-1. Run `./scripts/status-summary.sh` to see status
-2. Check for follow-ups needed
-3. Update [application-tracker.md](application-tracker.md) with any responses
-4. Review what's working and adjust
+### 5. Initialize the tracker
 
-### Monthly Review (30 min)
-1. Analyze stats in tracker
-2. Update profiles based on what's getting responses
-3. Refine templates with new strong content
-4. Update master resume with new accomplishments
+Create `application-tracker.md` with the structure:
 
-## Tips for Success
+```markdown
+# Job Application Tracker
 
-**Focus on Quality**
-- One authentic, tailored application > five generic ones
-- Only apply if you're genuinely interested
+## Active Applications
+| Date | Company | Role | Profile | Source | Status | Next Action | Priority |
 
-**Maintain Your Voice**
-- Read everything aloud before submitting
-- If it doesn't sound like you, revise it
+## Closed / Rejected
+| Date | Company | Role | Outcome | Notes |
+```
 
-**Be Honest**
-- Only claim what you can back up with examples
-- Better to undersell than oversell
+### 6. Initialize memory (if using Claude Code)
 
-**Track Everything**
-- Update tracker immediately after each application
-- Note what you emphasized and why
-- Learn from patterns
+Memory files live in `~/.claude/projects/.../memory/` and are mirrored in `memory/` for git tracking.
 
-**Iterate**
-- Your first few applications will take longer
-- You'll get faster as you build your templates library
-- Adjust the system to fit your workflow
+Seed `MEMORY.md` with:
+- User context (location preferences, role preferences, domain interests)
+- Key experience facts (quick reference from EXPERIENCE-REFERENCE.md)
+- Any rules or preferences you want applied consistently
 
-## Common Questions
+---
 
-**Q: How long should each application take?**
-A: 1-2 hours once you have the system set up. More for highly targeted applications, less as you build templates.
+## Phase 2: Applying to a Role
 
-**Q: How many applications should I send per week?**
-A: Quality over quantity. 3-5 well-targeted applications > 20 generic ones.
+### When you find a job to apply for:
 
-**Q: Should I apply if I don't meet all requirements?**
-A: If you meet 70%+ of core requirements and are genuinely interested, yes. Use your judgment.
+**Step 1 — Screen the JD**
 
-**Q: How do I know if my voice is authentic?**
-A: Read it aloud. Does it sound like you talking to a colleague? Would you say these things in an interview?
+Provide the JD (URL, PDF, or paste). The AI evaluates:
+- Location/travel fit
+- Profile match (best fit from your 2–5 profiles)
+- Overall fit score and gaps
 
-**Q: When should I follow up?**
-A: 1 week to check status, 2 weeks for a follow-up email if no response. Some companies never respond - don't take it personally.
+Creates:
+- `applications/YYYY-MM-DD-company-role/job-description.md`
+- Initial `notes.md` with JD analysis and coverage table
+- Tracker entry with status and next action
 
-## You're Ready!
+If no fit: tracker entry with reason. Stop.
 
-The system is set up. Now:
-1. Add your base documents
-2. Define 2-3 profiles
-3. Find a job that excites you
-4. Follow the workflow
+**Step 2 — Generate resume**
 
-You'll refine and improve as you go. The structure is here to support you, not constrain you.
+With the application folder and matched profile identified:
+- Load the profile's CONTENT.md library
+- Load EXPERIENCE-REFERENCE.md
+- Generate tailored resume in Markdown
+- Review against JD before generating PDF
 
-Good luck! 🎯
+```bash
+# After review and approval:
+pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=../../templates/resume.css
+pdfinfo [resume].pdf | grep Pages  # verify 2 pages
+```
+
+**Step 3 — Review**
+
+Before submitting, review the resume against the JD:
+- Does every bullet have a factual basis in EXPERIENCE-REFERENCE.md?
+- Does it read like you, not like a generated document?
+- Does it answer: fit, credibility, environment match?
+
+**Step 4 — Submit and track**
+
+After submitting:
+- Update `notes.md` with submission date and follow-up date
+- Update `application-tracker.md` status to Applied
+- Sync both files to Google Drive
+
+---
+
+## Phase 3: Interview Process
+
+### Recruiter / hiring manager call
+
+After each call, update `notes.md`:
+- Who you spoke with, their role
+- What they said about the process and timeline
+- Any signals about what matters to them
+- Updated process steps with checkmarks
+
+### Interview prep
+
+Generate prep notes in `notes.md`:
+- Likely questions based on role and JD
+- Key talking points per question
+- Specifics to bring up (projects, metrics, examples)
+
+### Debrief
+
+After each interview:
+- What went well / what to improve
+- What they emphasized — use for next round prep
+- Any new process information
+
+---
+
+## Daily / Weekly Habits
+
+**When something changes** (offer, rejection, interview scheduled):
+- Update `application-tracker.md` immediately
+- Update the application's `notes.md`
+- Sync both to Google Drive
+
+**Weekly (15 min)**:
+- Review tracker for pending follow-ups
+- Any applications past follow-up date? Send a note.
+- Any memory updates needed from recent experience?
+
+**When you learn something new about your experience**:
+- Update `base-documents/EXPERIENCE-REFERENCE.md` first
+- Then update the relevant `profiles/[profile]-CONTENT.md`
+- Memory sync if it's a rule or preference: update `memory/` and commit
+
+---
+
+## Contact Information (for all generated documents)
+
+```
+Sherman Wood
+San Francisco Bay Area
+sgwood63@gmail.com | 415-516-4894
+linkedin.com/in/shermanwood | github.com/sgwood63
+```
+
+Never use Oakland, CA in resume headers — always San Francisco Bay Area.
+No cover letters.
