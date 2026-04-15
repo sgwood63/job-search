@@ -34,7 +34,7 @@ Age and seniority are assets - enterprises want stability, judgment, and someone
 ## Key Experience Areas
 
 1. **AI Platform Implementation & Operations**:
-   - GenAI platform deployment (Azure OpenAI, AWS Bedrock, VertexAI)
+   - GenAI platform deployment (Azure OpenAI, VertexAI)
    - ML platform infrastructure and tooling
    - Platform monitoring, observability, and performance
    - DevOps/MLOps best practices
@@ -63,7 +63,7 @@ Age and seniority are assets - enterprises want stability, judgment, and someone
 
 ## Technical Skills & Tools
 
-- **GenAI Platforms**: Azure OpenAI, AWS Bedrock, GCP VertexAI, model selection
+- **GenAI Platforms**: Azure OpenAI, GCP VertexAI, model selection
 - **Development**: Python, JavaScript, APIs, microservices, SQL (advanced data extraction, transformation)
 - **Platform/DevOps**: Terraform, Ansible, GitHub Actions, CI/CD, containers (Docker, K8s)
 - **Cloud**: AWS, Azure, GCP (multi-cloud experience)
@@ -76,7 +76,7 @@ Age and seniority are assets - enterprises want stability, judgment, and someone
 
 - [x] 8-10+ years in AI/ML, data engineering, or platform engineering
 - [x] GenAI platform implementation experience
-- [x] Azure OpenAI, AWS Bedrock, or VertexAI hands-on experience
+- [x] Azure OpenAI, or VertexAI hands-on experience
 - [x] DevOps and CI/CD best practices
 - [x] Multi-cloud administration experience
 - [x] Cross-functional collaboration (IT, business units, data science)
@@ -109,7 +109,7 @@ Age and seniority are assets - enterprises want stability, judgment, and someone
 
 - **Lead with**: Platform implementation, enterprise enablement, hands-on technical work
 - **Highlight**:
-  - GenAI platform deployments (Azure OpenAI, AWS Bedrock, etc.)
+  - GenAI platform deployments (Azure OpenAI, etc.)
   - Enterprise system integration (100+ systems experience)
   - DevOps/MLOps practices and automation
   - Cross-functional collaboration with business units
@@ -149,7 +149,7 @@ Age and seniority are assets - enterprises want stability, judgment, and someone
 **LinkedIn Searches**:
 - `("AI Platform" OR "ML Platform" OR "GenAI Platform") AND (architect OR lead)`
 - `"Enterprise AI" AND (enablement OR internal OR productivity)`
-- `"Azure OpenAI" OR "AWS Bedrock" OR "VertexAI" AND platform`
+- `"Azure OpenAI" OR "" OR "VertexAI" AND platform`
 
 **Indeed Searches**:
 - `AI platform architect enterprise`

@@ -64,7 +64,7 @@ Age and seniority are assets here - customers value experience and judgment over
 
 ## Technical Skills & Tools
 
-- **AI/ML Platforms**: OpenAI, AWS Bedrock, GCP VertexAI, LLM platforms
+- **AI/ML Platforms**: OpenAI, GCP VertexAI, LLM platforms
 - **Architecture**: Solution architecture, enterprise architecture, cloud architecture
 - **Cloud Platforms**: AWS, Azure (limited)
 - **Data & Analytics**: Data pipelines, analytics platforms, data governance

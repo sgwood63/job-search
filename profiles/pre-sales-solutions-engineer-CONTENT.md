@@ -370,7 +370,7 @@ Known for credible, honest customer engagement, focusing on customer success ove
 - Real-time and batch processing
 
 ### Integration Engineering (Hands-On)
-- **n8n**: Built n8n workflow jobs at LatticeFlow automating AI risk report generation and document creation using OpenAI GPT
+- **n8n**: Built n8n workflow jobs at LatticeFlow automating AI risk report generation and document creation using OpenAI
 - **HubSpot**: Built AWS Marketplace → HubSpot integration at Pyramid tracking customer instance launches and usage
 - **Salesforce / SOQL**: Built Jasper4Salesforce — a JasperReports Server SaaS BI product on the SFDC App Exchange, querying SFDC data directly via SOQL; production customer-facing product
 - **REST / SOAP connectors**: Built data source connectors at Jaspersoft for external APIs and web services
@@ -407,7 +407,7 @@ Known for credible, honest customer engagement, focusing on customer success ove
 - Spearheaded strategic business pivots
 
 **Efficiency & Effectiveness:**
-- Shortened implementation timelines by 30% through architecture expertise
+- Shortened implementation timelines through standardized SE frameworks and reusable accelerators
 - Developed reusable solution frameworks and accelerators
 - Improved sales team effectiveness through enablement
 - Increased customer satisfaction through realistic technical planning

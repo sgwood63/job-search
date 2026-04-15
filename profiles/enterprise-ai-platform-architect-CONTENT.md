@@ -35,7 +35,7 @@ Currently seeking roles where technical depth, pragmatic platform engineering, a
 ### Version 2: GenAI Platform & Scalable Architecture
 GENERATIVE AI PLATFORM ARCHITECT | Cloud-Native Systems | Enterprise Integration
 
-Senior architect with 15+ years designing and implementing AI-enabled platforms at enterprise scale. Expert in GenAI platform architectures (Azure OpenAI, AWS Bedrock, VertexAI), cloud-native systems design, enterprise integration, and AI operational excellence.
+Senior architect with 15+ years designing and implementing AI-enabled platforms at enterprise scale. Expert in GenAI platform architectures (Azure OpenAI, VertexAI), cloud-native systems design, enterprise integration, and AI operational excellence.
 
 Known for pragmatic, scalable architecture thinking that balances innovation with production reliability, security, and cost optimization. Proven ability to integrate AI capabilities across 100+ enterprise systems while maintaining governance, auditability, and control. Experienced working in regulated industries and complex governance environments.
 
@@ -51,7 +51,7 @@ Proven ability to establish AI platform standards, implement CI/CD for AI system
 ## CORE CAPABILITIES / EXPERTISE
 
 ### GenAI Platform Architecture & Implementation
-- GenAI platform architecture and design (Azure OpenAI, AWS Bedrock, GCP VertexAI)
+- GenAI platform architecture and design (Azure OpenAI, GCP VertexAI)
 - LLM integration and prompt engineering frameworks
 - RAG (Retrieval-Augmented Generation) system design and implementation
 - LLM evaluation frameworks and testing strategies
@@ -212,12 +212,12 @@ Proven ability to establish AI platform standards, implement CI/CD for AI system
 - Led architecture and execution of Pyramid SaaS on AWS
 - Leveraged EKS and Terraform for infrastructure as code
 - Designed secure, scalable analytics platform infrastructure
-- Achieved 200% user growth through platform architecture
+- Delivered scalable platform architecture supporting rapid enterprise customer growth
 
 ### Cloud Deployment & Optimization:
 - Developed Pyramid's AWS Marketplace offering
 - Created multi-region and hybrid deployment patterns
-- Improved customer onboarding speed by 30%
+- Accelerated customer onboarding through AWS Marketplace offering
 - Designed cost-optimized cloud architectures
 
 ### Integration & Data Architecture:
@@ -274,8 +274,8 @@ Proven ability to establish AI platform standards, implement CI/CD for AI system
 - GCP (Compute Engine, GKE, Cloud Run, BigQuery, Vertex AI)
 
 **AI/ML Platforms & Frameworks:**
-- Azure OpenAI, AWS Bedrock, GCP Vertex AI
-- LangChain, LlamaIndex, RAG frameworks
+- Azure OpenAI, GCP Vertex AI
+- LlamaIndex, RAG frameworks
 - Hugging Face models and inference
 - FastAPI, Flask for AI services
 - TensorFlow, PyTorch for model serving
@@ -302,13 +302,11 @@ Proven ability to establish AI platform standards, implement CI/CD for AI system
 ## KEY METRICS & IMPACT EXAMPLES
 
 **Scale & Performance:**
-- Platform supporting 200% user growth
 - Enterprise systems integrating 100+ internal systems
 - Serving 500+ concurrent users with sub-second latency
 - Processing high-volume data pipelines
 
 **Efficiency Gains:**
-- 30% improvement in customer onboarding speed
 - Automated manual processes reducing operational overhead
 - Cost optimization through cloud architecture
 - Faster time-to-production for AI solutions

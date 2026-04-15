@@ -1,14 +1,20 @@
 ---
-name: Jasper4Salesforce — Correct Role Attribution
-description: Jasper4Salesforce was built during the Founding Architect period (2005-2010), NOT the Director Pre-Sales role (2012-2020). Never attribute it to the wrong role.
+name: Jaspersoft Role Attribution — Jasper4Salesforce and js-docker
+description: Jasper4Salesforce belongs to Founding Architect (2005-2010); js-docker belongs to Director Pre-Sales (2012-2020). Never swap these.
 type: feedback
+originSessionId: 6d481a27-2bbf-40d8-a734-b1dc20abff39
 ---
+Two Jaspersoft credentials are often misattributed — they belong to different roles:
 
-Jasper4Salesforce (SaaS BI product on the Salesforce App Exchange, querying SFDC data via SOQL) was built during the **Founding Architect, JasperReports Server** role (2005–2010). It is NOT part of the Director, Pre-Sales & Solution Consulting role (2012–2020).
+**Jasper4Salesforce** → **Founding Architect, JasperReports Server (2005–2010)**
+SaaS BI product on the Salesforce App Exchange, querying SFDC data via SOQL. Built during the founding architect period. Docker did not exist in 2005–2010, so js-docker could not have been created then.
 
-**Why:** These are two distinct roles at the same company, separated by two years (Jaspersoft 2005–2010, then gap, then Jaspersoft/TIBCO 2012–2020 after TIBCO acquired Jaspersoft). Attributing Jasper4Salesforce to the 2012–2020 role is factually incorrect.
+**js-docker** → **Director, Pre-Sales & Solution Consulting (2012–2020)**
+Docker/Kubernetes containerization for JasperReports Server (github.com/TIBCOSoftware/js-docker). Created after Docker became available (~2013–2014), during the TIBCO/Jaspersoft period. 156 stars, 161 forks, maintained through January 2026.
+
+**Why:** Docker was released in 2013. The Founding Architect role ended in 2010. js-docker physically could not have been created during that role.
 
 **How to apply:**
-- When citing Jasper4Salesforce as a technical credential, place it in the Founding Architect bullet (2005–2010), not in the Director Pre-Sales bullet (2012–2020)
-- The 2012–2020 Jaspersoft/TIBCO role covers: 50+ enterprise engagements, consulting frameworks, customer advisory, enterprise integrations (REST/SOAP, SSO/RBAC, ETL, TIBCO middleware, AWS SNS) — not Jasper4Salesforce
-- If hands-on API/integration depth is needed for the 2012–2020 role, use REST/SOAP, Salesforce/SOQL querying in customer contexts, SSO/RBAC, Talend ETL — not Jasper4Salesforce as a product built
+- Founding Architect bullets: include Jasper4Salesforce; do NOT include js-docker
+- Director Pre-Sales bullets: include js-docker; do NOT include Jasper4Salesforce
+- The 2012–2020 Director role also covers: 50+ enterprise engagements, REST/SOAP connectors, SSO/RBAC, Talend ETL, TIBCO middleware, customer advisory

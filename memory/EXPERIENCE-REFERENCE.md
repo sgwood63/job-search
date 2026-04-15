@@ -100,7 +100,7 @@ Referenced from MEMORY.md for space efficiency.
 - **AWS Marketplace → HubSpot integration**: Built an integration between AWS Marketplace and HubSpot that tracked customer instance launches and usage of Pyramid Analytics; connected AWS billing/provisioning events to HubSpot CRM workflows
 
 ### LatticeFlow AI (2023–2025)
-- **n8n workflow automation**: Built n8n jobs managing the full workflow and document creation pipeline for AI risk reports — automated orchestration of OpenAI GPT calls, document generation, and report delivery
+- **n8n workflow automation**: Built n8n jobs managing the full workflow and document creation pipeline for AI risk reports — automated orchestration of OpenAI calls, document generation, and report delivery
 - **AWS CDK**: Deployed insights.latticeflow.ai production website using AWS CDK (private repo)
 
 ### Jaspersoft / TIBCO — Open Source & Public Code
@@ -248,7 +248,7 @@ A 30+ year lineage in message-oriented middleware and distributed systems — ge
 | 2001–2003 | **IBM MQSeries** | Fireman's Fund (consulting) — communicated with mainframes via MQ for enterprise data integration |
 | 2005–2020 | **SOAP / message bus** | Jaspersoft — SOAP messages against a message bus to retrieve data for reporting and analytics |
 | 2012–2020 | **TIBCO middleware / AWS SNS** | Jaspersoft/TIBCO — TIBCO middleware integrations and AWS SNS notification pipelines |
-| 2022–2023 | **Apache Kafka / event streaming** | Solace — CTO Group Architect at enterprise event streaming company; Kafka architectures and event-driven patterns across large enterprise customers |
+| 2022–2023 | **Apache Kafka / event streaming** | Solace — CTO Group Architect; work focused on incorporating Kafka into Solace's Event Portal (a streaming data operations platform); engaged with Kafka ecosystem and event-driven integration patterns |
 
 **Why this matters**: Not a recent convert to distributed systems — has been working with message-oriented middleware since the 1990s across trading systems, enterprise integration, analytics platforms, and cloud-native event streaming. Directly relevant for Temporal (workflow orchestration), Solace, Kafka-ecosystem, and any role requiring distributed systems credibility with technical engineering audiences.
 
@@ -268,8 +268,8 @@ A 30+ year lineage in message-oriented middleware and distributed systems — ge
 - Deep domain knowledge of investment banking, capital markets, and banking operations technology
 
 **United States (1997–1999):**
-- **Morgan Stanley** — investment research systems/IT
-- **Thomas Weisel Partners** — investment research systems/IT
+- **Morgan Stanley** — investment research consulting (not IT role)
+- **Thomas Weisel Partners** — investment research consulting (not IT role)
 
 **Why relevant**:
 - 10+ years of hands-on FS technology experience, including major global banks
@@ -370,8 +370,8 @@ This is a consistent pattern across roles — not a one-off. Directly relevant f
 - **Encover (2010-2012)**: VP IT & Engineering; custom CRM for sales/renewal call center operations
 - **Jaspersoft Founding Architect (2005-2010)**: JasperReports Server, open source project lead
 - **GalenWorks (co-founder, 2003–2005)**: hospital analytics startup
-- Earlier (1999–2003): consulting in FS/insurance/healthcare
-- **Financial Services IT (1985-1999)**: Bank of New Zealand, Midland Montagu, Macquarie Bank, Morgan Stanley, Thomas Weisel Partners
+- Earlier (1999–2003): consulting in FS/insurance — First Penn Pacific, Irish Life of North America, Franklin Templeton, Fireman's Fund
+- **Financial Services IT (1985-1999)**: IT roles at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU); investment research consulting at Morgan Stanley, Thomas Weisel Partners (US)
 
 ---
 

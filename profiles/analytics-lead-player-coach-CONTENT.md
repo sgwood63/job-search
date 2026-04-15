@@ -128,11 +128,11 @@ Expert in analytics architecture, platform modernization, and building analytics
 - Led advisory engagements for cloud analytics platforms, aligning technology choices with business outcomes and customer maturity
 - Developed deployment architectures for Pyramid AWS Marketplace and Kubernetes, enabling customers to scale analytics capabilities efficiently
 - Partnered with sales and delivery teams to translate client cloud deployment needs into scalable, production-ready analytics solutions
-- Led architecture and execution of Pyramid SaaS on AWS, leveraging EKS and Terraform to deliver a secure, scalable analytics platform that supported 200% user growth within first year
-- Developed Pyramid's AWS Marketplace offering, solidifying AWS partnership and improving customer onboarding speed by 30% compared to on-premise deployments
+- Led architecture and execution of Pyramid SaaS on AWS, leveraging EKS and Terraform to deliver a secure, scalable analytics platform that supported rapid enterprise customer growth
+- Developed Pyramid's AWS Marketplace offering, solidifying AWS partnership and accelerating customer onboarding compared to on-premise deployments
 
 **Analytics Enablement & Customer Success:**
-- Created reusable architecture frameworks that enabled pre-sales and solution teams, reducing implementation time by 20% and improving client delivery consistency
+- Created reusable architecture frameworks that enabled pre-sales and solution teams, reducing implementation time and improving client delivery consistency
 - Supported analytics teams in customer environments with platform optimization, performance tuning, and advanced use case development
 - Collaborated with product and alliance leadership to refine go-to-market strategy, aligning technical capabilities with enterprise customer analytics priorities
 
@@ -168,7 +168,7 @@ Expert in analytics architecture, platform modernization, and building analytics
 - Drove recurring revenue growth through customer expansion and success
 
 **Standards, Frameworks & Enablement:**
-- Developed standardized analytics consulting frameworks that shortened implementation timelines by 30%, increased customer satisfaction by 25%, and improved services profitability
+- Developed standardized analytics consulting frameworks that shortened implementation timelines, improved customer satisfaction, and improved services profitability
 - Created analytics best practices libraries and accelerators for consulting delivery
 - Established analytics governance frameworks and quality standards
 - Trained and mentored consulting teams on analytics architecture and delivery
@@ -215,13 +215,9 @@ Expert in analytics architecture, platform modernization, and building analytics
 
 ---
 
-## KEY METRICS & IMPACT EXAMPLES
+## KEY IMPACT EXAMPLES
 
 **Scale Examples (from experience):**
-- Led analytics platform supporting 200% user growth
-- Improved customer onboarding speed by 30%
-- Reduced implementation timelines by 20-30%
-- Increased customer satisfaction by 25%
 - Served 500+ concurrent users with sub-second dashboard performance
 - Architected systems handling 1,000+ reports and dashboards
 
