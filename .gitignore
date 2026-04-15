@@ -12,6 +12,9 @@ base-documents/Jobs*
 base-documents/AI\ Architect*
 base-documents/linkedin-job-listing-page.html
 
+# App secrets
+app/.env
+
 # macOS
 .DS_Store
 **/.DS_Store

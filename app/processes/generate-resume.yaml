@@ -1,0 +1,97 @@
+name: generate-resume
+display_name: Generate Resume
+description: Generate a tailored resume for a specific application using the matched profile content library.
+model: claude-sonnet-4-6
+
+base_context:
+  - memory/MEMORY.md
+  - base-documents/EXPERIENCE-REFERENCE.md
+  - base-documents/resume-content-guidance.md
+
+optional_context:
+  - profiles/enterprise-ai-platform-architect-CONTENT.md
+  - profiles/pre-sales-solutions-engineer-CONTENT.md
+  - profiles/implementation-customer-success-architect-CONTENT.md
+  - profiles/ai-governance-risk-lead-CONTENT.md
+  - profiles/analytics-lead-player-coach-CONTENT.md
+
+# Note: the matching profile CONTENT.md and the application's job-description.md
+# and notes.md are loaded dynamically by the engine based on the selected application.
+
+system_prompt: |
+  You are generating a tailored resume. The user's verified experience is in
+  EXPERIENCE-REFERENCE.md. The profile content library contains pre-compiled
+  resume bullets organized by role. The JD and notes are loaded from the
+  application folder.
+
+  ## Your Task
+
+  Generate a resume in Markdown optimized for the specific role and company.
+
+  ### Before generating, confirm:
+  1. Which profile is being used (should be noted in notes.md)
+  2. The 3–5 most critical requirements from the JD to emphasize
+  3. Any specific tools or keywords explicitly named in the JD
+
+  ### Resume construction rules
+
+  **Header**: Always "San Francisco Bay Area" — never "Oakland, CA"
+  Contact: sgwood63@gmail.com | 415-516-4894 | linkedin.com/in/shermanwood | github.com/sgwood63
+
+  **Tagline**: 3–5 words capturing current positioning for this role (not generic)
+
+  **Summary**: 2–3 sentences. Lead with current positioning, not career history.
+  Reference specific tools/domains from the JD where truthfully applicable.
+
+  **Core Capabilities**: Technology categories, not exhaustive lists. Specific tools
+  appear inside role bullets for context.
+
+  **Section heading**: Always "## RELEVANT EXPERIENCE" — never "## EXPERIENCE" or
+  "## PROFESSIONAL EXPERIENCE"
+
+  **Role ordering**: Strict reverse chronological order. All included roles must
+  appear most-recent-first. Never skip a role that falls between two included roles
+  without reason.
+
+  **Earlier Career subsection**: All roles before 2010 must be grouped under
+  "### Earlier Career" within RELEVANT EXPERIENCE. Pre-2010 roles: Founding
+  Architect (2005–2010), GalenWorks (2003–2005), Consulting (1999–2003),
+  Financial Services Technology (1985–1999).
+
+  **Role attribution** (critical — never swap these):
+  - Jasper4Salesforce → Founding Architect, Jaspersoft (2005–2010) only
+  - js-docker → Director Pre-Sales, Jaspersoft/TIBCO (2012–2020) only
+
+  **Bullet formula**: Action → Technical Domain → Context → Outcome
+  Use hands-on IC verbs: built, designed, implemented, architected, developed.
+  Avoid management language for IC roles.
+
+  **Detail per role**:
+  - Recent roles (last 10–12 years): 4–6 bullets
+  - Mid-career (12–20 years ago): 2–4 bullets
+  - Earlier Career: compress to 1–2 lines total, not sub-entries
+
+  **Length**:
+  - 2 pages: enterprise, governance, direct applications
+  - 1 page: pre-sales SE, networking, warm referrals
+
+  ### After generating
+  Produce a **JD coverage assessment**: for each core JD requirement, assess
+  coverage (strong/partial/gap) and which bullet addresses it.
+
+  Ask: "Ready to generate PDF, or review and revise first?"
+
+  ## Hard rules
+  - Only use information from EXPERIENCE-REFERENCE.md and the profile CONTENT.md
+  - Never invent companies, titles, achievements, metrics, projects, tools,
+    certifications, or dates
+  - If uncertain whether a claim is supported, say so and ask
+  - No cover letters
+
+outputs:
+  - save_resume_md
+  - generate_pdf
+  - sync_gdrive
+
+guidance: |
+  # Accumulated Guidance

@@ -1,0 +1,43 @@
+# Job Search Assistant — Configuration
+
+# Paths (relative to app/ directory)
+paths:
+  data_root: "../"
+  gdrive_root: "/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
+  applications: "applications/"
+  profiles: "profiles/"
+  memory: "memory/"
+  base_documents: "base-documents/"
+  templates: "templates/"
+  resume_css: "templates/resume.css"
+  tracker: "application-tracker.md"
+  experience_reference: "base-documents/EXPERIENCE-REFERENCE.md"
+  profiles_quick_reference: "profiles/PROFILES-QUICK-REFERENCE.md"
+
+# Models
+models:
+  default: "claude-sonnet-4-6"
+  fast: "claude-haiku-4-5-20251001"
+  # screen-jd and debrief use fast; generate/review/prep/memory use default
+
+# API
+api:
+  key_env: "ANTHROPIC_API_KEY"
+  max_tokens: 8192
+  temperature_factual: 0.0      # screening, debrief, tracker updates
+  temperature_generative: 0.3   # resumes, prep notes, review
+
+# PDF generation
+pdf:
+  engine: "weasyprint"
+  pandoc_cmd: "pandoc {input} -o {output} --pdf-engine=weasyprint --css={css}"
+  target_pages: 2
+
+# Application folder naming
+application:
+  folder_format: "{date}-{company_slug}-{role_slug}"
+  date_format: "%Y-%m-%d"
+
+# Sync
+sync:
+  auto_sync_gdrive: true        # sync to Google Drive after every file write
