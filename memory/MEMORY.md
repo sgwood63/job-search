@@ -185,6 +185,12 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
 git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
 ```
 
+## App Development
+- [Job Search App](project_job_search_app.md) — Streamlit + Anthropic API app; scaffolded 2026-04-15; next step: build app.py and engine.py in a new session in app/
+
+## Session Strategy
+- [Session Strategy](feedback_session_strategy.md) — use short task-scoped sessions, not one long session; memory carries context across sessions
+
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
@@ -192,4 +198,4 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [w
 - Reuse resume extraction within session
 - Reference external files (EXPERIENCE-REFERENCE.md) instead of duplicating
 
-**Last Updated**: 2026-02-26
+**Last Updated**: 2026-04-15
