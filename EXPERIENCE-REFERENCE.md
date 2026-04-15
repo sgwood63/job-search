@@ -100,7 +100,13 @@ Referenced from MEMORY.md for space efficiency.
 - **AWS Marketplace → HubSpot integration**: Built an integration between AWS Marketplace and HubSpot that tracked customer instance launches and usage of Pyramid Analytics; connected AWS billing/provisioning events to HubSpot CRM workflows
 
 ### LatticeFlow AI (2023–2025)
-- **n8n workflow automation**: Built n8n jobs managing the full workflow and document creation pipeline for AI risk reports — automated orchestration of OpenAI GPT calls, document generation, and report delivery
+- **n8n workflow automation**: Built n8n jobs managing the full workflow and document creation pipeline for AI risk reports — automated orchestration of OpenAI calls, document generation, and report delivery
+- **AWS CDK**: Deployed insights.latticeflow.ai production website using AWS CDK (private repo)
+
+### Jaspersoft / TIBCO — Open Source & Public Code
+- **js-docker** (github.com/TIBCOSoftware/js-docker): Created the Docker/Kubernetes containerization framework for TIBCO JasperReports Server. 156 stars, 161 forks, 298 commits, last release January 2026 — actively maintained production infrastructure in enterprise use. Strongest public code credential.
+- **REST API client libraries**: Built jrs-rest-java-client (Java), jrs-rest-php-client (PHP), and JavaScript clients for JasperReports Server REST API — developer-facing tooling used by the integration community
+- **AWS Quick Start projects**: quickstart-tibco-jaspersoft, quickstart-linux-bastion (Shell) — enterprise deployment automation on AWS
 
 **Why these matter for RevOps/SE roles (e.g., Reevo)**:
 - n8n ✅ — hands-on workflow automation (directly listed in Reevo JD as relevant tool)
@@ -232,6 +238,24 @@ Referenced from MEMORY.md for space efficiency.
 
 ---
 
+## Distributed Systems Background (Full History)
+
+A 30+ year lineage in message-oriented middleware and distributed systems — genuine depth, not recent exposure:
+
+| Era | Technology | Context |
+|-----|-----------|---------|
+| ~1990s | **TIBCO Rendezvous** | Macquarie Bank (AU) — distributed trades and market data across front-office position-keeping instances |
+| 2001–2003 | **IBM MQSeries** | Fireman's Fund (consulting) — communicated with mainframes via MQ for enterprise data integration |
+| 2005–2020 | **SOAP / message bus** | Jaspersoft — SOAP messages against a message bus to retrieve data for reporting and analytics |
+| 2012–2020 | **TIBCO middleware / AWS SNS** | Jaspersoft/TIBCO — TIBCO middleware integrations and AWS SNS notification pipelines |
+| 2022–2023 | **Apache Kafka / event streaming** | Solace — CTO Group Architect; work focused on incorporating Kafka into Solace's Event Portal (a streaming data operations platform); engaged with Kafka ecosystem and event-driven integration patterns |
+
+**Why this matters**: Not a recent convert to distributed systems — has been working with message-oriented middleware since the 1990s across trading systems, enterprise integration, analytics platforms, and cloud-native event streaming. Directly relevant for Temporal (workflow orchestration), Solace, Kafka-ecosystem, and any role requiring distributed systems credibility with technical engineering audiences.
+
+**Note on Fireman's Fund**: Consulting engagement 2001–2003 (pre-GalenWorks). Falls in "Earlier Career (1999–2003)" period.
+
+---
+
 ## Financial Services Background
 
 ### Early Career: Financial Services IT (1985–1999)
@@ -239,13 +263,13 @@ Referenced from MEMORY.md for space efficiency.
 **Australia (1985–1996)** — IT roles at three major financial institutions:
 - **Bank of New Zealand** — IT
 - **Midland Montagu** — IT (UK merchant bank, subsidiary of Midland Bank / HSBC)
-- **Macquarie Bank** — IT
+- **Macquarie Bank** — IT; used **TIBCO Rendezvous** to distribute trades and market data across front-office position-keeping instances
 - Covered **front, middle, and back office systems** across these institutions
 - Deep domain knowledge of investment banking, capital markets, and banking operations technology
 
 **United States (1997–1999):**
-- **Morgan Stanley** — investment research systems/IT
-- **Thomas Weisel Partners** — investment research systems/IT
+- **Morgan Stanley** — investment research consulting (not IT role)
+- **Thomas Weisel Partners** — investment research consulting (not IT role)
 
 **Why relevant**:
 - 10+ years of hands-on FS technology experience, including major global banks
@@ -346,8 +370,8 @@ This is a consistent pattern across roles — not a one-off. Directly relevant f
 - **Encover (2010-2012)**: VP IT & Engineering; custom CRM for sales/renewal call center operations
 - **Jaspersoft Founding Architect (2005-2010)**: JasperReports Server, open source project lead
 - **GalenWorks (co-founder, 2003–2005)**: hospital analytics startup
-- Earlier (1999–2003): consulting in FS/insurance/healthcare
-- **Financial Services IT (1985-1999)**: Bank of New Zealand, Midland Montagu, Macquarie Bank, Morgan Stanley, Thomas Weisel Partners
+- Earlier (1999–2003): consulting in FS/insurance — First Penn Pacific, Irish Life of North America, Franklin Templeton, Fireman's Fund
+- **Financial Services IT (1985-1999)**: IT roles at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU); investment research consulting at Morgan Stanley, Thomas Weisel Partners (US)
 
 ---
 

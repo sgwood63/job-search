@@ -128,12 +128,15 @@ Job search tracking system with profile-based approach for customizing applicati
 - **Sales/BD**: Has experience (proposals, pitches, revenue growth) BUT prefers technical IC roles
 - **GenAI**: LatticeFlow AI Risk Management (2023-2025); Julius Baer prospect with FINMA + EU AI Act requirements
 - **KYC / Identity Verification**: At LatticeFlow, worked with facial recognition, document validation, and Know Your Customer (KYC) workflows using AI — for banks and identity service vendors. Direct domain match for KYB/KYC/identity verification roles.
-- **Integration engineering** (hands-on, across roles): n8n workflow automation (LatticeFlow — AI risk report pipeline via OpenAI GPT); HubSpot (Pyramid — AWS Marketplace → HubSpot integration); Salesforce/SOQL (Jaspersoft — Jasper4Salesforce SaaS BI product on SFDC App Exchange); REST/SOAP connectors (Jaspersoft); SSO/RBAC (Jaspersoft); Talend ETL (Jaspersoft); AWS Marketplace provisioning integration (Pyramid); TIBCO middleware and AWS SNS notification pipelines (Jaspersoft/TIBCO); voice/text/email notification platforms (Jaspersoft/TIBCO, Pyramid Analytics, CRM systems)
-- **Apache Kafka**: Solace (2022–2023) — CTO Group Architect at enterprise event streaming company; worked with Kafka architectures and event-driven integration patterns across large enterprise customers
+- **Integration engineering** (hands-on, across roles): n8n workflow automation (LatticeFlow — AI risk report pipeline via OpenAI); HubSpot (Pyramid — AWS Marketplace → HubSpot integration); Salesforce/SOQL (Jaspersoft — Jasper4Salesforce SaaS BI product on SFDC App Exchange); REST/SOAP connectors (Jaspersoft); SSO/RBAC (Jaspersoft); Talend ETL (Jaspersoft); AWS Marketplace provisioning integration (Pyramid); TIBCO middleware and AWS SNS notification pipelines (Jaspersoft/TIBCO); voice/text/email notification platforms (Jaspersoft/TIBCO, Pyramid Analytics, CRM systems)
+- **Apache Kafka**: Solace (2022–2023) — CTO Group Architect; work focused on incorporating Kafka into Solace's Event Portal (streaming data operations platform); familiar with Kafka ecosystem and event-driven integration patterns
+- **Distributed Systems (full history)**: 30+ year lineage — TIBCO Rendezvous (Macquarie Bank, ~1990s, trades/market data distribution); IBM MQSeries (Fireman's Fund consulting, 2001–2003, mainframe integration); SOAP/message bus (Jaspersoft, 2005–2020); TIBCO middleware + AWS SNS (Jaspersoft/TIBCO, 2012–2020); Apache Kafka (Solace, 2022–2023). See EXPERIENCE-REFERENCE.md for full details.
+- **js-docker**: github.com/TIBCOSoftware/js-docker — created by Sherman; Docker/K8s containerization for JasperReports Server; 156 stars, 161 forks, maintained through Jan 2026. Strongest public code credential. Surface for any developer-facing or technical SE role.
 - **JavaScript/TypeScript/Node.js**: Built JS/TS and Node.js systems at Jaspersoft; used JavaScript for front-end integrations
+- **Java**: Jaspersoft was a Java house — has Java background from Jaspersoft period (2005–2020), but has not worked in Java since. Foundational familiarity, not current proficiency.
 - **Cloud**: AWS (certified), multi-cloud aware
 - **Education**: Bachelor's (NOT Master's/PhD - disqualifier for some roles)
-- **Financial Services**: Deep FS background — IT at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU, 1985-1996); Morgan Stanley, Thomas Weisel Partners (US, 1997-1999); front/mid/back office systems. See EXPERIENCE-REFERENCE.md for full details.
+- **Financial Services**: Deep FS background — IT at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU, 1985-1996) — front/mid/back office systems; investment research consulting at Morgan Stanley, Thomas Weisel Partners (US, 1997-1999). NOT IT roles at US firms. See EXPERIENCE-REFERENCE.md for full details.
 - **GalenWorks**: Co-founder (not consultant) — hospital analytics startup, 2003–2005. Three founding/early-stage experiences across career: GalenWorks (co-founder 2003–05), Jaspersoft Founding Architect (2005–10), LatticeFlow early hire (2023–25).
 - **Encover**: VP IT & Engineering (2010-2012) — sales and marketing SaaS, maintenance contract renewals, call center in Sandy UT. Designed custom CRM — GTM operations from the inside. Relevant for revenue analytics and contact center AI roles.
 
@@ -145,6 +148,10 @@ Job search tracking system with profile-based approach for customizing applicati
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
 - See `feedback_jasper4salesforce.md` — Jasper4Salesforce was built 2005–2010 (Founding Architect), NOT during the Director Pre-Sales role (2012–2020); never attribute it to the wrong Jaspersoft role
+
+## Coding & Public Code Credentials
+- [Coding Profile](user_coding_profile.md) — js-docker (156★, still maintained), sgwood63 repos, coding frequency, LatticeFlow hands-on work, AI-assisted dev
+- [LatticeFlow Departure](project_latticeflow_departure.md) — 20% RIF November 2025; use as standard answer to "why looking"
 
 ## User Location & Logistics
 - See `user_location.md` — lives in Oakland; Oakland roles are ideal, SF downtown convenient, South Bay is the stretch

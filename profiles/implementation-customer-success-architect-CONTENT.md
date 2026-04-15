@@ -234,8 +234,7 @@ Focused on turning customer outcomes into business growth through trusted adviso
 - Recruited, trained, and scaled implementation and consulting teams
 - Developed standardized consulting frameworks and methodologies
 - Created accelerators and reusable assets for implementation efficiency
-- Shortened implementation timelines by 30%
-- Increased customer satisfaction by 25%
+- Shortened implementation timelines through standardized frameworks and reusable accelerators
 - Improved services profitability through process improvements
 
 ---
@@ -313,8 +312,7 @@ Focused on turning customer outcomes into business growth through trusted adviso
 
 **Delivery Excellence:**
 - Led 50+ successful enterprise customer implementations
-- Shortened implementation timelines by 30%
-- Achieved 25% improvement in customer satisfaction
+- Shortened implementation timelines through standardized frameworks
 - Improved services profitability through process improvements
 
 **Customer Success:**

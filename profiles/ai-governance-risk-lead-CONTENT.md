@@ -112,7 +112,7 @@ AI Strategy & Governance Executive with 20+ years of experience leading enterpri
 
 **GenAI & Technical Implementation:**
 - Architected and implemented GenAI-driven workflows to automate AI system profiling, evidence collection, risk scoring, and residual-risk reporting
-- Drove the vision and implementation of AI GO! (Governance & Operations) — a GenAI-based platform that defines AI risk management frameworks and processes, eliminates manual AI risk assessments, improves audit readiness, and lowers enterprise compliance effort and costs by an estimated 20%
+- Drove the vision and implementation of AI GO! (Governance & Operations) — a GenAI-based platform that defines AI risk management frameworks and processes, eliminates manual AI risk assessments, improves audit readiness, and lowers enterprise compliance effort and costs
 
 **Client & Stakeholder Engagement:**
 - Worked directly in client environments to configure assessments, integrate ML pipelines, and support deployment readiness
@@ -154,9 +154,9 @@ AI Strategy & Governance Executive with 20+ years of experience leading enterpri
 - Led advisory engagements for cloud analytics platforms, aligning technology choices with business outcomes
 - Developed deployment architectures for Pyramid AWS Marketplace and Kubernetes
 - Partnered with sales and delivery teams to translate client cloud deployment needs into scalable, production-ready solutions
-- Led the architecture and execution of Pyramid SaaS on AWS, leveraging EKS and Terraform to deliver a secure, scalable platform that supported 200% user growth within the first year
-- Developed Pyramid's AWS Marketplace offering, solidifying the AWS partnership and improving customer onboarding speed by 30% compared to on-premise deployments
-- Created reusable architecture frameworks that enabled pre-sales and solution teams working with software vendors, reducing implementation time by 20% and improving client delivery consistency
+- Led the architecture and execution of Pyramid SaaS on AWS, leveraging EKS and Terraform to deliver a secure, scalable platform that supported rapid enterprise customer growth
+- Developed Pyramid's AWS Marketplace offering, solidifying the AWS partnership and accelerating customer onboarding compared to on-premise deployments
+- Created reusable architecture frameworks that enabled pre-sales and solution teams, reducing implementation time and improving delivery consistency
 - Collaborated with product and alliance leadership to refine go-to-market strategy, aligning technical capabilities with enterprise customer priorities
 
 ### JASPERSOFT / TIBCO (2012-2020)
@@ -164,7 +164,7 @@ AI Strategy & Governance Executive with 20+ years of experience leading enterpri
 - Advised C-suite and technical stakeholders on analytics, data platforms, and decision-support modernization initiatives
 - Advised C-suite clients and internal executives on data and analytics modernization, shaping enterprise architecture strategies and solution investment decisions
 - Negotiated and secured sales with strategic customers, including JPMC Wealth Management and CA Technologies, embedding analytics into core business systems and driving recurring revenue growth for TIBCO
-- Developed standardized consulting frameworks that shortened implementation timelines by 30%, increased client satisfaction by 25%, and improved overall services' profitability
+- Developed standardized consulting frameworks that shortened implementation timelines, improved client satisfaction, and improved overall services' profitability
 
 **Management Context (if needed):**
 - Recruited, coached, and scaled a team of 5-15+ engineers and consultants, developing next-generation analytics and delivery capabilities across multiple regions
