@@ -1,3 +1,9 @@
+---
+name: Job Search 2026 - Project Memory
+description: Master index and project overview for the 2026 job search
+type: project
+---
+
 # Job Search 2026 - Project Memory
 
 ## Project Overview
@@ -128,7 +134,8 @@ Job search tracking system with profile-based approach for customizing applicati
 - **Sales/BD**: Has experience (proposals, pitches, revenue growth) BUT prefers technical IC roles
 - **GenAI**: LatticeFlow AI Risk Management (2023-2025); Julius Baer prospect with FINMA + EU AI Act requirements
 - **KYC / Identity Verification**: At LatticeFlow, worked with facial recognition, document validation, and Know Your Customer (KYC) workflows using AI — for banks and identity service vendors. Direct domain match for KYB/KYC/identity verification roles.
-- **Integration engineering** (hands-on, across roles): n8n workflow automation (LatticeFlow — AI risk report pipeline via OpenAI); HubSpot (Pyramid — AWS Marketplace → HubSpot integration); Salesforce/SOQL (Jaspersoft — Jasper4Salesforce SaaS BI product on SFDC App Exchange); REST/SOAP connectors (Jaspersoft); SSO/RBAC (Jaspersoft); Talend ETL (Jaspersoft); AWS Marketplace provisioning integration (Pyramid); TIBCO middleware and AWS SNS notification pipelines (Jaspersoft/TIBCO); voice/text/email notification platforms (Jaspersoft/TIBCO, Pyramid Analytics, CRM systems)
+- **Integration engineering** (hands-on, across roles): n8n workflow automation (LatticeFlow — AI risk report pipeline via OpenAI); HubSpot via Skyvia (Pyramid — AWS Marketplace → HubSpot integration using Skyvia, a European no-code integration/ETL platform, Zapier/Make competitor); Salesforce/SOQL (Jaspersoft — Jasper4Salesforce SaaS BI product on SFDC App Exchange); REST/SOAP connectors (Jaspersoft); SSO/RBAC (Jaspersoft); Talend ETL (Jaspersoft); AWS Marketplace provisioning integration (Pyramid); TIBCO middleware and AWS SNS notification pipelines (Jaspersoft/TIBCO); voice/text/email notification platforms (Jaspersoft/TIBCO, Pyramid Analytics, CRM systems)
+- **Skyvia**: Used at Pyramid Analytics for AWS Marketplace → HubSpot integration. European no-code integration/ETL platform; direct credential when JDs mention Zapier, Make, or similar no-code integration tools.
 - **Apache Kafka**: Solace (2022–2023) — CTO Group Architect; work focused on incorporating Kafka into Solace's Event Portal (streaming data operations platform); familiar with Kafka ecosystem and event-driven integration patterns
 - **Distributed Systems (full history)**: 30+ year lineage — TIBCO Rendezvous (Macquarie Bank, ~1990s, trades/market data distribution); IBM MQSeries (Fireman's Fund consulting, 2001–2003, mainframe integration); SOAP/message bus (Jaspersoft, 2005–2020); TIBCO middleware + AWS SNS (Jaspersoft/TIBCO, 2012–2020); Apache Kafka (Solace, 2022–2023). See EXPERIENCE-REFERENCE.md for full details.
 - **js-docker**: github.com/TIBCOSoftware/js-docker — created by Sherman; Docker/K8s containerization for JasperReports Server; 156 stars, 161 forks, maintained through Jan 2026. Strongest public code credential. Surface for any developer-facing or technical SE role.
@@ -139,6 +146,7 @@ Job search tracking system with profile-based approach for customizing applicati
 - **Financial Services**: Deep FS background — IT at Bank of New Zealand, Midland Montagu, Macquarie Bank (AU, 1985-1996) — front/mid/back office systems; investment research consulting at Morgan Stanley, Thomas Weisel Partners (US, 1997-1999). NOT IT roles at US firms. See EXPERIENCE-REFERENCE.md for full details.
 - **GalenWorks**: Co-founder (not consultant) — hospital analytics startup, 2003–2005. Three founding/early-stage experiences across career: GalenWorks (co-founder 2003–05), Jaspersoft Founding Architect (2005–10), LatticeFlow early hire (2023–25).
 - **Encover**: VP IT & Engineering (2010-2012) — sales and marketing SaaS, maintenance contract renewals, call center in Sandy UT. Designed custom CRM — GTM operations from the inside. Relevant for revenue analytics and contact center AI roles.
+- **Dashboards in AI/analytics context**: When a JD mentions "dashboards" in an AI or data context, treat as an analytics requirement — expert-level credential via Jaspersoft (open source BI platform), Pyramid Analytics, and TIBCO Spotfire. Do NOT flag as a gap.
 
 ## Resume Location
 - See `feedback_resume_location.md` — always use "San Francisco Bay Area" in resume headers, never "Oakland, CA"
@@ -185,6 +193,12 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
 git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
 ```
 
+## App Development
+- [Job Search App](project_job_search_app.md) — Streamlit + Anthropic API app; scaffolded 2026-04-15; next step: build app.py and engine.py in a new session in app/
+
+## Session Strategy
+- [Session Strategy](feedback_session_strategy.md) — use short task-scoped sessions, not one long session; memory carries context across sessions
+
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
@@ -192,4 +206,4 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [w
 - Reuse resume extraction within session
 - Reference external files (EXPERIENCE-REFERENCE.md) instead of duplicating
 
-**Last Updated**: 2026-02-26
+**Last Updated**: 2026-04-16

@@ -41,3 +41,6 @@ application:
 # Sync
 sync:
   auto_sync_gdrive: true        # sync to Google Drive after every file write
+
+# App URL (used to construct "open in new tab" links)
+app_url: "http://localhost:8501"
