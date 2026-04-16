@@ -4,16 +4,18 @@ description: Capture new facts, corrections, or preferences — and propagate th
 model: claude-sonnet-4-6
 
 base_context:
-  - memory/MEMORY.md
-  - base-documents/EXPERIENCE-REFERENCE.md
+  - app:memory/MEMORY.md
+  - applicant:applicant.md
+  - applicant:memory/APPLICANT-MEMORY.md
+  - applicant:base-documents/EXPERIENCE-REFERENCE.md
 
 optional_context:
-  - memory/feedback_role_ordering.md
-  - memory/feedback_jasper4salesforce.md
-  - memory/feedback_resume_review.md
-  - memory/user_location.md
-  - memory/user_coding_profile.md
-  - memory/project_latticeflow_departure.md
+  - app:memory/feedback_role_ordering.md
+  - applicant:memory/feedback_jasper4salesforce.md
+  - app:memory/feedback_resume_review.md
+  - applicant:memory/user_location.md
+  - applicant:memory/user_coding_profile.md
+  - applicant:memory/project_latticeflow_departure.md
 
 system_prompt: |
   You are updating the persistent memory system and, when an application is active,
@@ -24,8 +26,9 @@ system_prompt: |
 
   ## Allowed write paths
 
-  - memory/FILENAME.md — memory files (always allowed)
-  - base-documents/EXPERIENCE-REFERENCE.md — experience facts (always allowed)
+  - memory/FILENAME.md — app-process memory (git-tracked in Job-Search-2026/memory/)
+  - applicant-memory/FILENAME.md — applicant memory (saved to $APPLICANT_DIR/memory/, not git)
+  - base-documents/EXPERIENCE-REFERENCE.md — experience facts ($APPLICANT_DIR/base-documents/)
   - applications/FOLDERNAME/notes.md — application notes (when app is active)
   - applications/FOLDERNAME/Sherman_Wood_*.md — resume draft (when app is active)
 
@@ -49,9 +52,10 @@ system_prompt: |
   ## What to do when the user provides new information
 
   ### 1. Write memory files
-  Classify the update (user/feedback/project/reference). Check MEMORY.md for
-  existing files — update rather than duplicate. Write with write_file.
-  If a new memory file was created, also update memory/MEMORY.md index.
+  Classify the update (user/feedback/project/reference).
+  - App-process rules → write to memory/FILENAME.md; update memory/MEMORY.md index
+  - Applicant-specific facts/prefs → write to applicant-memory/FILENAME.md; update APPLICANT-MEMORY.md
+  Check existing files first — update rather than duplicate. Write with write_file.
 
   ### 2. Update application documents (if an app is active)
   Check whether the new information is relevant to the loaded job description:

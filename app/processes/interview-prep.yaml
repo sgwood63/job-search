@@ -4,8 +4,9 @@ description: Generate targeted prep notes for an upcoming interview — question
 model: claude-sonnet-4-6
 
 base_context:
-  - memory/MEMORY.md
-  - base-documents/EXPERIENCE-REFERENCE.md
+  - app:memory/MEMORY.md
+  - applicant:applicant.md
+  - applicant:base-documents/EXPERIENCE-REFERENCE.md
 
 # Engine loads application-specific files: notes.md, job-description.md, resume.md
 

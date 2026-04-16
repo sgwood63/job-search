@@ -1,6 +1,6 @@
 # Job Search Assistant — CLAUDE.md
 
-This is a Streamlit + Anthropic API application that supports Sherman Wood's job search process. It replaces the free-form Claude Code chat approach with scoped, sub-process sessions that load only the relevant context for each task.
+This is a Streamlit + Anthropic API application that supports a job search process. It replaces the free-form Claude Code chat approach with scoped, sub-process sessions that load only the relevant context for each task.
 
 ---
 
@@ -10,39 +10,47 @@ Each sub-process (screen JD, generate resume, review, interview prep, debrief, m
 
 ---
 
-## Directory Layout
+## Two-Directory Architecture
 
+**App source tree** (this repo, git-tracked):
 ```
-app/                          ← this directory (Streamlit app)
-├── CLAUDE.md                 ← this file
-├── app.py                    ← Streamlit entry point
-├── engine.py                 ← context loader, API caller, file writer
-├── config.yaml               ← paths and model defaults
-├── .env                      ← API key (gitignored)
-├── .env.example              ← template
-├── requirements.txt
-└── processes/                ← one YAML per sub-process
-    ├── screen-jd.yaml
-    ├── generate-resume.yaml
-    ├── review-resume.yaml
-    ├── interview-prep.yaml
-    ├── debrief.yaml
-    └── update-memory.yaml
-```
-
-The app reads and writes into the data directory (parent of this folder):
-
-```
-../                           ← Job-Search-2026/ (data root)
-├── applications/             ← one folder per application
-├── base-documents/           ← EXPERIENCE-REFERENCE.md, resume-content-guidance.md
-├── profiles/                 ← profile .md and -CONTENT.md files
-├── memory/                   ← git-tracked memory mirror
-├── templates/resume.css      ← PDF stylesheet
-└── application-tracker.md   ← master tracker
+Job-Search-2026/
+├── app/                          ← this directory
+│   ├── CLAUDE.md                 ← this file
+│   ├── app.py                    ← Streamlit entry point
+│   ├── engine.py                 ← context loader, API caller, file writer
+│   ├── config.yaml               ← paths and model defaults
+│   ├── .env                      ← API key + APPLICANT_DIR (gitignored)
+│   ├── .env.example              ← template
+│   ├── requirements.txt
+│   └── processes/                ← one YAML per sub-process
+│       ├── screen-jd.yaml
+│       ├── generate-resume.yaml
+│       ├── review-resume.yaml
+│       ├── interview-prep.yaml
+│       ├── debrief.yaml
+│       └── update-memory.yaml
+├── templates/
+│   └── resume.css                ← PDF stylesheet (app-owned)
+└── memory/                       ← app-process rules (git-tracked)
+    ├── MEMORY.md
+    └── feedback_*.md / project_*.md
 ```
 
-Google Drive mirror path is in `config.yaml`.
+**Applicant data directory** (`$APPLICANT_DIR`, NOT git-tracked):
+```
+$APPLICANT_DIR/
+├── applicant.md                  ← contact info, criteria, preferences
+├── application-tracker.md        ← master tracker
+├── profiles/                     ← career profiles + CONTENT.md libraries
+├── applications/                 ← one folder per job application
+├── base-documents/               ← EXPERIENCE-REFERENCE.md and source docs
+└── memory/                       ← applicant-specific memory files
+    ├── APPLICANT-MEMORY.md       ← index
+    └── *.md
+```
+
+`APPLICANT_DIR` is set in `app/.env`. The engine reads it at startup and validates it exists.
 
 ---
 
@@ -55,12 +63,13 @@ name: process-id
 display_name: Human-readable name
 model: claude-haiku-4-5-20251001   # or claude-sonnet-4-6
 
-base_context:                      # always loaded, relative to data root
-  - memory/MEMORY.md
-  - profiles/PROFILES-QUICK-REFERENCE.md
+base_context:                      # files to load at session start
+  - app:memory/MEMORY.md           # app: prefix → resolved from Job-Search-2026/
+  - applicant:applicant.md         # applicant: prefix → resolved from APPLICANT_DIR
+  - applicant:profiles/PROFILES-QUICK-REFERENCE.md
 
 optional_context:                  # user can add at session start
-  - application-tracker.md
+  - applicant:application-tracker.md
 
 system_prompt: |
   Behavioral instructions for this process.
@@ -75,7 +84,12 @@ outputs:                           # declared save actions for UI buttons
   - update_tracker
 ```
 
-**Critical**: `system_prompt` contains behavioral rules. Factual context (who Sherman is, his experience) comes from the loaded files. Never hardcode facts into system prompts — they live in MEMORY.md and EXPERIENCE-REFERENCE.md.
+**Path prefix convention:**
+- `app:` → resolved relative to `Job-Search-2026/` (app source root)
+- `applicant:` → resolved relative to `$APPLICANT_DIR`
+- No prefix → legacy; treated as `applicant:` for backward compatibility
+
+**Critical**: `system_prompt` contains behavioral rules. Factual context (experience facts, applicant preferences) comes from the loaded files — never hardcode personal facts into system prompts.
 
 ---
 
@@ -90,14 +104,12 @@ Triggers to watch for:
 
 When detected, surface a "Save as guidance?" prompt. On confirmation, append to `processes/[current-process].yaml` under `guidance:`.
 
-The `guidance:` field is prepended to the system prompt at session start. It accumulates over time and represents the evolved behavior of that process.
-
 ---
 
 ## Context Loading
 
 `engine.py` assembles context by:
-1. Reading each file listed in `base_context` (relative to data root)
+1. Reading each file listed in `base_context`, resolving `app:` vs `applicant:` prefixes
 2. Adding any user-attached files for this session
 3. Concatenating into a single context block appended to the system prompt
 4. For application-specific sessions: loading the relevant application folder's files
@@ -113,37 +125,54 @@ File reading is always from disk at session start — never cached between sessi
 - No streaming required initially — response at once is fine
 - Max tokens: 8192 default; override per process if needed
 - Temperature: 0 for factual/structured tasks, 0.3 for generative tasks (resumes, prep notes)
+- Prompt caching: enabled on system prompt (ephemeral cache_control)
 
 ---
 
 ## File Writes
 
-The app writes to the data directory (`../`). Key write operations:
+The app writes applicant data to `$APPLICANT_DIR`. Key write operations:
 
 | Operation | Path |
 |---|---|
-| Create application folder | `../applications/YYYY-MM-DD-company-role/` |
-| Save JD | `../applications/.../job-description.md` |
-| Save notes | `../applications/.../notes.md` |
-| Save resume (markdown) | `../applications/.../Sherman_Wood_[Role]_[Company].md` |
-| Generate PDF | `../applications/.../Sherman_Wood_[Role]_[Company].pdf` |
-| Update tracker | `../application-tracker.md` |
-| Update memory | `../memory/*.md` (and `~/.claude/projects/.../memory/`) |
+| Create application folder | `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/` |
+| Save JD | `$APPLICANT_DIR/applications/.../job-description.md` |
+| Save notes | `$APPLICANT_DIR/applications/.../notes.md` |
+| Save resume (markdown) | `$APPLICANT_DIR/applications/.../Sherman_Wood_[Role]_[Company].md` |
+| Generate PDF | `$APPLICANT_DIR/applications/.../Sherman_Wood_[Role]_[Company].pdf` |
+| Update tracker | `$APPLICANT_DIR/application-tracker.md` |
+| Update applicant memory | `$APPLICANT_DIR/memory/*.md` |
+| Update app-process memory | `Job-Search-2026/memory/*.md` (git-tracked) |
 
-After every write, sync to Google Drive (path in `config.yaml`).
+After every write, sync to Google Drive (path in `config.yaml` under `applicant.gdrive_root`).
 
 PDF generation: `pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=../templates/resume.css`
 
 ---
 
+## Memory Write Paths (update-memory process)
+
+The `write_file` tool distinguishes two memory locations:
+
+| Tool path | Writes to | Git-tracked? |
+|---|---|---|
+| `memory/FILENAME.md` | `Job-Search-2026/memory/` | Yes |
+| `applicant-memory/FILENAME.md` | `$APPLICANT_DIR/memory/` | No |
+| `base-documents/EXPERIENCE-REFERENCE.md` | `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` | No |
+| `applications/{folder}/FILENAME.md` | `$APPLICANT_DIR/applications/{folder}/` | No |
+
+Both memory locations are mirrored to `~/.claude/projects/.../memory/` for Claude Code session use.
+
+---
+
 ## Key Constraints
 
-- **Never fabricate**: No invented companies, titles, achievements, metrics, tools, or certifications. Source of truth is `EXPERIENCE-REFERENCE.md`.
+- **Never fabricate**: No invented companies, titles, achievements, metrics, tools, or certifications. Source of truth is `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`.
 - **No cover letters**: Not used in this search.
-- **Resume header**: Always "San Francisco Bay Area" — never "Oakland, CA".
-- **Contact info**: sgwood63@gmail.com | 415-516-4894 | linkedin.com/in/shermanwood | github.com/sgwood63
-- **Role ordering**: Strict reverse chronological. Earlier Career subsection for all pre-2010 roles. Section heading is always "RELEVANT EXPERIENCE".
-- **Role attribution**: Jasper4Salesforce → Founding Architect (2005–2010). js-docker → Director Pre-Sales (2012–2020). Never swap.
+- **Resume header location**: Always "San Francisco Bay Area" (see `$APPLICANT_DIR/memory/feedback_resume_location.md`).
+- **Contact info**: In `$APPLICANT_DIR/applicant.md` — never hardcode in code or process YAMLs.
+- **Role ordering**: Strict reverse chronological (see `memory/feedback_role_ordering.md`).
+- **Role attribution**: In `$APPLICANT_DIR/memory/feedback_jasper4salesforce.md`.
 - **Resume length**: 2 pages default for enterprise/direct; 1 page for pre-sales SE / networking.
 
 ---
@@ -153,6 +182,6 @@ PDF generation: `pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --cs
 ```bash
 cd app/
 pip install -r requirements.txt
-cp .env.example .env         # add your API key
+cp .env.example .env         # add ANTHROPIC_API_KEY and APPLICANT_DIR
 streamlit run app.py
 ```

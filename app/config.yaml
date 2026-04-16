@@ -1,18 +1,23 @@
 # Job Search Assistant — Configuration
 
-# Paths (relative to app/ directory)
+# App-relative paths (resolved from app/ directory)
 paths:
-  data_root: "../"
-  gdrive_root: "/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
+  templates: "../templates/"
+  app_memory: "../memory/"
+  resume_css: "../templates/resume.css"
+
+# Applicant data paths (all resolved relative to APPLICANT_DIR env var)
+applicant:
+  dir_env_var: "APPLICANT_DIR"
   applications: "applications/"
   profiles: "profiles/"
   memory: "memory/"
   base_documents: "base-documents/"
-  templates: "templates/"
-  resume_css: "templates/resume.css"
   tracker: "application-tracker.md"
   experience_reference: "base-documents/EXPERIENCE-REFERENCE.md"
   profiles_quick_reference: "profiles/PROFILES-QUICK-REFERENCE.md"
+  applicant_profile: "applicant.md"
+  gdrive_root: "/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
 
 # Models
 models:

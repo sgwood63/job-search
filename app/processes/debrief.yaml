@@ -4,8 +4,9 @@ description: Capture interview notes, update application status, and prepare for
 model: claude-haiku-4-5-20251001
 
 base_context:
-  - memory/MEMORY.md
-  - application-tracker.md
+  - app:memory/MEMORY.md
+  - applicant:applicant.md
+  - applicant:application-tracker.md
 
 # Engine loads application-specific files: notes.md
 

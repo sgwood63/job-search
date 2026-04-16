@@ -26,9 +26,36 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def get_app_root() -> Path:
+    """The Job-Search-2026/ repo root (app source tree, git-tracked)."""
+    return (Path(__file__).parent.parent).resolve()
+
+
+def get_applicant_dir() -> Path:
+    """
+    APPLICANT_DIR env var — where applicant data lives (not git-tracked).
+    Raises RuntimeError if not set or does not exist.
+    """
+    d = os.environ.get("APPLICANT_DIR", "").strip()
+    if not d:
+        raise RuntimeError(
+            "APPLICANT_DIR is not set.\n"
+            "Add it to app/.env:\n"
+            "  APPLICANT_DIR=/path/to/your/applicant/data\n"
+            "See app/.env.example for reference."
+        )
+    p = Path(d).resolve()
+    if not p.exists():
+        raise RuntimeError(
+            f"APPLICANT_DIR does not exist: {p}\n"
+            "Create the directory and populate it per QUICK-START.md."
+        )
+    return p
+
+
+# Backward-compat shim — callers that haven't been updated use this
 def get_data_root() -> Path:
-    config = load_config()
-    return (Path(__file__).parent / config["paths"]["data_root"]).resolve()
+    return get_applicant_dir()
 
 
 # ─── Process definitions ─────────────────────────────────────────────────────
@@ -72,7 +99,7 @@ def list_processes() -> list[dict]:
 
 
 def list_applications() -> list[str]:
-    apps_dir = get_data_root() / "applications"
+    apps_dir = get_applicant_dir() / "applications"
     if not apps_dir.exists():
         return []
     return sorted(
@@ -82,7 +109,7 @@ def list_applications() -> list[str]:
 
 
 def get_app_dir(application: str) -> Path:
-    return get_data_root() / "applications" / application
+    return get_applicant_dir() / "applications" / application
 
 
 def slugify(s: str) -> str:
@@ -97,18 +124,18 @@ def create_application_folder(
     company: str, role: str, date: Optional[str] = None
 ) -> tuple[Path, Optional[Path]]:
     config = load_config()
-    data_root = get_data_root()
+    applicant_dir = get_applicant_dir()
 
     if not date:
         date = datetime.now().strftime(config["application"]["date_format"])
 
     folder_name = f"{date}-{slugify(company)}-{slugify(role)}"
-    local_path = data_root / "applications" / folder_name
+    local_path = applicant_dir / "applications" / folder_name
     local_path.mkdir(parents=True, exist_ok=True)
 
     gdrive_path: Optional[Path] = None
     try:
-        gdrive_root = config["paths"]["gdrive_root"]
+        gdrive_root = config["applicant"]["gdrive_root"]
         gdrive_folder = Path(gdrive_root) / "applications" / folder_name
         gdrive_folder.mkdir(parents=True, exist_ok=True)
         gdrive_path = gdrive_folder
@@ -119,6 +146,26 @@ def create_application_folder(
 
 
 # ─── Context assembly ─────────────────────────────────────────────────────────
+
+
+def _resolve_context_path(raw_path: str) -> tuple[Path, str]:
+    """
+    Resolve a base_context path string to (full_path, display_label).
+
+    Prefix convention:
+      app:PATH        → resolved relative to get_app_root()
+      applicant:PATH  → resolved relative to get_applicant_dir()
+      (no prefix)     → legacy; treated as applicant:
+    """
+    if raw_path.startswith("app:"):
+        rel = raw_path[4:]
+        return get_app_root() / rel, rel
+    elif raw_path.startswith("applicant:"):
+        rel = raw_path[10:]
+        return get_applicant_dir() / rel, rel
+    else:
+        # Legacy: resolve against applicant dir
+        return get_applicant_dir() / raw_path, raw_path
 
 
 def extract_text(path: Path) -> Optional[str]:
@@ -181,11 +228,7 @@ def file_to_content_block(path: Path) -> Optional[dict]:
 
 
 def load_app_file_blocks(app_dir: Path) -> list[dict]:
-    """Return a flat list of Anthropic content blocks for all PDFs and images in the app folder.
-
-    Each file is preceded by a text label so the model knows the filename.
-    Returns an empty list if no supported binary files are present.
-    """
+    """Return a flat list of Anthropic content blocks for all PDFs and images in the app folder."""
     if not app_dir.exists():
         return []
 
@@ -216,24 +259,26 @@ def assemble_context(
     application: Optional[str] = None,
     extra_context_paths: Optional[list[str]] = None,
 ) -> str:
-    data_root = get_data_root()
+    applicant_dir = get_applicant_dir()
     parts: list[str] = []
 
     # Base context files (always loaded)
-    for rel_path in process.get("base_context", []):
-        chunk = read_file_safe(data_root / rel_path, rel_path)
+    for raw_path in process.get("base_context", []):
+        full, label = _resolve_context_path(raw_path)
+        chunk = read_file_safe(full, label)
         if chunk:
             parts.append(chunk)
 
     # User-selected optional context files
-    for rel_path in extra_context_paths or []:
-        chunk = read_file_safe(data_root / rel_path, rel_path)
+    for raw_path in extra_context_paths or []:
+        full, label = _resolve_context_path(raw_path)
+        chunk = read_file_safe(full, label)
         if chunk:
             parts.append(chunk)
 
     # Application-specific files
     if application:
-        app_dir = data_root / "applications" / application
+        app_dir = applicant_dir / "applications" / application
 
         # Fixed files first (deterministic order)
         for fname in ["job-description.md", "notes.md"]:
@@ -247,9 +292,7 @@ def assemble_context(
             if chunk:
                 parts.append(chunk)
 
-        # All other uploaded text-based files (.docx, .doc, .md, .txt) not already loaded above.
-        # PDFs and images are handled as native content blocks (see load_app_file_blocks),
-        # so they are excluded here to avoid sending the same content twice.
+        # All other uploaded text-based files not already loaded above.
         already_loaded = {
             "job-description.md", "notes.md",
         } | {p.name for p in app_dir.glob("Sherman_Wood_*.md")}
@@ -305,8 +348,7 @@ def call_api(
     client = anthropic.Anthropic(api_key=api_key)
 
     # If binary files (PDFs, images) were uploaded, prepend a synthetic user/assistant
-    # exchange so the model has full native access to the file content.  This exchange
-    # is not shown in the chat UI — it exists only in the API call.
+    # exchange so the model has full native access to the file content.
     api_messages = messages
     if file_blocks:
         n = sum(1 for b in file_blocks if b["type"] != "text")
@@ -377,8 +419,8 @@ def append_to_file(file_path: Path, content: str) -> None:
 
 def generate_pdf(md_path: Path) -> tuple[bool, str]:
     config = load_config()
-    data_root = get_data_root()
-    css_path = data_root / config["paths"]["resume_css"]
+    # CSS lives in the app source tree, not APPLICANT_DIR
+    css_path = get_app_root() / "templates" / "resume.css"
     pdf_path = md_path.with_suffix(".pdf")
 
     cmd = config["pdf"]["pandoc_cmd"].format(
@@ -394,11 +436,11 @@ def generate_pdf(md_path: Path) -> tuple[bool, str]:
 
 def sync_to_gdrive(local_path: Path) -> tuple[bool, str]:
     config = load_config()
-    data_root = get_data_root()
-    gdrive_root = Path(config["paths"]["gdrive_root"])
+    applicant_dir = get_applicant_dir()
+    gdrive_root = Path(config["applicant"]["gdrive_root"])
 
     try:
-        rel = local_path.relative_to(data_root)
+        rel = local_path.relative_to(applicant_dir)
         gdrive_dest = gdrive_root / rel
         if local_path.is_file():
             gdrive_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -478,12 +520,10 @@ def save_guidance(process_name: str, new_guidance: str) -> bool:
 
 def extract_fenced_block(text: str, lang: str = "markdown") -> Optional[str]:
     """Return the first fenced code block matching the given language hint."""
-    # Try exact language match first
     pattern = rf"```{re.escape(lang)}\n(.*?)```"
     m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(1).strip()
-    # Fallback: any fenced block
     m = re.search(r"```(?:\w*)\n(.*?)```", text, re.DOTALL)
     if m:
         return m.group(1).strip()
@@ -515,7 +555,8 @@ def detect_guidance_in_message(text: str) -> bool:
 def make_update_tools(app_folder_name: Optional[str] = None) -> list[dict]:
     """Build the write_file tool definition, including app folder paths when active."""
     allowed_paths = [
-        "memory/FILENAME.md",
+        "memory/FILENAME.md         (app-process memory, git-tracked)",
+        "applicant-memory/FILENAME.md  (applicant memory, saved to $APPLICANT_DIR/memory/)",
         "base-documents/EXPERIENCE-REFERENCE.md",
     ]
     app_note = ""
@@ -524,15 +565,14 @@ def make_update_tools(app_folder_name: Optional[str] = None) -> list[dict]:
         allowed_paths.append(f"applications/{app_folder_name}/Sherman_Wood_*.md")
         app_note = (
             f" Active application: {app_folder_name}. "
-            f"You may also write notes.md or the resume file for this application "
-            f"using the full path applications/{app_folder_name}/FILENAME.md."
+            f"You may also write notes.md or the resume file for this application."
         )
     return [
         {
             "name": "write_file",
             "description": (
                 "Write or update a project file. "
-                f"Allowed paths from data root: {', '.join(allowed_paths)}."
+                f"Allowed paths: {'; '.join(allowed_paths)}."
                 + app_note
             ),
             "input_schema": {
@@ -541,11 +581,13 @@ def make_update_tools(app_folder_name: Optional[str] = None) -> list[dict]:
                     "path": {
                         "type": "string",
                         "description": (
-                            "Path relative to the data root, e.g. "
-                            "'memory/feedback_something.md' or "
-                            f"'applications/{app_folder_name}/notes.md'."
+                            "Path using the prefix scheme: "
+                            "'memory/FILENAME.md' for app-process memory (git-tracked), "
+                            "'applicant-memory/FILENAME.md' for applicant memory (not git), "
+                            "'base-documents/EXPERIENCE-REFERENCE.md' for experience facts, "
+                            f"or 'applications/{app_folder_name}/FILENAME.md' for app files."
                             if app_folder_name
-                            else "Path relative to the data root."
+                            else "Path relative to the appropriate root."
                         ),
                     },
                     "content": {
@@ -563,6 +605,13 @@ def make_update_tools(app_folder_name: Optional[str] = None) -> list[dict]:
 MEMORY_WRITE_TOOLS = make_update_tools()
 
 
+def _claude_memory_dir() -> Path:
+    return (
+        Path.home()
+        / ".claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory"
+    )
+
+
 def execute_project_write(
     path: str,
     content: str,
@@ -573,30 +622,48 @@ def execute_project_write(
     Write a project file (memory, experience reference, or application document).
     Returns (status_message, dest_path_or_None, original_content_or_None).
     original_content is the pre-existing file content before overwrite (for Revert).
+
+    Path routing:
+      memory/FILENAME.md          → get_app_root()/memory/ (git-tracked)
+      applicant-memory/FILENAME.md → get_applicant_dir()/memory/ (not git)
+      base-documents/EXPERIENCE-REFERENCE.md → get_applicant_dir()/base-documents/
+      applications/{folder}/*.md  → get_applicant_dir()/applications/...
     """
-    data_root = get_data_root()
+    app_root = get_app_root()
+    applicant_dir = get_applicant_dir()
+    claude_mem = _claude_memory_dir()
     p = path.strip().lstrip("/")
 
-    # ── memory/ files ─────────────────────────────────────────────────────────
+    # ── App-process memory (git-tracked) ─────────────────────────────────────
     if p.startswith("memory/"):
-        dest = data_root / p
+        dest = app_root / p
         dest.parent.mkdir(parents=True, exist_ok=True)
         original = dest.read_text(encoding="utf-8") if dest.exists() else None
         dest.write_text(content, encoding="utf-8")
-        # Mirror to Claude's memory dir immediately
-        claude_mem = (
-            Path.home()
-            / ".claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory"
-        )
+        # Mirror to Claude's auto-memory dir
         try:
             (claude_mem / dest.name).write_text(content, encoding="utf-8")
         except Exception:
             pass
-        return f"Written: {p}", dest, original
+        return f"Written: {p} (app-process memory)", dest, original
+
+    # ── Applicant memory (not git-tracked) ────────────────────────────────────
+    if p.startswith("applicant-memory/"):
+        filename = p[len("applicant-memory/"):]
+        dest = applicant_dir / "memory" / filename
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        original = dest.read_text(encoding="utf-8") if dest.exists() else None
+        dest.write_text(content, encoding="utf-8")
+        # Mirror to Claude's auto-memory dir
+        try:
+            (claude_mem / filename).write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+        return f"Written: {p} (applicant memory)", dest, original
 
     # ── EXPERIENCE-REFERENCE.md ───────────────────────────────────────────────
     if p == "base-documents/EXPERIENCE-REFERENCE.md":
-        dest = data_root / p
+        dest = applicant_dir / p
         original = dest.read_text(encoding="utf-8") if dest.exists() else None
         dest.write_text(content, encoding="utf-8")
         return f"Written: {p}", dest, original
@@ -619,7 +686,7 @@ def execute_project_write(
 
     return (
         f"BLOCKED: '{p}' is not an allowed path. "
-        "Use memory/, base-documents/EXPERIENCE-REFERENCE.md, "
+        "Use memory/, applicant-memory/, base-documents/EXPERIENCE-REFERENCE.md, "
         f"or applications/{app_local_path.name}/ for app files."
         if app_local_path
         else f"BLOCKED: '{p}' is not an allowed path.",
@@ -732,7 +799,6 @@ def call_api_agentic(
             )
 
         api_messages.append({"role": "user", "content": result_blocks})
-        # Loop: send updated messages back to API
 
     return final_text, tool_records
 
@@ -742,9 +808,9 @@ def call_api_agentic(
 
 def parse_tracker() -> list[dict]:
     """Parse the Active Applications table from application-tracker.md."""
-    data_root = get_data_root()
+    applicant_dir = get_applicant_dir()
     config = load_config()
-    tracker_path = data_root / config["paths"]["tracker"]
+    tracker_path = applicant_dir / config["applicant"]["tracker"]
     if not tracker_path.exists():
         return []
 
@@ -766,7 +832,6 @@ def parse_tracker() -> list[dict]:
         if not in_active or not stripped.startswith("|"):
             continue
 
-        # Split on pipe, drop empty first/last
         parts = [p.strip() for p in stripped.split("|")]
         parts = [p for p in parts if p != ""]
 
@@ -785,7 +850,6 @@ def parse_tracker() -> list[dict]:
         role = parts[2] if len(parts) > 2 else ""
         profile = parts[3] if len(parts) > 3 else ""
 
-        # Flexible column mapping: some rows are missing the Source column
         if len(parts) >= 8:
             source = parts[4]
             status = parts[5]
@@ -802,7 +866,6 @@ def parse_tracker() -> list[dict]:
             next_action = parts[5] if len(parts) > 5 else ""
             priority = parts[6] if len(parts) > 6 else ""
 
-        # Extract recruiter from "(via XXXX)" or "(through XXXX)"
         recruiter = ""
         company = company_raw
         via_match = re.search(r"\((?:via|through)\s+([^)]+)\)", company_raw, re.IGNORECASE)
@@ -825,19 +888,17 @@ def parse_tracker() -> list[dict]:
             }
         )
 
-    # Reverse-chronological order
     jobs.sort(key=lambda j: j.get("date", ""), reverse=True)
     return jobs
 
 
 def find_app_folder_for_job(company: str, date: str) -> Optional[Path]:
     """Find the application folder that best matches the given company and date."""
-    apps_dir = get_data_root() / "applications"
+    apps_dir = get_applicant_dir() / "applications"
     if not apps_dir.exists():
         return None
 
     company_slug = slugify(company)
-    # Normalise date to YYYY-MM-DD if possible
     date_prefix = date[:10] if len(date) >= 10 and date[4] == "-" else ""
 
     for d in sorted(apps_dir.iterdir(), reverse=True):
@@ -847,7 +908,6 @@ def find_app_folder_for_job(company: str, date: str) -> Optional[Path]:
         if date_prefix and name.startswith(date_prefix) and company_slug in name:
             return d
 
-    # Fallback: any folder containing the company slug
     candidates = [
         d for d in apps_dir.iterdir()
         if d.is_dir() and company_slug in d.name
@@ -864,7 +924,6 @@ def list_app_files_recursive(app_dir: Path) -> list[dict]:
 
     def _recurse(path: Path, depth: int, rel_prefix: str) -> None:
         try:
-            # Folders first, then files, both alphabetically
             items = sorted(
                 path.iterdir(),
                 key=lambda p: (p.is_file(), p.name.lower()),

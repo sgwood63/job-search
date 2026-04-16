@@ -4,9 +4,10 @@ description: Evaluate a JD for fit, match to a profile, and create the applicati
 model: claude-haiku-4-5-20251001
 
 base_context:
-  - memory/MEMORY.md
-  - profiles/PROFILES-QUICK-REFERENCE.md
-  - application-tracker.md
+  - app:memory/MEMORY.md
+  - applicant:applicant.md
+  - applicant:profiles/PROFILES-QUICK-REFERENCE.md
+  - applicant:application-tracker.md
 
 optional_context: []
 

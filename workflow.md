@@ -1,19 +1,12 @@
 # Document Customization Workflow
 
-This workflow ensures you efficiently customize applications while maintaining your authentic voice and avoiding unsupported claims.
+This workflow ensures applications are efficiently customized while maintaining authentic voice and avoiding unsupported claims.
 
 ## Process Overview
 
 ```
 JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Review → Submit → Track
 ```
-
-## Job Search Criteria
-
-**Locations accepted:**
-- Purely remote positions in the United States
-- Hybrid or onsite in the San Francisco Bay Area
-- Travel: Less than 25% if travel is required
 
 ## Detailed Steps
 
@@ -33,11 +26,11 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
    - Keywords and themes
 
 2. **Evaluate location/travel fit:**
-   - Check if remote (US), SF Bay Area hybrid/onsite, or <25% travel
-   - If location doesn't match criteria → Update tracker with reason → STOP
+   - Check criteria from `$APPLICANT_DIR/applicant.md`
+   - If no fit → Update tracker with reason → STOP
 
 3. **Profile matching:**
-   - Compare JD against all profiles in [profiles/](profiles/)
+   - Compare JD against all profiles in `$APPLICANT_DIR/profiles/`
    - Identify best-fit profile based on:
      - Technical requirements alignment
      - Role responsibilities match
@@ -49,47 +42,38 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
      - Reorder experience bullets for relevance
      - Incorporate JD keywords naturally
      - Emphasize matching achievements
-     - Pull from [templates/](templates/) library
-   - **Cover Letter**: Tailored to JD
-     - Reference specific company/role details
-     - Highlight 2-3 key matching qualifications
-     - Use authentic voice and genuine interest
-     - Connect experience to their needs
+     - Pull from `$APPLICANT_DIR/base-documents/` library
+   - **No cover letters** — not used in this search
 
 5. **Create application folder:**
-   - Format: `applications/YYYY-MM-DD-company-role/`
+   - Format: `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
    - Save job description content to `job-description.md`
    - Save extracted key information (company, role, requirements, salary, etc.)
-   - Save generated resume and cover letter
+   - Save generated resume
    - Create initial notes.md file with JD analysis
 
 6. **Update tracker:**
-   - Add to [application-tracker.md](application-tracker.md)
+   - Add to `$APPLICANT_DIR/application-tracker.md`
    - Status: "Draft - Ready for Review"
    - Profile used
    - Key match points
 
-### 2. Job Discovery & Initial Assessment (Manual alternative)
+### 2. Manual Application Process
 
-**If not using automated process, when you find a position:**
+**When finding a position manually:**
 
 - [ ] Read the full job description
-- [ ] Verify location/travel requirements match criteria
-- [ ] Identify which job profile(s) it matches (see [profiles/](profiles/))
+- [ ] Verify location/travel requirements match criteria (see `$APPLICANT_DIR/applicant.md`)
+- [ ] Identify which job profile(s) it matches (see `$APPLICANT_DIR/profiles/`)
 - [ ] Note the company, role title, and key requirements
-- [ ] Save job description to a file (for reference during customization)
 
 ### 3. Create Application Folder (Manual)
 
-Use the helper script or manually:
-
 ```bash
-./scripts/new-application.sh "Company Name" "Role Title"
+mkdir -p "$APPLICANT_DIR/applications/YYYY-MM-DD-company-role"
 ```
 
-This creates: `applications/YYYY-MM-DD-company-role/`
-
-### 4. Analyze Requirements vs. Your Experience (Manual)
+### 4. Analyze Requirements vs. Experience (Manual)
 
 **Create a requirements mapping document:**
 
@@ -109,67 +93,36 @@ This creates: `applications/YYYY-MM-DD-company-role/`
 
 ### 5. Customize Resume (Manual)
 
-**Start with your base resume** from [base-documents/](base-documents/)
+**Start with the base content** from `$APPLICANT_DIR/base-documents/`
 
 **Customization approach:**
 
 1. **Header/Summary**: Adjust 1-2 sentences to align with this role's focus
-   - Keep your authentic voice
-   - Don't invent experience
-
 2. **Experience bullets**:
    - Reorder to put most relevant first
-   - Pull from [templates/](templates/) if you have pre-written bullets
+   - Pull from profile CONTENT.md if available
    - Emphasize relevant achievements
    - Use keywords from JD naturally
-   - **Voice check**: Read aloud - does it sound like you?
+3. **Skills section**: List relevant skills; only include skills you actually have
 
-3. **Skills section**:
-   - List relevant skills prominently
-   - Only include skills you actually have
-   - Match terminology from JD where honest
+**Save as**: `$APPLICANT_DIR/applications/[date-company-role]/Sherman_Wood_[Role]_[Company].md`
 
-4. **Projects/Portfolio** (if applicable):
-   - Highlight relevant work
-   - Use terminology that connects to their needs
-
-**Save as**: `applications/[date-company-role]/resume-[company]-[role].pdf`
-
-### 6. Customize Cover Letter (Manual)
-
-**Start with your base cover letter** from [base-documents/](base-documents/)
-
-**Structure:**
-```
-1. Opening: Why this company/role excites you (authentic enthusiasm)
-2. Body 1: Your relevant experience (2-3 key points from requirements mapping)
-3. Body 2: What you bring (your unique value, authentically stated)
-4. Closing: Forward-looking statement
+Then generate PDF:
+```bash
+pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=[app-root]/templates/resume.css
 ```
 
-**Guidelines:**
-- Use specific examples from your experience
-- Reference the company/product/mission authentically
-- Keep your conversational voice
-- Avoid buzzwords that aren't naturally you
-- No claims you couldn't defend in an interview
-- Show genuine interest (only apply if you actually have it)
-
-**Save as**: `applications/[date-company-role]/cover-letter-[company]-[role].pdf`
-
-### 7. Voice & Claims Review
+### 6. Voice & Claims Review
 
 **Before submitting, check each document:**
 
-- [ ] **Voice Test**: Read aloud. Does it sound like you talking?
+- [ ] **Voice Test**: Read aloud. Does it sound authentic?
 - [ ] **Claims Audit**: Can you provide evidence/examples for every claim?
 - [ ] **Comfort Test**: Would you feel confident defending this in an interview?
-- [ ] **Consistency Check**: Resume and cover letter tell the same story?
+- [ ] **Consistency Check**: Resume tells a coherent story?
 - [ ] **Keyword Balance**: Relevant keywords present but not awkwardly stuffed?
 
-**If anything feels off**: Revise until it feels right. Better to be authentic than perfectly keyword-matched.
-
-### 8. Create Application Notes (if not auto-generated)
+### 7. Create Application Notes (if not auto-generated)
 
 In the application folder, create `notes.md`:
 
@@ -183,96 +136,84 @@ In the application folder, create `notes.md`:
 - Recruiter/Contact: [name if applicable]
 
 ## Why This Role
-[Your genuine interest - helps with interview prep]
+[Genuine interest — helps with interview prep]
 
 ## Key Points Emphasized
-- [Bullet 1 from resume/cover letter]
+- [Bullet 1]
 - [Bullet 2]
-- [Bullet 3]
 
 ## Customizations Made
 - Resume: [what you emphasized/reordered]
-- Cover Letter: [specific examples or angles you used]
 
 ## Follow-up Plan
 - [ ] Check application status (date)
-- [ ] LinkedIn connection request to recruiter/hiring manager (optional)
 - [ ] Follow-up email (date if planned)
 
 ## Interview Prep Notes
 [Add here if you get an interview]
 ```
 
-### 9. Submit Application
+### 8. Submit Application
 
 - [ ] Upload/submit through the appropriate channel
-- [ ] Save confirmation email/screenshot
-- [ ] Update [application-tracker.md](application-tracker.md)
+- [ ] Save confirmation
+- [ ] Update `$APPLICANT_DIR/application-tracker.md`
 
-### 10. Track & Follow-up
+### 9. Track & Follow-up
 
 **Update the tracker immediately:**
 - Application status
 - Date submitted
 - Next follow-up date
 
-**Set reminders:**
-- 1 week: Check status if no response
-- 2 weeks: Consider follow-up email
-- Update status as you hear back
+---
 
-## Tips for Maintaining Your Voice
+## Resume Generation
 
-### Do:
-- Write like you talk (professionally)
-- Use specific examples from your actual experience
-- Show genuine enthusiasm for things you actually care about
-- Be direct and clear
-- Use first person ("I led" not "Led")
+Resumes are authored in Markdown and converted to PDF:
 
-### Don't:
-- Copy buzzwords that aren't naturally you
-- Make claims you can't support with examples
-- Exaggerate scope or impact of your work
-- Use corporate jargon you wouldn't say out loud
-- Claim familiarity with tools/methods you've only heard of
+```bash
+pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=[app-root]/templates/resume.css
+pdfinfo [file].pdf | grep Pages  # verify page count
+```
+
+Target: 2 pages for enterprise/direct applications.
+
+---
 
 ## Memory & Rules Sync
 
-Claude maintains a persistent memory system at `~/.claude/projects/.../memory/`. All memory files are mirrored in `memory/` in this repo for version control.
+Claude maintains a persistent memory system at `~/.claude/projects/.../memory/`. Memory files are split by type:
 
-**Rule**: Whenever a memory file is created or updated (feedback rules, user context, experience clarifications), also update the copy in `memory/` and commit to Git.
-
-Files tracked in `memory/`:
-- `MEMORY.md` — master index
-- `EXPERIENCE-REFERENCE.md` — verified experience facts
-- `feedback_*.md` — workflow and resume rules
-- `user_location.md` — location and logistics preferences
-
+**App-process memory** (git-tracked in `Job-Search-2026/memory/`):
 ```bash
-# After updating a memory file in ~/.claude/.../memory/:
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md memory/
-git add memory/
-git commit -m "Update memory: [what changed]"
+cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{MEMORY,feedback_company_lookup,feedback_resume_review,feedback_role_ordering,feedback_session_strategy,feedback_unknown_company_research,project_job_search_app}.md \
+   /Users/shermanwood/Documents/Job-Search-2026/memory/
+git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
+git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
 ```
+
+**Applicant memory** (not git-tracked — saved to `$APPLICANT_DIR/memory/`):
+```bash
+cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{feedback_jasper4salesforce,feedback_resume_location,project_latticeflow_departure,user_coding_profile,user_location}.md \
+   $APPLICANT_DIR/memory/
+```
+
+---
 
 ## Efficiency Tips
 
-1. **Build your templates library**: As you write strong bullets or paragraphs, save them to [templates/](templates/) for reuse
+1. **Profile content libraries**: Pre-compiled bullets per profile eliminate per-application PDF extraction
+2. **PROFILES-QUICK-REFERENCE.md**: Use for fast initial matching when screening a JD
+3. **Batch similar roles**: Do multiple similar applications together while in the right mindset
+4. **Quality over quantity**: One authentic, well-matched application beats five generic ones
 
-2. **Profile-based starting points**: Create resume/cover letter variants for each job profile to reduce per-application work
+---
 
-3. **Keywords list**: Maintain a list of your genuine skills/experience with common variations to help match JD language
+## Principles
 
-4. **Batch similar roles**: If applying to multiple similar positions, do them together while in the mindset
-
-5. **Time limit**: Set a max time per application to avoid over-customizing (1-2 hours is usually sufficient)
-
-## Quality over Quantity
-
-**Remember**: One authentic, well-matched application is better than five generic ones. Only apply if:
-- The role genuinely interests you
-- You can honestly meet most core requirements
-- You'd be excited about an interview
-
-This preserves your energy and maintains the quality of your applications.
+- **Factual accuracy**: Every claim must be verifiable. Source: `EXPERIENCE-REFERENCE.md`.
+- **Authentic voice**: All materials sound like the person, not like an LLM.
+- **Profile-based generation**: Resumes generated from pre-compiled content libraries, not improvised.
+- **No cover letters**: Not used in this search.
+- **Organized tracking**: One tracker, updated immediately after every status change.
