@@ -901,6 +901,7 @@ def find_app_folder_for_job(company: str, date: str) -> Optional[Path]:
     company_slug = slugify(company)
     date_prefix = date[:10] if len(date) >= 10 and date[4] == "-" else ""
 
+    # Pass 1: exact company slug + date prefix
     for d in sorted(apps_dir.iterdir(), reverse=True):
         if not d.is_dir():
             continue
@@ -908,11 +909,26 @@ def find_app_folder_for_job(company: str, date: str) -> Optional[Path]:
         if date_prefix and name.startswith(date_prefix) and company_slug in name:
             return d
 
+    # Pass 2: exact company slug, any date
     candidates = [
         d for d in apps_dir.iterdir()
         if d.is_dir() and company_slug in d.name
     ]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Pass 3: first word of company slug + date prefix
+    # Handles "Temporal Technologies" → folder slug "temporal-..." (created with short name)
+    first_word_slug = slugify(company.split()[0]) if company.split() else company_slug
+    if date_prefix and first_word_slug != company_slug:
+        date_candidates = [
+            d for d in apps_dir.iterdir()
+            if d.is_dir() and d.name.startswith(date_prefix) and first_word_slug in d.name
+        ]
+        if len(date_candidates) == 1:
+            return date_candidates[0]
+
+    return None
 
 
 def list_app_files_recursive(app_dir: Path) -> list[dict]:
