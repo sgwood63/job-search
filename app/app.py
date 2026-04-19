@@ -739,14 +739,14 @@ def dialog_add_url_to_app():
         else:
             gdrive = st.session_state.app_gdrive_path
             fetched = False
-            with st.spinner("Opening browser — complete any login/CAPTCHA then return…"):
+            with st.spinner("Fetching URL…"):
                 try:
                     engine.fetch_url_browser(url.strip(), app_path, filename_stem.strip())
                     fetched = True
                 except Exception:
                     pass
             if not fetched:
-                with st.spinner("Browser unavailable — trying simple fetch…"):
+                with st.spinner("Trying simple fetch…"):
                     try:
                         text = engine.fetch_url_text(url.strip())
                         if text:
@@ -1195,17 +1195,14 @@ def render_chat(maximized: bool = False):
                     if jd_url.strip():
                         jd_temp = _get_or_create_temp_folder()
                         fetched = False
-                        with st.spinner(
-                            "Opening browser — complete any login/CAPTCHA, "
-                            "then let the page fully load…"
-                        ):
+                        with st.spinner("Fetching URL…"):
                             try:
                                 engine.fetch_url_browser(jd_url.strip(), jd_temp)
                                 fetched = True
                             except Exception:
                                 pass
                         if not fetched:
-                            with st.spinner("Browser unavailable — trying simple fetch…"):
+                            with st.spinner("Trying simple fetch…"):
                                 try:
                                     text = engine.fetch_url_text(jd_url.strip())
                                     if text:

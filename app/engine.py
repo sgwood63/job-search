@@ -1030,29 +1030,32 @@ def fetch_url_browser(url: str, temp_path: Path, filename_stem: str = "jd-from-u
             "  playwright install chromium"
         )
 
-    profile_dir = _get_playwright_profile_dir()
     pdf_path = temp_path / f"{filename_stem}.pdf"
 
     with sync_playwright() as p:
-        # Use Playwright's own bundled Chromium — not the system browser executable.
-        # Custom browser builds (e.g. ChatGPT Atlas) don't support CDP control and crash.
-        # The dedicated profile_dir provides session persistence: log in once, reused after.
-        launch_kwargs: dict = {
-            "user_data_dir": str(profile_dir),
-            "headless": False,
-            "args": ["--no-first-run", "--no-default-browser-check"],
-        }
-
-        browser_ctx = p.chromium.launch_persistent_context(**launch_kwargs)
+        # Use Playwright's own bundled Chromium, headless, no persistent context.
+        # launch_persistent_context acquires a user-data-dir lock that conflicts with
+        # other Chromium-based apps (e.g. ChatGPT Atlas), causing them to crash.
+        # A plain launch() has no shared lock and no per-user singleton.
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-gpu",           # skip GPU process (avoids IOKit conflict with Atlas)
+                "--disable-crash-reporter", # skip Crashpad handler (avoids Mach port conflict)
+            ],
+        )
         try:
-            page = browser_ctx.new_page()
-            page.goto(url, wait_until="networkidle", timeout=30000)
+            page = browser.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2000)
             _expand_page_content(page)
             pdf_bytes = page.pdf(format="Letter", print_background=True)
             pdf_path.write_bytes(pdf_bytes)
             text = page.inner_text("body")
         finally:
-            browser_ctx.close()
+            browser.close()
 
     (temp_path / f"{filename_stem}.txt").write_text(text, encoding="utf-8")
     return text, pdf_path
