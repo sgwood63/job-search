@@ -6,6 +6,7 @@ UI flow:
   Job page: file browser (left) + process bar + file viewer / chat (right)
 """
 
+import re
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -67,6 +68,7 @@ def _init():
         "current_app_name": None,     # folder name string
         "app_local_path": None,       # Path
         "app_gdrive_path": None,      # Path or None
+        "temp_app_path": None,        # Path to _temp-* staging folder for new JD intake
         # Active process + chat
         "active_process": None,
         "chat_messages": [],
@@ -74,6 +76,10 @@ def _init():
         "chat_file_blocks": [],
         "pending_guidance": None,
         "last_response": "",
+        # JD evaluation gate — True after AI completes first screen-jd evaluation
+        "jd_eval_complete": False,
+        # Post-save analysis — dict with file_rel/content keys, or None
+        "post_save_analysis_pending": None,
         # Update-memory tool tracking
         "memory_written_files": [],   # rel_paths written this session
         "session_file_backups": {},   # {rel_path: original_content or None}
@@ -95,12 +101,19 @@ _init()
 
 
 def _reset_job_state():
+    # Clean up any abandoned temp staging folder
+    temp = st.session_state.get("temp_app_path")
+    if temp:
+        engine.cleanup_temp_folder(temp)
+    st.session_state.temp_app_path = None
     st.session_state.active_process = None
     st.session_state.chat_messages = []
     st.session_state.chat_system_prompt = ""
     st.session_state.chat_file_blocks = []
     st.session_state.pending_guidance = None
     st.session_state.last_response = ""
+    st.session_state.jd_eval_complete = False
+    st.session_state.post_save_analysis_pending = None
     st.session_state.memory_written_files = []
     st.session_state.session_file_backups = {}
     st.session_state.selected_file = None
@@ -234,6 +247,20 @@ def _model_and_temp(process: dict) -> tuple[str, float]:
     return model, temp
 
 
+def _get_or_create_temp_folder() -> Path:
+    """Return the current temp staging folder, creating one if needed."""
+    if not st.session_state.temp_app_path:
+        st.session_state.temp_app_path = engine.create_temp_folder()
+    return st.session_state.temp_app_path
+
+
+def _reload_temp_file_blocks() -> None:
+    """Refresh chat_file_blocks from the current temp staging folder."""
+    temp = st.session_state.temp_app_path
+    if temp:
+        st.session_state.chat_file_blocks = engine.load_temp_file_blocks(temp)
+
+
 def _send_message(user_text: str):
     process = st.session_state.active_process
     if not process:
@@ -248,6 +275,16 @@ def _send_message_standard(user_text: str):
     process = st.session_state.active_process
     model, temp = _model_and_temp(process)
     config = engine.load_config()
+
+    # In new JD mode, save the first pasted message as jd-paste.txt in the temp folder
+    if st.session_state.app_local_path is None:
+        is_first_user_msg = not any(
+            m["role"] == "user" for m in st.session_state.chat_messages
+        )
+        if is_first_user_msg:
+            jd_temp = _get_or_create_temp_folder()
+            engine.save_file(jd_temp, "jd-paste.txt", user_text)
+            _reload_temp_file_blocks()
 
     st.session_state.chat_messages.append({"role": "user", "content": user_text})
 
@@ -266,6 +303,10 @@ def _send_message_standard(user_text: str):
 
     st.session_state.chat_messages.append({"role": "assistant", "content": reply})
     st.session_state.last_response = reply
+
+    # Unlock save buttons after first real AI evaluation in screen-jd
+    if process.get("name") == "screen-jd" and not st.session_state.get("jd_eval_complete"):
+        st.session_state.jd_eval_complete = True
 
     if engine.detect_guidance_in_message(user_text) and not st.session_state.pending_guidance:
         st.session_state.pending_guidance = user_text
@@ -343,6 +384,11 @@ def dialog_create_folder():
             local_path, gdrive_path = engine.create_application_folder(
                 company, role, date_str or None
             )
+            # Move any staged files from the temp folder into the new folder
+            temp = st.session_state.get("temp_app_path")
+            if temp and isinstance(temp, Path) and temp.exists():
+                engine.promote_temp_folder(temp, local_path, gdrive_path)
+                st.session_state.temp_app_path = None
             st.session_state.app_local_path = local_path
             st.session_state.app_gdrive_path = gdrive_path
             st.session_state.current_app_name = local_path.name
@@ -353,37 +399,86 @@ def dialog_create_folder():
 @st.dialog("Save Job Description", width="large")
 def dialog_save_jd():
     app_path: Optional[Path] = st.session_state.app_local_path
-    if not app_path:
-        st.error("No application folder. Create one first.")
-        return
-    first_user = next(
+    today = datetime.now().strftime("%Y-%m-%d")
+    sections = engine.extract_jd_sections(st.session_state.chat_messages)
+
+    jd_content = sections.get("jd_content") or next(
         (m["content"] for m in st.session_state.chat_messages if m["role"] == "user"), ""
     )
-    content = st.text_area("Job description content:", value=first_user, height=400)
-    if st.button("Save", type="primary"):
-        engine.save_file(app_path, "job-description.md", content, st.session_state.app_gdrive_path)
-        st.success(f"Saved to `{app_path.name}/job-description.md`")
-        st.rerun()
+
+    if not app_path:
+        # Create folder inline before saving
+        st.markdown("**No application folder yet — create one:**")
+        row = st.session_state.current_app_row or {}
+
+        # Try to parse date from AI-suggested folder name
+        date_default = today
+        folder_name = sections.get("folder_name", "")
+        if folder_name:
+            parts = folder_name.split("-")
+            if len(parts) >= 3 and len(parts[0]) == 4:
+                date_default = "-".join(parts[:3])
+
+        company = st.text_input("Company", value=row.get("company", ""), key="sjd_company")
+        role = st.text_input("Role", value=row.get("role", ""), key="sjd_role")
+        save_date = st.text_input("Date (YYYY-MM-DD)", value=date_default, key="sjd_date")
+        st.divider()
+        content = st.text_area("Job description content:", value=jd_content, height=300)
+
+        if st.button("Create Folder & Save JD", type="primary"):
+            if not company or not role:
+                st.error("Company and role are required.")
+            else:
+                local_path, gdrive_path = engine.create_application_folder(
+                    company, role, save_date or None
+                )
+                temp = st.session_state.get("temp_app_path")
+                if temp and isinstance(temp, Path) and temp.exists():
+                    engine.promote_temp_folder(temp, local_path, gdrive_path)
+                    st.session_state.temp_app_path = None
+                st.session_state.app_local_path = local_path
+                st.session_state.app_gdrive_path = gdrive_path
+                st.session_state.current_app_name = local_path.name
+                stamped = engine.stamp_update(content, save_date or today, "Initial JD")
+                engine.save_file(local_path, "job-description.md", stamped, gdrive_path)
+                st.success(f"Created `{local_path.name}` and saved job-description.md")
+                st.rerun()
+    else:
+        save_date = st.text_input("Date (YYYY-MM-DD)", value=today, key="sjd_date_existing")
+        content = st.text_area("Job description content:", value=jd_content, height=400)
+        if st.button("Save", type="primary"):
+            stamped = engine.stamp_update(content, save_date or today)
+            engine.save_file(app_path, "job-description.md", stamped, st.session_state.app_gdrive_path)
+            st.success(f"Saved to `{app_path.name}/job-description.md`")
+            st.rerun()
 
 
 @st.dialog("Save Notes", width="large")
 def dialog_save_notes():
     app_path: Optional[Path] = st.session_state.app_local_path
     if not app_path:
-        st.error("No application folder. Create one first.")
+        st.error("No application folder. Use Save JD to create one first.")
         return
+    today = datetime.now().strftime("%Y-%m-%d")
+    save_date = st.text_input("Date (YYYY-MM-DD)", value=today, key="sn_date")
     notes_path = app_path / "notes.md"
-    default = engine.extract_fenced_block(_last_assistant_text(), "markdown") or _last_assistant_text()
-    content = st.text_area("Notes content:", value=default, height=400)
+    sections = engine.extract_jd_sections(st.session_state.chat_messages)
+    notes_content = sections.get("notes") or (
+        engine.extract_fenced_block(_last_assistant_text(), "markdown") or _last_assistant_text()
+    )
+    content = st.text_area("Notes content:", value=notes_content, height=400)
     mode = st.radio("Write mode:", ["Append to existing notes.md", "Overwrite notes.md"])
     if st.button("Save", type="primary"):
         gdrive = st.session_state.app_gdrive_path
+        used_date = save_date or today
         if mode.startswith("Append") and notes_path.exists():
-            engine.append_to_file(notes_path, content)
+            timestamped = f"\n\n**{used_date}** —\n\n{content}"
+            engine.append_to_file(notes_path, timestamped)
             if gdrive:
-                engine.append_to_file(gdrive / "notes.md", content)
+                engine.append_to_file(gdrive / "notes.md", timestamped)
         else:
-            engine.save_file(app_path, "notes.md", content, gdrive)
+            stamped = engine.stamp_update(content, used_date)
+            engine.save_file(app_path, "notes.md", stamped, gdrive)
         st.success("Notes saved.")
         st.rerun()
 
@@ -437,13 +532,39 @@ def dialog_update_tracker():
     config = engine.load_config()
     tracker_rel = config["applicant"]["tracker"]
     tracker_path = engine.get_applicant_dir() / tracker_rel
-    default = engine.extract_fenced_block(_last_assistant_text()) or ""
+    today = datetime.now().strftime("%Y-%m-%d")
+    save_date = st.text_input("Date (YYYY-MM-DD)", value=today, key="ut_date")
+    sections = engine.extract_jd_sections(st.session_state.chat_messages)
+    tracker_row = sections.get("tracker_row") or engine.extract_fenced_block(_last_assistant_text()) or ""
     st.markdown(f"Append a row to `{tracker_rel}`.")
-    entry = st.text_area("Tracker entry (markdown table row):", value=default, height=150)
+    entry = st.text_area("Tracker entry (markdown table row):", value=tracker_row, height=150)
+    note = st.text_area(
+        "Note to append to notes.md (optional):",
+        height=100,
+        placeholder="e.g. Status changed to Applied — submitted via LinkedIn.",
+        key="ut_note",
+    )
     if st.button("Append to Tracker", type="primary"):
-        engine.append_to_file(tracker_path, entry)
+        used_date = save_date or today
+        dated_entry = entry
+        if used_date != today and entry.startswith("|"):
+            dated_entry = re.sub(
+                r"^\|\s*\d{4}-\d{2}-\d{2}\s*\|",
+                f"| {used_date} |",
+                entry,
+            )
+        engine.append_to_file(tracker_path, dated_entry)
         engine.sync_to_gdrive(tracker_path)
-        st.success("Tracker updated.")
+        # Append note to notes.md if provided
+        app_path = st.session_state.app_local_path
+        if note.strip() and app_path:
+            gdrive = st.session_state.app_gdrive_path
+            notes_path = app_path / "notes.md"
+            timestamped_note = f"\n\n**{used_date}** — Status update\n\n{note.strip()}"
+            engine.append_to_file(notes_path, timestamped_note)
+            if gdrive:
+                engine.append_to_file(gdrive / "notes.md", timestamped_note)
+        st.success("Tracker updated." + (" Note appended to notes.md." if note.strip() and app_path else ""))
         st.rerun()
 
 
@@ -540,6 +661,109 @@ def dialog_upload_files():
             saved.append(uf.name)
         st.success(f"Saved {len(saved)} file(s): {', '.join(saved)}")
         st.rerun()
+
+
+@st.dialog("Implications of Recent Save", width="large")
+def dialog_analyze_implications():
+    pending = st.session_state.get("post_save_analysis_pending")
+    if not pending:
+        st.session_state.post_save_analysis_pending = None
+        return
+
+    app_path: Optional[Path] = st.session_state.app_local_path
+    file_rel = pending["file_rel"]
+    file_content = pending["content"]
+
+    st.markdown(f"Analyzing implications of saving **{file_rel}**…")
+
+    # Assemble lightweight app context (notes + JD only)
+    app_context_parts = []
+    if app_path:
+        for fname in ("job-description.md", "notes.md"):
+            p = app_path / fname
+            if p.exists() and p.name != Path(file_rel).name:
+                app_context_parts.append(f"=== {fname} ===\n{p.read_text(encoding='utf-8')}")
+    app_context = "\n\n".join(app_context_parts)
+
+    with st.spinner("Reviewing…"):
+        try:
+            analysis = engine.analyze_file_implications(file_rel, file_content, app_context)
+        except Exception as exc:
+            st.error(f"Analysis failed: {exc}")
+            if st.button("Dismiss"):
+                st.session_state.post_save_analysis_pending = None
+                st.rerun()
+            return
+
+    st.markdown(analysis)
+    st.divider()
+
+    # Parse proposals to offer targeted apply buttons
+    today = datetime.now().strftime("%Y-%m-%d")
+    notes_to_add = ""
+    m = re.search(r"\*\*NOTES TO ADD:\*\*\s*\n+(.*?)(?=\n\*\*|\Z)", analysis, re.DOTALL | re.IGNORECASE)
+    if m:
+        notes_to_add = m.group(1).strip()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if notes_to_add and app_path:
+            if st.button("📝 Append to notes.md", type="primary"):
+                notes_path = app_path / "notes.md"
+                gdrive = st.session_state.app_gdrive_path
+                entry = f"\n\n**{today}** — AI implications\n\n{notes_to_add}"
+                engine.append_to_file(notes_path, entry)
+                if gdrive:
+                    engine.append_to_file(gdrive / "notes.md", entry)
+                st.toast("Notes updated.")
+    with col2:
+        if st.button("Dismiss"):
+            st.session_state.post_save_analysis_pending = None
+            st.rerun()
+
+
+@st.dialog("Add URL to Application", width="large")
+def dialog_add_url_to_app():
+    app_path: Optional[Path] = st.session_state.app_local_path
+    if not app_path:
+        st.error("No application folder selected.")
+        return
+    url = st.text_input("URL", placeholder="https://…", key="add_url_input")
+    filename_stem = st.text_input(
+        "Save as (filename without extension)", value="document-from-url", key="add_url_stem"
+    )
+    st.caption("Saves a PDF and extracted text file to the application folder.")
+    if st.button("Fetch & Save", type="primary"):
+        if not url or not filename_stem:
+            st.error("URL and filename are required.")
+        else:
+            gdrive = st.session_state.app_gdrive_path
+            fetched = False
+            with st.spinner("Opening browser — complete any login/CAPTCHA then return…"):
+                try:
+                    engine.fetch_url_browser(url.strip(), app_path, filename_stem.strip())
+                    fetched = True
+                except Exception:
+                    pass
+            if not fetched:
+                with st.spinner("Browser unavailable — trying simple fetch…"):
+                    try:
+                        text = engine.fetch_url_text(url.strip())
+                        if text:
+                            engine.save_file(app_path, f"{filename_stem}.txt", text, gdrive)
+                            fetched = True
+                    except Exception:
+                        pass
+            if fetched:
+                if gdrive:
+                    for ext in (".pdf", ".txt"):
+                        p = app_path / f"{filename_stem}{ext}"
+                        if p.exists():
+                            engine.sync_to_gdrive(p)
+                st.success(f"Saved `{filename_stem}.pdf` / `.txt` to `{app_path.name}/`")
+                st.rerun()
+            else:
+                st.error("Could not fetch URL.")
 
 
 @st.dialog("Create Subfolder", width="small")
@@ -821,20 +1045,41 @@ def render_file_viewer(app_path: Path, file_rel: str, maximized: bool = False):
 
     if suffix in (".md", ".txt"):
         current = file_path.read_text(encoding="utf-8")
-        new_content = st.text_area(
-            "content",
-            value=current,
-            height=text_height,
-            label_visibility="collapsed",
-            key=f"editor_{file_rel}",
-        )
+        editor_key = f"editor_{file_rel}"
+
+        # Split-pane: edit on left, rendered preview on right
+        edit_col, prev_col = st.columns(2)
+        with edit_col:
+            new_content = st.text_area(
+                "Edit",
+                value=current,
+                height=text_height,
+                label_visibility="collapsed",
+                key=editor_key,
+            )
+        with prev_col:
+            preview_text = st.session_state.get(editor_key, current)
+            with st.container(height=text_height, border=True):
+                st.markdown(preview_text)
+
         sv_col, rs_col, _ = st.columns([1, 1, 5])
         with sv_col:
             if st.button("💾 Save", key=f"save_{file_rel}"):
                 file_path.write_text(new_content, encoding="utf-8")
                 if st.session_state.app_gdrive_path:
                     engine.sync_to_gdrive(file_path)
+                # Queue post-save analysis for non-JD files in existing apps
+                if (
+                    st.session_state.app_local_path
+                    and file_path.name not in ("job-description.md",)
+                    and file_path.suffix.lower() == ".md"
+                ):
+                    st.session_state.post_save_analysis_pending = {
+                        "file_rel": file_rel,
+                        "content": new_content,
+                    }
                 st.toast(f"Saved {file_path.name}")
+                st.rerun()
         with rs_col:
             if st.button("↩ Reset", key=f"reset_{file_rel}"):
                 st.rerun()
@@ -922,25 +1167,125 @@ def render_chat(maximized: bool = False):
                     st.session_state.pending_guidance = None
                     st.rerun()
 
+    # File / URL intake section — shown in new JD mode (no folder yet)
+    if st.session_state.app_local_path is None:
+        temp_path: Optional[Path] = st.session_state.temp_app_path
+        staged = (
+            [f for f in sorted(temp_path.iterdir()) if f.is_file()]
+            if temp_path and temp_path.exists()
+            else []
+        )
+        label = (
+            f"📎 Attach files ({len(staged)} staged)"
+            if staged
+            else "📎 Attach JD files"
+        )
+        with st.expander(label, expanded=not staged):
+            # URL fetch
+            url_col, btn_col = st.columns([5, 1])
+            with url_col:
+                jd_url = st.text_input(
+                    "JD URL",
+                    placeholder="https://…",
+                    label_visibility="collapsed",
+                    key="jd_url_input",
+                )
+            with btn_col:
+                if st.button("Fetch", key="fetch_jd_url", use_container_width=True):
+                    if jd_url.strip():
+                        jd_temp = _get_or_create_temp_folder()
+                        fetched = False
+                        with st.spinner(
+                            "Opening browser — complete any login/CAPTCHA, "
+                            "then let the page fully load…"
+                        ):
+                            try:
+                                engine.fetch_url_browser(jd_url.strip(), jd_temp)
+                                fetched = True
+                            except Exception:
+                                pass
+                        if not fetched:
+                            with st.spinner("Browser unavailable — trying simple fetch…"):
+                                try:
+                                    text = engine.fetch_url_text(jd_url.strip())
+                                    if text:
+                                        engine.save_file(jd_temp, "jd-from-url.txt", text)
+                                        fetched = True
+                                except Exception:
+                                    pass
+                        if fetched:
+                            _reload_temp_file_blocks()
+                            st.toast("URL content saved to context.")
+                            st.rerun()
+                        else:
+                            st.error("Could not fetch URL — try pasting the text instead.")
+
+            # File uploader
+            uploaded_files = st.file_uploader(
+                "Upload files",
+                type=["pdf", "docx", "doc", "html", "htm", "txt", "md"],
+                accept_multiple_files=True,
+                key="jd_file_uploader",
+                label_visibility="collapsed",
+            )
+            if uploaded_files and st.button(
+                "Add to context", type="primary", key="save_jd_files", use_container_width=True
+            ):
+                jd_temp = _get_or_create_temp_folder()
+                for uf in uploaded_files:
+                    engine.save_uploaded_file(jd_temp, uf.name, uf.read())
+                _reload_temp_file_blocks()
+                st.toast(f"{len(uploaded_files)} file(s) added to context.")
+                st.rerun()
+
+            # Show staged files
+            if staged:
+                st.caption("Staged: " + ", ".join(f.name for f in staged))
+
     # Output action buttons
     outputs = process.get("outputs", [])
     if outputs:
+        is_new_jd_screen = (
+            st.session_state.app_local_path is None
+            and process.get("name") == "screen-jd"
+        )
+        jd_eval_done = st.session_state.get("jd_eval_complete", False)
+        save_outputs = {"save_jd", "save_notes", "update_tracker"}
+
         out_cols = st.columns(len(outputs))
         for i, output in enumerate(outputs):
             with out_cols[i]:
-                disabled = (
+                gated = is_new_jd_screen and not jd_eval_done and output in save_outputs
+                disabled = gated or (
                     not st.session_state.chat_messages
                     and output != "create_application_folder"
                 )
+                help_text = "Send the JD first — unlocks after AI evaluation" if gated else None
                 if st.button(
                     OUTPUT_LABELS.get(output, output),
                     key=f"out_{output}",
                     disabled=disabled,
                     use_container_width=True,
+                    help=help_text,
                 ):
                     dialog_fn = OUTPUT_DIALOGS.get(output)
                     if dialog_fn:
                         dialog_fn()
+
+        if is_new_jd_screen and not jd_eval_done:
+            st.caption("💡 Paste or fetch the JD and send it — save buttons unlock after AI evaluation.")
+
+    # Re-evaluate chip — screen-jd only, after initial evaluation
+    if (
+        process.get("name") == "screen-jd"
+        and st.session_state.get("jd_eval_complete")
+    ):
+        if st.button("↻ Re-evaluate JD", key="reevaluate_jd"):
+            _send_message(
+                "Please re-evaluate the JD with any feedback you've received "
+                "and output updated FOLDER NAME, JD CONTENT, NOTES, and TRACKER ROW sections."
+            )
+            st.rerun()
 
     # Chat input (form so it clears on submit)
     with st.form(key=f"chatform_{process['name']}", clear_on_submit=True):
@@ -1017,10 +1362,13 @@ def render_file_browser(app_path: Optional[Path]):
                 st.rerun()
 
     st.divider()
-    uc, fc = st.columns(2)
+    uc, urlc, fc = st.columns(3)
     with uc:
         if st.button("⬆ Upload", key="upload_btn", use_container_width=True):
             dialog_upload_files()
+    with urlc:
+        if st.button("🌐 URL", key="add_url_btn", use_container_width=True, help="Fetch a URL and save as PDF"):
+            dialog_add_url_to_app()
     with fc:
         if st.button("+ Folder", key="new_dir_btn", use_container_width=True):
             dialog_create_subfolder()
@@ -1032,6 +1380,10 @@ def render_file_browser(app_path: Optional[Path]):
 def render_job_page():
     row = st.session_state.current_app_row
     app_path: Optional[Path] = st.session_state.app_local_path
+
+    # Auto-trigger implications analysis after a file save
+    if st.session_state.get("post_save_analysis_pending"):
+        dialog_analyze_implications()
 
     # ── Top bar ───────────────────────────────────────────────────────────────
     back_col, title_col, status_col = st.columns([1, 5, 2])

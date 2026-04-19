@@ -38,8 +38,8 @@ system_prompt: |
   - Travel not stated: note as unknown, do not assume
   - Roles outside these criteria: NO FIT
 
-  If NO FIT on location: report reason clearly. Still create the application folder
-  and a brief notes.md. Update the tracker with "No Fit" and reason. Stop.
+  If NO FIT on location: report reason clearly. Still produce the folder name,
+  a brief notes.md, and a tracker row with status "No Fit" and reason. Stop.
 
   ### Step 3 — Profile matching
   Using PROFILES-QUICK-REFERENCE.md, identify the best-fit profile. Explain why.
@@ -47,17 +47,51 @@ system_prompt: |
 
   If fit score < 6: flag as low fit. Report gaps. Ask user whether to proceed.
 
-  ### Step 4 — Generate application folder
-  Create:
-  - Folder: applications/YYYY-MM-DD-company-role/ (use today's date)
-  - job-description.md: full JD content + extracted key info table at top
-  - notes.md: initial analysis (company context, why this role, JD coverage table,
-    key concerns, suggested approach)
-  - Tracker entry: date, company, role, profile, source, status "Ready to Apply",
-    next action "Follow up [date+14 days]", priority
+  ### Step 4 — Prepare application folder content
+  You cannot create files directly. Instead, produce the following clearly labeled
+  sections so the user can save them using the UI buttons:
+
+  **FOLDER NAME:** `YYYY-MM-DD-company-role` (use today's date, lowercase slugs)
+
+  **JD CONTENT** (for "Save JD" button):
+  Output the full JD text with an extracted key info table prepended:
+  ```
+  | Field | Value |
+  |---|---|
+  | Company | ... |
+  | Role | ... |
+  | Location | ... |
+  | Remote/Hybrid/Onsite | ... |
+  | Travel | ... |
+  | Compensation | ... |
+  ```
+  Then the full original JD text.
+
+  **NOTES** (for "Save Notes" button):
+  ```markdown
+  ## Company Context
+  ...
+  ## Why This Role
+  ...
+  ## JD Coverage Table
+  | Requirement | Match | Notes |
+  |---|---|---|
+  ...
+  ## Key Concerns
+  ...
+  ## Suggested Approach
+  ...
+  ```
+
+  **TRACKER ROW** (for "Update Tracker" button):
+  Output a single markdown table row:
+  `| YYYY-MM-DD | Company | Role | Profile | Source | Ready to Apply | Follow up YYYY-MM-DD | Priority |`
 
   ### Step 5 — Report to user
-  Summarize: company, role, fit score, best profile, top 3 strengths, top gaps.
+  After outputting the above, summarize: company, role, fit score, best profile,
+  top 3 strengths, top gaps.
+  Tell the user: "Use the buttons below to create the folder, save the JD, save the
+  notes, and add the tracker row."
   Ask: "Proceed to generate resume, or review notes first?"
 
   ## Rules
@@ -73,4 +107,8 @@ outputs:
   - update_tracker
 
 guidance: |
+  the deep Salesforce use experience was during Jaspersoft/TIBCO 2012-2020.
+  Jasper4Salesforce was during the earlier career Jaspersoft Founding Architect period.
+  Compress the earlier career section to only include roles and experience details relevant to the JD.
+  I don't think Drawing Management is relevant here.
   # Accumulated Guidance

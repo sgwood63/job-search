@@ -74,6 +74,7 @@ def list_processes() -> list[dict]:
         "generate-resume",
         "review-resume",
         "interview-prep",
+        "practical-exam",
         "debrief",
         "update-memory",
     ]
@@ -145,6 +146,63 @@ def create_application_folder(
     return local_path, gdrive_path
 
 
+def create_temp_folder() -> Path:
+    """Create a temporary staging folder for a new JD session (_temp-YYYYMMDD-HHMMSS)."""
+    applicant_dir = get_applicant_dir()
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    temp_path = applicant_dir / "applications" / f"_temp-{ts}"
+    temp_path.mkdir(parents=True, exist_ok=True)
+    return temp_path
+
+
+def promote_temp_folder(
+    temp_path: Path,
+    final_path: Path,
+    gdrive_path: Optional[Path] = None,
+) -> None:
+    """Move all files from the temp staging folder into the final application folder."""
+    final_path.mkdir(parents=True, exist_ok=True)
+    for src in sorted(temp_path.iterdir()):
+        if src.is_file():
+            shutil.copy2(src, final_path / src.name)
+            if gdrive_path:
+                try:
+                    gdrive_path.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, gdrive_path / src.name)
+                except Exception:
+                    pass
+    shutil.rmtree(temp_path, ignore_errors=True)
+
+
+def cleanup_temp_folder(temp_path: Path) -> None:
+    """Delete a temp staging folder if it still exists."""
+    if temp_path and temp_path.exists() and temp_path.name.startswith("_temp-"):
+        shutil.rmtree(temp_path, ignore_errors=True)
+
+
+def load_temp_file_blocks(temp_path: Path) -> list[dict]:
+    """Return Anthropic content blocks for all files in the temp staging folder."""
+    if not temp_path or not temp_path.exists():
+        return []
+    blocks: list[dict] = []
+    for fpath in sorted(temp_path.iterdir()):
+        if not fpath.is_file():
+            continue
+        suffix = fpath.suffix.lower()
+        header = {"type": "text", "text": f"=== {fpath.name} ==="}
+        if suffix == ".pdf" or suffix in _IMAGE_TYPES:
+            block = file_to_content_block(fpath)
+            if block:
+                blocks.append(header)
+                blocks.append(block)
+        else:
+            text = extract_text(fpath)
+            if text:
+                blocks.append(header)
+                blocks.append({"type": "text", "text": text})
+    return blocks
+
+
 # ─── Context assembly ─────────────────────────────────────────────────────────
 
 
@@ -169,11 +227,37 @@ def _resolve_context_path(raw_path: str) -> tuple[Path, str]:
 
 
 def extract_text(path: Path) -> Optional[str]:
-    """Extract plain text from PDF, DOCX, MD, or TXT files. Returns None on failure."""
+    """Extract plain text from PDF, DOCX, MD, TXT, or HTML files. Returns None on failure."""
     suffix = path.suffix.lower()
     try:
         if suffix in (".md", ".txt"):
             return path.read_text(encoding="utf-8")
+        if suffix in (".html", ".htm"):
+            from html.parser import HTMLParser
+
+            class _Stripper(HTMLParser):
+                def __init__(self) -> None:
+                    super().__init__()
+                    self.reset()
+                    self._skip = False
+                    self.fed: list[str] = []
+
+                def handle_starttag(self, tag: str, attrs: object) -> None:
+                    if tag.lower() in ("script", "style", "noscript"):
+                        self._skip = True
+
+                def handle_endtag(self, tag: str) -> None:
+                    if tag.lower() in ("script", "style", "noscript"):
+                        self._skip = False
+
+                def handle_data(self, d: str) -> None:
+                    if not self._skip:
+                        self.fed.append(d)
+
+            s = _Stripper()
+            s.feed(path.read_text(encoding="utf-8", errors="replace"))
+            text = "".join(s.fed).strip()
+            return text or None
         if suffix == ".pdf":
             result = subprocess.run(
                 ["pdftotext", "-layout", str(path), "-"],
@@ -195,6 +279,45 @@ def extract_text(path: Path) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def fetch_url_text(url: str) -> Optional[str]:
+    """Fetch a URL and return its stripped text content. Returns None on failure."""
+    import urllib.request
+    from html.parser import HTMLParser
+
+    class _Stripper(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reset()
+            self._skip = False
+            self.fed: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: object) -> None:
+            if tag.lower() in ("script", "style", "noscript"):
+                self._skip = True
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag.lower() in ("script", "style", "noscript"):
+                self._skip = False
+
+        def handle_data(self, d: str) -> None:
+            if not self._skip:
+                self.fed.append(d)
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            raw = resp.read().decode("utf-8", errors="replace")
+        if "html" in content_type:
+            s = _Stripper()
+            s.feed(raw)
+            text = "".join(s.fed).strip()
+            return text or None
+        return raw.strip() or None
+    except Exception:
+        return None
 
 
 _IMAGE_TYPES = {
@@ -547,6 +670,436 @@ def detect_guidance_in_message(text: str) -> bool:
     ]
     lower = text.lower()
     return any(re.search(p, lower) for p in triggers)
+
+
+def extract_jd_sections(messages: list[dict]) -> dict[str, str]:
+    """
+    Scan all assistant messages (newest first) for screen-jd output sections.
+    Returns dict: folder_name, jd_content, notes, tracker_row (each "" if not found).
+    """
+    result = {"folder_name": "", "jd_content": "", "notes": "", "tracker_row": ""}
+    needed = set(result.keys())
+
+    for msg in reversed(messages):
+        if msg["role"] != "assistant" or not needed:
+            continue
+        text = msg["content"]
+
+        if "folder_name" in needed:
+            m = re.search(r"\*\*FOLDER NAME:\*\*\s*`?([^`\n]+)`?", text, re.IGNORECASE)
+            if m:
+                result["folder_name"] = m.group(1).strip()
+                needed.discard("folder_name")
+
+        if "tracker_row" in needed:
+            m = re.search(
+                r"\*\*TRACKER ROW\*\*[^\n]*\n+([^\n]*\|[^\n]+)", text, re.IGNORECASE
+            )
+            if m:
+                result["tracker_row"] = m.group(1).strip()
+                needed.discard("tracker_row")
+
+        if "jd_content" in needed:
+            m = re.search(
+                r"\*\*JD CONTENT\*\*[^\n]*\n+(.*?)(?=\n\*\*NOTES\*\*|\n\*\*TRACKER|\Z)",
+                text, re.DOTALL | re.IGNORECASE,
+            )
+            if m:
+                result["jd_content"] = m.group(1).strip()
+                needed.discard("jd_content")
+
+        if "notes" in needed:
+            m = re.search(
+                r"\*\*NOTES\*\*[^\n]*\n+(.*?)(?=\n\*\*TRACKER ROW\*\*|\Z)",
+                text, re.DOTALL | re.IGNORECASE,
+            )
+            if m:
+                raw = m.group(1).strip()
+                fence = re.search(r"```(?:markdown)?\n(.*?)```", raw, re.DOTALL)
+                result["notes"] = fence.group(1).strip() if fence else raw
+                needed.discard("notes")
+
+        if not needed:
+            break
+
+    return result
+
+
+# ─── Default browser detection (cross-platform) ──────────────────────────────
+
+
+def _detect_default_browser_macos() -> dict:
+    """
+    Detect the macOS default HTTPS browser.
+    Returns dict: executable_path, user_data_dir, channel (or None).
+    Raises RuntimeError if the browser or its profile cannot be found.
+    """
+    # ── Step 1: get bundle ID from LaunchServices ─────────────────────────────
+    try:
+        out = subprocess.run(
+            [
+                "defaults", "read",
+                "com.apple.LaunchServices/com.apple.launchservices.secure",
+                "LSHandlers",
+            ],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        # LSHandlerRoleAll appears immediately before LSHandlerURLScheme at the
+        # same indentation level. Backreference \1 skips the deeper-indented
+        # LSHandlerPreferredVersions entry (which always holds sentinel "-").
+        m = re.search(
+            r'^( +)LSHandlerRoleAll = "([^"]+)"\s*;\s*\n\1LSHandlerURLScheme = https',
+            out, re.MULTILINE,
+        )
+        bundle_id = m.group(2).lower() if (m and m.group(2) != "-") else ""
+    except Exception:
+        bundle_id = ""
+
+    if not bundle_id:
+        raise RuntimeError("Could not determine default browser bundle ID from LaunchServices.")
+
+    # ── Step 2: find the .app executable via mdfind + Info.plist ─────────────
+    exe_path: Optional[str] = None
+    try:
+        found = subprocess.run(
+            ["mdfind", f'kMDItemCFBundleIdentifier == "{bundle_id}"'],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip().split("\n")
+        # Prefer /Applications/ paths
+        found.sort(key=lambda p: (0 if p.startswith("/Applications/") else 1))
+        for app in found:
+            app = app.strip()
+            if not app.endswith(".app"):
+                continue
+            plist = Path(app) / "Contents" / "Info.plist"
+            if not plist.exists():
+                continue
+            r = subprocess.run(
+                ["plutil", "-extract", "CFBundleExecutable", "raw", str(plist)],
+                capture_output=True, text=True, timeout=5,
+            )
+            exe_name = r.stdout.strip()
+            if exe_name:
+                exe = Path(app) / "Contents" / "MacOS" / exe_name
+                if exe.exists():
+                    exe_path = str(exe)
+                    break
+    except Exception:
+        pass
+
+    if not exe_path:
+        raise RuntimeError(
+            f"Could not find executable for default browser '{bundle_id}'. "
+            "Is the application installed in /Applications/?"
+        )
+
+    # ── Step 3: find Chromium user data dir ───────────────────────────────────
+    home = Path.home()
+    support = home / "Library" / "Application Support"
+
+    # Known paths for browsers that don't store data under their bundle ID dir
+    KNOWN_PROFILES = {
+        "com.google.chrome": support / "Google" / "Chrome",
+        "com.microsoft.edgemac": support / "Microsoft Edge",
+        "com.brave.browser": support / "BraveSoftware" / "Brave-Browser",
+        "com.vivaldi.vivaldi": support / "Vivaldi",
+        "com.operasoftware.opera": support / "com.operasoftware.Opera",
+    }
+
+    user_data: Optional[Path] = None
+    if bundle_id in KNOWN_PROFILES:
+        p = KNOWN_PROFILES[bundle_id]
+        if (p / "Default" / "Preferences").exists():
+            user_data = p
+
+    if not user_data:
+        # Discovery: search under bundle-ID-named dirs and Containers
+        search_roots = [
+            support / bundle_id,
+            home / "Library" / "Containers" / bundle_id / "Data" / "Library" / "Application Support",
+        ]
+        for root in search_roots:
+            if not root.exists():
+                continue
+            for prefs in sorted(root.rglob("Default/Preferences")):
+                if prefs.is_file():
+                    user_data = prefs.parent.parent  # grandparent = user data dir
+                    break
+            if user_data:
+                break
+
+    if not user_data:
+        raise RuntimeError(
+            f"Could not find a Chromium profile for '{bundle_id}'. "
+            "The browser may not be Chromium-based, or its profile is in an unexpected location."
+        )
+
+    # Only Chrome and Edge have named Playwright channels; others use executable_path
+    channel = {"com.google.chrome": "chrome", "com.microsoft.edgemac": "msedge"}.get(bundle_id)
+
+    return {
+        "executable_path": exe_path if not channel else None,
+        "user_data_dir": str(user_data),
+        "channel": channel,
+    }
+
+
+def _detect_default_browser_windows() -> dict:
+    """
+    Detect the Windows default HTTPS browser via the registry.
+    Returns dict: executable_path (or None), user_data_dir, channel (or None).
+    """
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice",
+        )
+        prog_id: str = winreg.QueryValueEx(key, "ProgId")[0]
+        winreg.CloseKey(key)
+    except Exception:
+        raise RuntimeError("Could not read default browser from the Windows registry.")
+
+    home = Path.home()
+    prog_lower = prog_id.lower()
+
+    WINDOWS_BROWSERS: dict[str, dict] = {
+        "chromehtml": {
+            "channel": "chrome",
+            "user_data_dir": str(home / "AppData/Local/Google/Chrome/User Data"),
+        },
+        "msedgehtm": {
+            "channel": "msedge",
+            "user_data_dir": str(home / "AppData/Local/Microsoft/Edge/User Data"),
+        },
+        "bravehtml": {
+            "executable_path": str(Path("C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe")),
+            "user_data_dir": str(home / "AppData/Local/BraveSoftware/Brave-Browser/User Data"),
+        },
+        "chromiumhtm": {
+            "user_data_dir": str(home / "AppData/Local/Chromium/User Data"),
+        },
+    }
+
+    cfg: Optional[dict] = None
+    for key_prefix, val in WINDOWS_BROWSERS.items():
+        if prog_lower.startswith(key_prefix):
+            cfg = dict(val)
+            break
+
+    if not cfg:
+        raise RuntimeError(
+            f"Default browser ProgId '{prog_id}' is not a supported Chromium-based browser. "
+            "Set your default browser to Chrome, Edge, or Brave."
+        )
+    if not Path(cfg["user_data_dir"]).exists():
+        raise RuntimeError(
+            f"Browser profile not found at {cfg['user_data_dir']}. Is the browser installed?"
+        )
+    cfg.setdefault("channel", None)
+    cfg.setdefault("executable_path", None)
+    return cfg
+
+
+def _detect_default_browser_linux() -> dict:
+    """
+    Detect the Linux default HTTPS browser via xdg-settings.
+    Returns dict: executable_path (or None), user_data_dir, channel (or None).
+    """
+    try:
+        desktop = subprocess.run(
+            ["xdg-settings", "get", "default-web-browser"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip().lower()
+    except Exception:
+        desktop = ""
+
+    home = Path.home()
+    LINUX_BROWSERS: dict[str, dict] = {
+        "google-chrome": {
+            "channel": "chrome",
+            "user_data_dir": str(home / ".config/google-chrome"),
+        },
+        "chromium": {
+            "user_data_dir": str(home / ".config/chromium"),
+        },
+        "brave-browser": {
+            "executable_path": "/usr/bin/brave-browser",
+            "user_data_dir": str(home / ".config/BraveSoftware/Brave-Browser"),
+        },
+        "microsoft-edge": {
+            "channel": "msedge",
+            "user_data_dir": str(home / ".config/microsoft-edge"),
+        },
+    }
+
+    cfg: Optional[dict] = None
+    for key, val in LINUX_BROWSERS.items():
+        if key in desktop:
+            cfg = dict(val)
+            break
+
+    if not cfg:
+        raise RuntimeError(
+            f"Default browser '{desktop}' is not a supported Chromium-based browser. "
+            "Set your default browser to Chrome, Chromium, Brave, or Edge."
+        )
+    if not Path(cfg["user_data_dir"]).exists():
+        raise RuntimeError(f"Browser profile not found at {cfg['user_data_dir']}.")
+    cfg.setdefault("channel", None)
+    cfg.setdefault("executable_path", None)
+    return cfg
+
+
+def _detect_default_browser() -> dict:
+    """
+    Detect the system's default Chromium-based browser across macOS, Windows, and Linux.
+    Returns dict with: executable_path, user_data_dir, channel (any may be None).
+    Raises RuntimeError with a clear message if detection or profile lookup fails.
+    """
+    import platform as _plat
+    system = _plat.system()
+    if system == "Darwin":
+        return _detect_default_browser_macos()
+    if system == "Windows":
+        return _detect_default_browser_windows()
+    return _detect_default_browser_linux()
+
+
+def _expand_page_content(page) -> None:
+    """Click 'show more' / expand buttons and scroll to reveal full page content."""
+    EXPAND_SELECTORS = [
+        "button.show-more-less-html__button",   # LinkedIn job description
+        "button:has-text('See more')",
+        "button:has-text('Show more')",
+        "button:has-text('Read more')",
+        "button:has-text('View more')",
+        "button:has-text('Load more')",
+        "button:has-text('Expand')",
+        "[aria-label*='see more' i]",
+        "[aria-label*='show more' i]",
+        "[data-testid*='show-more']",
+        ".show-more-button",
+        ".see-more-link",
+    ]
+    for selector in EXPAND_SELECTORS:
+        try:
+            for btn in page.query_selector_all(selector):
+                if btn.is_visible():
+                    btn.click()
+                    page.wait_for_timeout(400)
+        except Exception:
+            pass
+    # Scroll to bottom to trigger lazy loading, then back to top for PDF capture
+    try:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        page.wait_for_timeout(800)
+        page.wait_for_load_state("networkidle", timeout=5000)
+        page.evaluate("window.scrollTo(0, 0)")
+    except Exception:
+        pass
+
+
+def _get_playwright_profile_dir() -> Path:
+    """
+    Return a dedicated Playwright profile directory that is separate from the
+    user's live browser profile (which would be locked if the browser is open).
+    Created on first use; session data persists across fetches.
+    """
+    profile_dir = Path.home() / ".job-search-assistant" / "playwright-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    return profile_dir
+
+
+def fetch_url_browser(url: str, temp_path: Path, filename_stem: str = "jd-from-url") -> tuple[str, Path]:
+    """
+    Fetch a URL using the system's default browser executable — no fallback.
+    Uses a dedicated Playwright profile dir (not the live browser profile, which
+    would be locked if the browser is already open). On first use the user logs in
+    manually; the session is reused on subsequent fetches.
+    Expands 'show more' content, then saves a US Letter PDF and extracted text.
+    Returns (extracted_text, pdf_path).
+    Raises RuntimeError if the browser is non-Chromium or detection fails.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError(
+            "playwright not installed. Run:\n"
+            "  pip install playwright\n"
+            "  playwright install chromium"
+        )
+
+    profile_dir = _get_playwright_profile_dir()
+    pdf_path = temp_path / f"{filename_stem}.pdf"
+
+    with sync_playwright() as p:
+        # Use Playwright's own bundled Chromium — not the system browser executable.
+        # Custom browser builds (e.g. ChatGPT Atlas) don't support CDP control and crash.
+        # The dedicated profile_dir provides session persistence: log in once, reused after.
+        launch_kwargs: dict = {
+            "user_data_dir": str(profile_dir),
+            "headless": False,
+            "args": ["--no-first-run", "--no-default-browser-check"],
+        }
+
+        browser_ctx = p.chromium.launch_persistent_context(**launch_kwargs)
+        try:
+            page = browser_ctx.new_page()
+            page.goto(url, wait_until="networkidle", timeout=30000)
+            _expand_page_content(page)
+            pdf_bytes = page.pdf(format="Letter", print_background=True)
+            pdf_path.write_bytes(pdf_bytes)
+            text = page.inner_text("body")
+        finally:
+            browser_ctx.close()
+
+    (temp_path / f"{filename_stem}.txt").write_text(text, encoding="utf-8")
+    return text, pdf_path
+
+
+def stamp_update(content: str, date: str, label: str = "") -> str:
+    """Prepend an update datestamp line to file content."""
+    tag = f"_Updated: {date}{' — ' + label if label else ''}_\n\n"
+    return tag + content
+
+
+def analyze_file_implications(
+    file_name: str,
+    file_content: str,
+    app_context: str,
+    model: str = "claude-haiku-4-5-20251001",
+) -> str:
+    """
+    Run a quick AI pass on a saved file to identify implications for the application.
+    Returns the AI's proposals as a markdown string.
+    """
+    system = (
+        "You are reviewing a recently saved job application file to identify "
+        "actionable implications for the broader application.\n\n"
+        "Based on the file content and application context provided, identify:\n"
+        "1. Whether the application **status** should change (e.g., after interview notes → Phone Interview)\n"
+        "2. A **next action** with a suggested date\n"
+        "3. Any **notes** worth appending to notes.md\n\n"
+        "Output ONLY these labeled sections (omit any that don't apply):\n\n"
+        "**STATUS UPDATE:**\n"
+        "New status: [status] — Reason: [one line]\n\n"
+        "**NEXT ACTION:**\n"
+        "[action] by [YYYY-MM-DD]\n\n"
+        "**NOTES TO ADD:**\n"
+        "[markdown content]\n\n"
+        "Be concise. Do not fabricate details not in the file."
+    )
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                f"## Saved file: {file_name}\n\n{file_content}\n\n"
+                f"## Application context\n\n{app_context}"
+            ),
+        }
+    ]
+    return call_api(system, messages, model=model, temperature=0.0, max_tokens=1024)
 
 
 # ─── Agentic tool use (Update Memory process) ────────────────────────────────
