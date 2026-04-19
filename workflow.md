@@ -181,23 +181,18 @@ Target: 2 pages for enterprise/direct applications.
 
 ---
 
-## Memory & Rules Sync
+## Memory & Git
 
-Claude maintains a persistent memory system at `~/.claude/projects/.../memory/`. Memory files are split by type:
+Memory files are written directly by the app — no Claude Code sync needed.
 
-**App-process memory** (git-tracked in `Job-Search-2026/memory/`):
+**App-process memory** (git-tracked in `$SOURCE_DIRECTORY/memory/`):
+Use the **Commit** button in the Update Memory process after a session, or:
 ```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{MEMORY,feedback_company_lookup,feedback_resume_review,feedback_role_ordering,feedback_session_strategy,feedback_unknown_company_research,project_job_search_app}.md \
-   /Users/shermanwood/Documents/Job-Search-2026/memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+git -C $SOURCE_DIRECTORY add memory/
+git -C $SOURCE_DIRECTORY commit -m "Update memory: [what changed]"
 ```
 
-**Applicant memory** (not git-tracked — saved to `$APPLICANT_DIR/memory/`):
-```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{feedback_jasper4salesforce,feedback_resume_location,project_latticeflow_departure,user_coding_profile,user_location}.md \
-   $APPLICANT_DIR/memory/
-```
+**Applicant memory** is saved to `$APPLICANT_DIR/memory/` automatically and is not git-tracked.
 
 ---
 

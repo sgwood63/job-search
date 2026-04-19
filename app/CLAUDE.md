@@ -14,7 +14,7 @@ Each sub-process (screen JD, generate resume, review, interview prep, debrief, m
 
 **App source tree** (this repo, git-tracked):
 ```
-Job-Search-2026/
+$SOURCE_DIRECTORY/
 ├── app/                          ← this directory
 │   ├── CLAUDE.md                 ← this file
 │   ├── app.py                    ← Streamlit entry point
@@ -64,7 +64,7 @@ display_name: Human-readable name
 model: claude-haiku-4-5-20251001   # or claude-sonnet-4-6
 
 base_context:                      # files to load at session start
-  - app:memory/MEMORY.md           # app: prefix → resolved from Job-Search-2026/
+  - app:memory/MEMORY.md           # app: prefix → resolved from $SOURCE_DIRECTORY/
   - applicant:applicant.md         # applicant: prefix → resolved from APPLICANT_DIR
   - applicant:profiles/PROFILES-QUICK-REFERENCE.md
 
@@ -85,7 +85,7 @@ outputs:                           # declared save actions for UI buttons
 ```
 
 **Path prefix convention:**
-- `app:` → resolved relative to `Job-Search-2026/` (app source root)
+- `app:` → resolved relative to `$SOURCE_DIRECTORY/` (app source root)
 - `applicant:` → resolved relative to `$APPLICANT_DIR`
 - No prefix → legacy; treated as `applicant:` for backward compatibility
 
@@ -142,7 +142,7 @@ The app writes applicant data to `$APPLICANT_DIR`. Key write operations:
 | Generate PDF | `$APPLICANT_DIR/applications/.../Sherman_Wood_[Role]_[Company].pdf` |
 | Update tracker | `$APPLICANT_DIR/application-tracker.md` |
 | Update applicant memory | `$APPLICANT_DIR/memory/*.md` |
-| Update app-process memory | `Job-Search-2026/memory/*.md` (git-tracked) |
+| Update app-process memory | `$SOURCE_DIRECTORY/memory/*.md` (git-tracked) |
 
 After every write, sync to Google Drive (path in `config.yaml` under `applicant.gdrive_root`).
 
@@ -156,12 +156,12 @@ The `write_file` tool distinguishes two memory locations:
 
 | Tool path | Writes to | Git-tracked? |
 |---|---|---|
-| `memory/FILENAME.md` | `Job-Search-2026/memory/` | Yes |
+| `memory/FILENAME.md` | `$SOURCE_DIRECTORY/memory/` | Yes |
 | `applicant-memory/FILENAME.md` | `$APPLICANT_DIR/memory/` | No |
 | `base-documents/EXPERIENCE-REFERENCE.md` | `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` | No |
 | `applications/{folder}/FILENAME.md` | `$APPLICANT_DIR/applications/{folder}/` | No |
 
-Both memory locations are mirrored to `~/.claude/projects/.../memory/` for Claude Code session use.
+App-process memory is committed to git via the Commit button in the Update Memory process.
 
 ---
 
@@ -172,8 +172,7 @@ Both memory locations are mirrored to `~/.claude/projects/.../memory/` for Claud
 - **Resume header location**: Always "San Francisco Bay Area" (see `$APPLICANT_DIR/memory/feedback_resume_location.md`).
 - **Contact info**: In `$APPLICANT_DIR/applicant.md` — never hardcode in code or process YAMLs.
 - **Role ordering**: Strict reverse chronological (see `memory/feedback_role_ordering.md`).
-- **Role attribution**: In `$APPLICANT_DIR/memory/feedback_jasper4salesforce.md`.
-- **Resume length**: 2 pages default for enterprise/direct; 1 page for pre-sales SE / networking.
+- **Resume length**: 2 pages default.
 
 ---
 

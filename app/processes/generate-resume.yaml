@@ -16,8 +16,8 @@ optional_context:
   - applicant:profiles/ai-governance-risk-lead-CONTENT.md
   - applicant:profiles/analytics-lead-player-coach-CONTENT.md
 
-# Note: the matching profile CONTENT.md and the application's job-description.md
-# and notes.md are loaded dynamically by the engine based on the selected application.
+# Note: job-description.md and notes.md are loaded dynamically by the engine
+# based on the selected application.
 
 system_prompt: |
   You are generating a tailored resume. The user's verified experience is in

@@ -6,6 +6,7 @@ model: claude-haiku-4-5-20251001
 base_context:
   - app:memory/MEMORY.md
   - applicant:applicant.md
+  - applicant:memory/APPLICANT-MEMORY.md
   - applicant:profiles/PROFILES-QUICK-REFERENCE.md
   - applicant:application-tracker.md
 
@@ -30,11 +31,7 @@ system_prompt: |
   - Key themes and technologies
 
   ### Step 2 — Location/travel fit check
-  Criteria (from MEMORY.md):
-  - Remote US: YES
-  - SF Bay Area hybrid or onsite: YES
-  - Travel <25%: YES
-  - Travel >25%: CONCERN (flag, do not auto-reject)
+  Criteria (from APPLICANT-MEMORY.md):
   - Travel not stated: note as unknown, do not assume
   - Roles outside these criteria: NO FIT
 
@@ -105,10 +102,3 @@ outputs:
   - save_jd
   - save_notes
   - update_tracker
-
-guidance: |
-  the deep Salesforce use experience was during Jaspersoft/TIBCO 2012-2020.
-  Jasper4Salesforce was during the earlier career Jaspersoft Founding Architect period.
-  Compress the earlier career section to only include roles and experience details relevant to the JD.
-  I don't think Drawing Management is relevant here.
-  # Accumulated Guidance

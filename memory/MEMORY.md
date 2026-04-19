@@ -26,7 +26,7 @@ This file contains only process rules and app configuration guidance.
 ### For EVERY JD (fit or no-fit)
 3. Create application folder in BOTH locations:
    - Local: `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
-   - Google Drive: `Job Search 2026/applications/YYYY-MM-DD-company-role/`
+   - Google Drive: `$gdrive_root/applications/YYYY-MM-DD-company-role/`
 4. Save job-description.md with full JD content and key info
 
 ### If NO FIT (stay in Haiku)
@@ -114,7 +114,7 @@ This file contains only process rules and app configuration guidance.
 ---
 
 ## App Development
-- [Job Search App](project_job_search_app.md) — Streamlit + Anthropic API app at `Job-Search-2026/app/`
+- [Job Search App](project_job_search_app.md) — Streamlit + Anthropic API app at `$SOURCE_DIRECTORY/app/`
 
 ## Session Strategy
 - [Session Strategy](feedback_session_strategy.md) — use short task-scoped sessions; memory carries context across sessions
@@ -126,20 +126,4 @@ This file contains only process rules and app configuration guidance.
 
 ---
 
-## Memory Sync Rule
-
-### App-process memory → git-tracked:
-```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{MEMORY,feedback_company_lookup,feedback_resume_review,feedback_role_ordering,feedback_session_strategy,feedback_unknown_company_research,project_job_search_app}.md \
-   /Users/shermanwood/Documents/Job-Search-2026/memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
-```
-
-### Applicant memory → APPLICANT_DIR (not git):
-```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/{feedback_jasper4salesforce,feedback_resume_location,project_latticeflow_departure,user_coding_profile,user_location}.md \
-   $APPLICANT_DIR/memory/
-```
-
-**Last Updated**: 2026-04-15
+**Last Updated**: 2026-04-19

@@ -805,56 +805,9 @@ def dialog_update_memory_index():
     content = st.text_area(f"{label} content:", value=current, height=400)
     if st.button("Save", type="primary"):
         mem_index.write_text(content, encoding="utf-8")
-        claude_mem = engine._claude_memory_dir()
-        try:
-            (claude_mem / mem_index.name).write_text(content, encoding="utf-8")
-        except Exception:
-            pass
         st.success(f"{label} updated.")
         st.rerun()
 
-
-@st.dialog("Sync Memory to Claude & Git", width="small")
-def dialog_sync_memory():
-    st.markdown(
-        "This will:\n"
-        "1. Copy `Job-Search-2026/memory/*.md` → Claude auto-memory\n"
-        "2. Copy `$APPLICANT_DIR/memory/*.md` → Claude auto-memory\n"
-        "3. `git add memory/ && git commit` (app-process memory only)"
-    )
-    commit_msg = st.text_input("Commit message:", value="Update memory: ")
-    if st.button("Run Sync", type="primary"):
-        app_root = engine.get_app_root()
-        applicant_dir = engine.get_applicant_dir()
-        claude_mem = engine._claude_memory_dir()
-        errors = []
-        # Copy app-process memory files
-        for f in (app_root / "memory").glob("*.md"):
-            try:
-                (claude_mem / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-            except Exception as e:
-                errors.append(f"app memory/{f.name}: {e}")
-        # Copy applicant memory files
-        for f in (applicant_dir / "memory").glob("*.md"):
-            try:
-                (claude_mem / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-            except Exception as e:
-                errors.append(f"applicant memory/{f.name}: {e}")
-        if errors:
-            st.error("Copy errors:\n" + "\n".join(errors))
-            return
-        # Git commit only app-process memory (app_root/memory/)
-        result = subprocess.run(
-            f'git -C "{app_root}" add memory/ && git -C "{app_root}" commit -m "{commit_msg}"',
-            shell=True,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            st.success("Memory synced and committed.")
-        else:
-            st.warning(f"Git output:\n```\n{result.stdout}\n{result.stderr}\n```")
-        st.rerun()
 
 
 @st.dialog("Commit Memory Changes", width="large")
@@ -880,7 +833,7 @@ def dialog_commit_memory():
     commit_msg = st.text_input("Commit message:", value="Update memory: ")
 
     if st.button("Commit", type="primary"):
-        # Only commit app-process memory (Job-Search-2026/memory/)
+        # Only commit app-process memory ($SOURCE_DIRECTORY/memory/)
         result = subprocess.run(
             f'git -C "{app_root}" add memory/ && git -C "{app_root}" commit -m "{commit_msg}"',
             shell=True,
@@ -913,7 +866,6 @@ def dialog_revert_memory():
         st.info("No files written in this session.")
 
     if st.button("Revert", type="primary"):
-        claude_mem = engine._claude_memory_dir()
         for rel_path in written:
             original = backups.get(rel_path)  # None means file didn't exist before
 
@@ -926,22 +878,11 @@ def dialog_revert_memory():
                 )
                 if tracked.returncode != 0:
                     full_path.unlink(missing_ok=True)
-                    try:
-                        (claude_mem / full_path.name).unlink(missing_ok=True)
-                    except Exception:
-                        pass
                 else:
                     subprocess.run(
                         ["git", "-C", str(app_root), "restore", rel_path],
                         capture_output=True,
                     )
-                    if full_path.exists():
-                        try:
-                            (claude_mem / full_path.name).write_text(
-                                full_path.read_text(encoding="utf-8"), encoding="utf-8"
-                            )
-                        except Exception:
-                            pass
 
             elif rel_path.startswith("applicant-memory/"):
                 # Applicant memory — not git-tracked; use stored backup
@@ -949,16 +890,8 @@ def dialog_revert_memory():
                 full_path = applicant_dir / "memory" / filename
                 if original is None:
                     full_path.unlink(missing_ok=True)
-                    try:
-                        (claude_mem / filename).unlink(missing_ok=True)
-                    except Exception:
-                        pass
                 else:
                     full_path.write_text(original, encoding="utf-8")
-                    try:
-                        (claude_mem / filename).write_text(original, encoding="utf-8")
-                    except Exception:
-                        pass
 
             elif rel_path.startswith("base-documents/") or rel_path.startswith("applications/"):
                 # Applicant data — not git-tracked; use stored backup
@@ -985,7 +918,6 @@ OUTPUT_LABELS = {
     "sync_gdrive": "Sync GDrive",
     "save_memory_file": "Save Memory",
     "update_memory_index": "Update Index",
-    "sync_memory": "Sync Memory",
     "upload_files": "Upload Files",
     "commit_memory": "Commit",
     "revert_memory": "Revert",
@@ -1000,7 +932,6 @@ OUTPUT_DIALOGS = {
     "sync_gdrive": dialog_sync_gdrive,
     "save_memory_file": dialog_save_memory,
     "update_memory_index": dialog_update_memory_index,
-    "sync_memory": dialog_sync_memory,
     "upload_files": dialog_upload_files,
     "commit_memory": dialog_commit_memory,
     "revert_memory": dialog_revert_memory,

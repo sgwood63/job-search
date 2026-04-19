@@ -27,7 +27,7 @@ def load_config() -> dict:
 
 
 def get_app_root() -> Path:
-    """The Job-Search-2026/ repo root (app source tree, git-tracked)."""
+    """The $SOURCE_DIRECTORY/ repo root (app source tree, git-tracked)."""
     return (Path(__file__).parent.parent).resolve()
 
 
@@ -1161,12 +1161,6 @@ def make_update_tools(app_folder_name: Optional[str] = None) -> list[dict]:
 MEMORY_WRITE_TOOLS = make_update_tools()
 
 
-def _claude_memory_dir() -> Path:
-    return (
-        Path.home()
-        / ".claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory"
-    )
-
 
 def execute_project_write(
     path: str,
@@ -1187,7 +1181,6 @@ def execute_project_write(
     """
     app_root = get_app_root()
     applicant_dir = get_applicant_dir()
-    claude_mem = _claude_memory_dir()
     p = path.strip().lstrip("/")
 
     # ── App-process memory (git-tracked) ─────────────────────────────────────
@@ -1196,11 +1189,6 @@ def execute_project_write(
         dest.parent.mkdir(parents=True, exist_ok=True)
         original = dest.read_text(encoding="utf-8") if dest.exists() else None
         dest.write_text(content, encoding="utf-8")
-        # Mirror to Claude's auto-memory dir
-        try:
-            (claude_mem / dest.name).write_text(content, encoding="utf-8")
-        except Exception:
-            pass
         return f"Written: {p} (app-process memory)", dest, original
 
     # ── Applicant memory (not git-tracked) ────────────────────────────────────
@@ -1210,11 +1198,6 @@ def execute_project_write(
         dest.parent.mkdir(parents=True, exist_ok=True)
         original = dest.read_text(encoding="utf-8") if dest.exists() else None
         dest.write_text(content, encoding="utf-8")
-        # Mirror to Claude's auto-memory dir
-        try:
-            (claude_mem / filename).write_text(content, encoding="utf-8")
-        except Exception:
-            pass
         return f"Written: {p} (applicant memory)", dest, original
 
     # ── EXPERIENCE-REFERENCE.md ───────────────────────────────────────────────

@@ -19,7 +19,7 @@ Each step is a focused AI session with only the relevant context loaded. No sing
 This repo contains app source code and process definitions only. Applicant data lives outside at `$APPLICANT_DIR`.
 
 ```
-Job-Search-2026/
+$SOURCE_DIRECTORY/
 ├── README.md                    # This file
 ├── QUICK-START.md               # Setup guide
 ├── workflow.md                  # Detailed process documentation
