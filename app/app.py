@@ -180,6 +180,7 @@ def _activate_process_internal(process: dict, app_path: Optional[Path]):
     context = engine.assemble_context(
         process,
         application=app_path.name if app_path else None,
+        extra_context_paths=process.get("optional_context", []),
     )
     system_prompt = engine.build_system_prompt(process, context)
     file_blocks = engine.load_app_file_blocks(app_path) if app_path else []
@@ -370,13 +371,40 @@ def _send_message_agentic(user_text: str):
 # ─── Dialogs ─────────────────────────────────────────────────────────────────
 
 
+def _parse_company_role_date_from_sections() -> tuple[str, str, str]:
+    """Extract company, role, date from AI-generated tracker_row and folder_name."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    sections = engine.extract_jd_sections(st.session_state.get("chat_messages", []))
+    company, role, date = "", "", today
+
+    tracker_row = sections.get("tracker_row", "")
+    if tracker_row and "|" in tracker_row:
+        parts = [p.strip() for p in tracker_row.split("|") if p.strip()]
+        if len(parts) >= 3:
+            date = parts[0] if parts[0] else today
+            company = parts[1]
+            role = parts[2]
+
+    if not company or not role:
+        folder_name = sections.get("folder_name", "")
+        if folder_name:
+            fp = folder_name.split("-")
+            if len(fp) >= 3 and len(fp[0]) == 4:
+                date = "-".join(fp[:3])
+
+    row = st.session_state.current_app_row or {}
+    company = company or row.get("company", "")
+    role = role or row.get("role", "")
+    date = date or row.get("date", today)[:10]
+    return company, role, date
+
+
 @st.dialog("Create Application Folder", width="large")
 def dialog_create_folder():
-    row = st.session_state.current_app_row or {}
-    company = st.text_input("Company name", value=row.get("company", ""))
-    role = st.text_input("Role title", value=row.get("role", ""))
-    default_date = row.get("date", datetime.now().strftime("%Y-%m-%d"))[:10]
-    date_str = st.text_input("Date (YYYY-MM-DD)", value=default_date)
+    ai_company, ai_role, ai_date = _parse_company_role_date_from_sections()
+    company = st.text_input("Company name", value=ai_company)
+    role = st.text_input("Role title", value=ai_role)
+    date_str = st.text_input("Date (YYYY-MM-DD)", value=ai_date)
     if st.button("Create", type="primary"):
         if not company or not role:
             st.error("Company and role are required.")
@@ -565,6 +593,127 @@ def dialog_update_tracker():
             if gdrive:
                 engine.append_to_file(gdrive / "notes.md", timestamped_note)
         st.success("Tracker updated." + (" Note appended to notes.md." if note.strip() and app_path else ""))
+        st.rerun()
+
+
+@st.dialog("Save Application", width="large")
+def dialog_save_application():
+    today = datetime.now().strftime("%Y-%m-%d")
+    sections = engine.extract_jd_sections(st.session_state.chat_messages)
+    app_path: Optional[Path] = st.session_state.app_local_path
+    gdrive_path: Optional[Path] = st.session_state.app_gdrive_path
+
+    jd_content = sections.get("jd_content", "")
+    notes_content = sections.get("notes", "")
+    tracker_row = sections.get("tracker_row", "")
+
+    # Auto-determine folder — always display, never show input fields
+    if not app_path:
+        ai_company, ai_role, ai_date = _parse_company_role_date_from_sections()
+        if ai_company and ai_role:
+            auto_folder = f"{ai_date}-{engine.slugify(ai_company)}-{engine.slugify(ai_role)}"
+        else:
+            auto_folder = None
+        if auto_folder:
+            st.markdown(f"**Application Folder (will be created):** `{auto_folder}`")
+        else:
+            st.warning("Could not determine folder name from JD — AI evaluation may be incomplete.")
+    else:
+        ai_company = ai_role = ai_date = auto_folder = None
+        st.markdown(f"**Application Folder:** `{app_path.name}`")
+
+    # List staged files from temp folder (URL-fetched and uploaded)
+    temp: Optional[Path] = st.session_state.get("temp_app_path")
+    staged_files = (
+        [f for f in sorted(temp.iterdir()) if f.is_file()]
+        if temp and temp.exists()
+        else []
+    )
+    if staged_files:
+        st.markdown("**Staged files (will be copied to folder):**")
+        for f in staged_files:
+            st.caption(f"• `{f.name}`")
+
+    st.divider()
+
+    # What to save — pre-check based on content availability
+    folder_exists = app_path is not None
+    save_jd = st.checkbox("Save JD (`job-description.md`)", value=bool(jd_content), disabled=not bool(jd_content))
+    save_notes = st.checkbox("Save Notes (`notes.md`)", value=bool(notes_content), disabled=not bool(notes_content))
+    # Default Update Tracker to unchecked on re-saves to avoid duplicate rows
+    save_tracker = st.checkbox(
+        "Update Tracker (`application-tracker.md`)",
+        value=bool(tracker_row) and not folder_exists,
+        disabled=not bool(tracker_row),
+    )
+
+    # APPLICANT-MEMORY addition — show editable content and display what will be appended
+    st.divider()
+    applicant_note = st.text_area(
+        "Add to APPLICANT-MEMORY.md (optional):",
+        height=80,
+        placeholder="e.g. Role requires travel; asked recruiter to clarify.",
+        key="sa_applicant_note",
+    )
+    if applicant_note.strip():
+        st.caption("Will append to APPLICANT-MEMORY.md:")
+        st.code(f"**{today}** — {applicant_note.strip()}", language=None)
+
+    if st.button("Save Application", type="primary", key="sa_submit"):
+        # 1. Create folder if needed
+        if not app_path:
+            if not ai_company or not ai_role:
+                st.error("Could not determine company/role from JD — send the JD for AI evaluation first.")
+                return
+            app_path, gdrive_path = engine.create_application_folder(ai_company, ai_role, ai_date or None)
+            temp = st.session_state.get("temp_app_path")
+            if temp and isinstance(temp, Path) and temp.exists():
+                engine.promote_temp_folder(temp, app_path, gdrive_path)
+                st.session_state.temp_app_path = None
+            st.session_state.app_local_path = app_path
+            st.session_state.app_gdrive_path = gdrive_path
+            st.session_state.current_app_name = app_path.name
+
+        saved = []
+
+        # 2. Save JD
+        if save_jd and jd_content:
+            stamped = engine.stamp_update(jd_content, today, "Screen JD")
+            engine.save_file(app_path, "job-description.md", stamped, gdrive_path)
+            saved.append("job-description.md")
+
+        # 3. Save Notes (append if file exists, else write new)
+        if save_notes and notes_content:
+            notes_path = app_path / "notes.md"
+            if notes_path.exists():
+                timestamped = f"\n\n**{today}** —\n\n{notes_content}"
+                engine.append_to_file(notes_path, timestamped)
+                if gdrive_path:
+                    engine.append_to_file(gdrive_path / "notes.md", timestamped)
+            else:
+                stamped = engine.stamp_update(notes_content, today)
+                engine.save_file(app_path, "notes.md", stamped, gdrive_path)
+            saved.append("notes.md")
+
+        # 4. Update Tracker
+        if save_tracker and tracker_row:
+            config = engine.load_config()
+            tracker_path = engine.get_applicant_dir() / config["applicant"]["tracker"]
+            engine.append_to_file(tracker_path, tracker_row)
+            engine.sync_to_gdrive(tracker_path)
+            saved.append("application-tracker.md")
+
+        # 5. Applicant memory note
+        if applicant_note.strip():
+            mem_path = engine.get_applicant_dir() / "memory" / "APPLICANT-MEMORY.md"
+            timestamped_note = f"\n\n**{today}** — {applicant_note.strip()}"
+            engine.append_to_file(mem_path, timestamped_note)
+            saved.append("APPLICANT-MEMORY.md")
+
+        if saved:
+            st.success(f"Saved: {', '.join(f'`{f}`' for f in saved)}")
+        else:
+            st.info("Nothing selected to save.")
         st.rerun()
 
 
@@ -909,6 +1058,7 @@ def dialog_revert_memory():
 
 # Output button registry
 OUTPUT_LABELS = {
+    "save_application": "💾 Save Application",
     "create_application_folder": "Create Folder",
     "save_jd": "Save JD",
     "save_notes": "Save Notes",
@@ -923,6 +1073,7 @@ OUTPUT_LABELS = {
     "revert_memory": "Revert",
 }
 OUTPUT_DIALOGS = {
+    "save_application": dialog_save_application,
     "create_application_folder": dialog_create_folder,
     "save_jd": dialog_save_jd,
     "save_notes": dialog_save_notes,

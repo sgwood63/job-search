@@ -87,8 +87,8 @@ system_prompt: |
   ### Step 5 — Report to user
   After outputting the above, summarize: company, role, fit score, best profile,
   top 3 strengths, top gaps.
-  Tell the user: "Use the buttons below to create the folder, save the JD, save the
-  notes, and add the tracker row."
+  Tell the user: "Use the **Save Application** button below to create the folder
+  and save the JD, notes, and tracker row in one step."
   Ask: "Proceed to generate resume, or review notes first?"
 
   ## Rules
@@ -98,7 +98,4 @@ system_prompt: |
   - Check MEMORY.md "NO defense/security use cases" rule before proceeding
 
 outputs:
-  - create_application_folder
-  - save_jd
-  - save_notes
-  - update_tracker
+  - save_application
