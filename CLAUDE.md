@@ -48,7 +48,9 @@ Spawn a Haiku agent to:
 
 ## Google Drive Sync
 
-After ANY content generation (application folder, resume, notes, tracker update), read `$GDRIVE_DIR` from `.env` and run:
+Sync is automatic. A `PostToolUse` hook in `.claude/settings.json` triggers rsync after every `Write` or `Edit` to a file under `$APPLICANT_DIR`. No manual step needed.
+
+If sync ever needs to be run manually (hook missing, fresh setup, etc.):
 
 ```bash
 source "$APP_DIR/.env"
@@ -56,8 +58,6 @@ rsync -av --exclude='node_modules' --exclude='_temp-*' \
   "$APPLICANT_DIR/" \
   "$GDRIVE_DIR/"
 ```
-
-Never skip this step.
 
 ## Resume Generation Rules
 
