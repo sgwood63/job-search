@@ -73,8 +73,8 @@ Job-Search-Applicant/
 │   └── YYYY-MM-DD-company-role/
 │       ├── job-description.md   # Full JD + extracted key info
 │       ├── notes.md             # Analysis, interview prep, debrief
-│       ├── Sherman_Wood_[Role]_[Company].md    # Resume (markdown source)
-│       └── Sherman_Wood_[Role]_[Company].pdf   # Resume (final)
+│       ├── [FirstName_LastName]_[Role]_[Company].md    # Resume (markdown source)
+│       └── [FirstName_LastName]_[Role]_[Company].pdf   # Resume (final)
 │
 └── memory/                      # Applicant-specific memory (not in process repo)
     └── APPLICANT-MEMORY.md
@@ -82,17 +82,9 @@ Job-Search-Applicant/
 
 ---
 
-## The Five Profiles
+## Profiles
 
-Applications are generated from one of five career profiles. Each has a full strategy document and a pre-compiled content library (no per-application PDF extraction needed):
-
-| Profile | Target Roles |
-|---|---|
-| AI Governance & Risk Lead | AI risk, compliance, governance frameworks |
-| Analytics Lead (Player-Coach) | BI/analytics leadership with hands-on delivery |
-| Enterprise AI Platform Architect | AI platform implementation, technical pre-sales |
-| Implementation/Customer Success Architect | Post-sales, onboarding, customer engineering |
-| Pre-Sales Solutions Engineer | Technical SE, solutions consulting |
+Applications are generated from one of several career profiles defined in `$APPLICANT_DIR/profiles/`. Each profile has a full strategy document and a pre-compiled content library (no per-application PDF extraction needed). The number and type of profiles are applicant-specific.
 
 ---
 
@@ -122,8 +114,10 @@ After generating any document, sync the applicant directory to Google Drive:
 ```bash
 rsync -av --exclude='node_modules' --exclude='_temp-*' \
   ~/Documents/Job-Search-Applicant/ \
-  "~/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
+  "~/Library/CloudStorage/GoogleDrive-[your-email]/My Drive/[your-folder-name]/"
 ```
+
+See QUICK-START.md for how to find and configure your Google Drive path.
 
 ---
 
