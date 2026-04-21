@@ -14,6 +14,20 @@ Each step is supported by AI assistance using short, task-scoped sessions. Conte
 
 ---
 
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| [Claude Code](https://claude.ai/code) | The CLI that runs all AI-assisted steps. Install via the desktop app or `npm install -g @anthropic-ai/claude-code`. |
+| Anthropic API key | Required for automated workflows. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
+| Claude Haiku | Used for JD screening (fast, low-cost). Requires API access. |
+| Claude Sonnet | Used for resume and document generation (quality). Requires API access. |
+| pandoc + weasyprint + poppler | PDF generation. Installed by `scripts/setup.sh`. |
+
+This system is built around Claude Code's session model: `CLAUDE.md` is auto-loaded at the start of every session, giving the AI its full context without relying on conversation history.
+
+---
+
 ## Two-Repo Structure
 
 This system uses two directories with distinct purposes:
