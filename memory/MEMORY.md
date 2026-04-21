@@ -7,7 +7,6 @@ Job application workflow using profile-based resume customization, Claude Code p
 - `README.md`, `QUICK-START.md`, `workflow.md` - Documentation
 - `templates/` - CSS and reusable content library
 - `scripts/` - Helper utilities
-- See [project_job_search_app.md](project_job_search_app.md) — app architecture, two-directory design, 6 process definitions
 - See [reference_directories.md](reference_directories.md) — **canonical path definitions** (`$APP_DIR`, `$APPLICANT_DIR`)
 
 ## Applicant Context

@@ -26,7 +26,7 @@ $APPLICANT_DIR/
 ├── base-documents/
 │   ├── EXPERIENCE-REFERENCE.md
 │   └── resume-content-guidance.md
-└── memory/                       # Applicant-specific memory (not app-process memory)
+└── memory/                       # Applicant-specific memory
 ```
 
 ## How to Apply

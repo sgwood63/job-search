@@ -18,4 +18,3 @@ One long Claude Code session degrades after repeated context compression — sum
 - Start a new session per task rather than continuing an old long one
 - Before ending a session, save anything important that isn't already in memory files
 - If something important came up mid-session, explicitly write a memory file before closing
-- The app/ being built will enforce this pattern structurally — each sub-process is a fresh API call
