@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(jq -r '.tool_input.file_path // empty' 2>/dev/null); source /Users/shermanwood/Documents/Job-Search-2026/.env 2>/dev/null; [[ \"$file\" == \"$APPLICANT_DIR\"* ]] && rsync -a --exclude='node_modules' --exclude='_temp-*' \"$APPLICANT_DIR/\" \"$GDRIVE_DIR/\" 2>/dev/null || true",
+            "statusMessage": "Syncing to Google Drive...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
