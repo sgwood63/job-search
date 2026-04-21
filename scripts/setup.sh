@@ -253,6 +253,172 @@ fi
 
 echo "$(green "✓") Written: $ENV_FILE"
 
+# ── Step 6: Scaffold applicant directory ────────────────────────────────────
+
+print_section "Step 6 — Applicant Directory Structure"
+echo "Creating directories and stub files (existing files are never overwritten)."
+echo ""
+
+scaffold_file() {
+    # scaffold_file <path> <heredoc-content>
+    local path="$1"
+    local content="$2"
+    if [[ -e "$path" ]]; then
+        echo "  $(yellow "–") exists: $path"
+    else
+        mkdir -p "$(dirname "$path")"
+        printf '%s\n' "$content" > "$path"
+        echo "  $(green "✓") created: $path"
+    fi
+}
+
+# Directories
+for dir in profiles base-documents applications memory; do
+    if [[ ! -d "$APPLICANT_DIR/$dir" ]]; then
+        mkdir -p "$APPLICANT_DIR/$dir"
+        echo "  $(green "✓") created: $APPLICANT_DIR/$dir/"
+    else
+        echo "  $(yellow "–") exists:  $APPLICANT_DIR/$dir/"
+    fi
+done
+
+echo ""
+
+# applicant.md
+scaffold_file "$APPLICANT_DIR/applicant.md" \
+'# Applicant
+
+## Contact Information
+- Name:
+- Location:
+- Email:
+- Phone:
+- LinkedIn:
+- GitHub:
+
+## Job Search Criteria
+
+### Locations Accepted
+- Remote (US): Yes / No
+- Hybrid / Onsite regions:
+- Max travel:
+
+### Role Preferences
+- Target titles:
+- Industries of interest:
+- Deal-breakers:
+
+### Compensation
+- Target base:
+- Acceptable range:
+
+## Notes'
+
+# application-tracker.md
+scaffold_file "$APPLICANT_DIR/application-tracker.md" \
+'# Job Application Tracker
+
+## Active Applications
+
+| Date | Company | Role | Profile | Source | Status | Next Action | Priority |
+|---|---|---|---|---|---|---|---|
+
+## Closed / Rejected
+
+| Date | Company | Role | Outcome | Notes |
+|---|---|---|---|---|'
+
+# base-documents/EXPERIENCE-REFERENCE.md
+scaffold_file "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md" \
+'# Experience Reference
+
+Canonical source of verified facts. All resume generation draws from this file.
+Never fabricate — if a claim is not here, add it here first.
+
+---
+
+## [Most Recent Role Title] — [Company] ([Start Year]–[End Year or Present])
+
+**Company:** One sentence describing what the company does.
+
+**Your role:** What you specifically did (not generic job duties).
+
+**Key contributions:**
+- [Specific thing you built, designed, led, or delivered]
+- [Specific thing you built, designed, led, or delivered]
+- [Specific thing you built, designed, led, or delivered]
+
+**Technologies / tools:** List only ones you genuinely used.
+
+**Metrics / outcomes (if verifiable):**
+-
+
+---
+
+## [Previous Role Title] — [Company] ([Start Year]–[End Year])
+
+**Company:**
+
+**Your role:**
+
+**Key contributions:**
+-
+-
+
+**Technologies / tools:**
+
+---
+
+<!-- Add a section for each role, most-recent-first. -->
+<!-- Mark anything uncertain as: [UNVERIFIED — confirm before use] -->'
+
+# base-documents/resume-content-guidance.md  (only if not present)
+scaffold_file "$APPLICANT_DIR/base-documents/resume-content-guidance.md" \
+'# Resume Content Guidance
+
+Notes on framing, tone, and what to emphasize across all resumes.
+
+## Voice Guidelines
+- Write like you talk (professionally)
+- Use specific examples from actual experience
+- First person — "I designed" not "Designed"
+- Avoid corporate jargon you would not say aloud
+
+## What to Emphasize
+
+## What to Compress or Omit
+
+## Keywords to Include Naturally'
+
+# profiles/PROFILES-QUICK-REFERENCE.md
+scaffold_file "$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md" \
+'# Profiles — Quick Reference
+
+Use this file for fast JD-to-profile matching. One row per profile.
+
+| Profile | Best For | Key Signals in JD | Avoid When |
+|---|---|---|---|
+| [profile-name] | | | |
+
+---
+
+## Matching Rules
+
+- Score each profile 1–10 against the JD requirements
+- Use the profile with the highest score (minimum 7/10 for a fit)
+- If no profile scores 7+, flag as no-fit with reasoning'
+
+# memory/APPLICANT-MEMORY.md
+scaffold_file "$APPLICANT_DIR/memory/APPLICANT-MEMORY.md" \
+'# Applicant Memory Index
+
+Applicant-specific context loaded by Claude Code sessions.
+
+## Files in This Directory
+
+<!-- Add entries as you create memory files: -->
+<!-- - [filename.md](filename.md) — one-line description -->'
+
 # ── Verification ────────────────────────────────────────────────────────────
 
 print_section "Verification"
@@ -292,10 +458,14 @@ echo ""
 echo "To activate in your current shell:"
 echo "  $(bold "source .env")"
 echo ""
-echo "Next steps (see QUICK-START.md §2–6):"
-echo "  2. Create base-documents/EXPERIENCE-REFERENCE.md in \$APPLICANT_DIR"
-echo "  3. Define profiles in \$APPLICANT_DIR/profiles/"
-echo "  4. Create \$APPLICANT_DIR/applicant.md"
-echo "  5. Initialize \$APPLICANT_DIR/application-tracker.md"
-echo "  6. Review CLAUDE.md for workflow rules"
+echo "Stub files have been created — fill these in before your first application:"
+echo "  $(bold "$APPLICANT_DIR/applicant.md")"
+echo "    → Your contact info, location preferences, and role criteria"
+echo "  $(bold "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md")"
+echo "    → Verified facts for every role — the source of truth for all resumes"
+echo "  $(bold "$APPLICANT_DIR/profiles/")"
+echo "    → Create one [profile-name].md + [profile-name]-CONTENT.md per target role type"
+echo "    → Then fill in profiles/PROFILES-QUICK-REFERENCE.md"
+echo ""
+echo "See QUICK-START.md §2–4 for guidance on each."
 echo ""
