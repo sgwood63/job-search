@@ -108,13 +108,15 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
 
 ## Memory Sync Rule
-Process memory files are mirrored in `memory/` in the Git repo at `/Users/shermanwood/Documents/Job-Search-2026/` for version control. After creating or updating a process memory file, copy it and commit:
+`Job-Search-2026/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
 ```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/MEMORY.md \
-   /Users/shermanwood/Documents/Job-Search-2026/memory/
-# copy any other changed process files individually
+# 1. Edit files in /Users/shermanwood/Documents/Job-Search-2026/memory/
+# 2. Commit from the repo:
 git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
 git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+# 3. Sync to live memory:
+cp /Users/shermanwood/Documents/Job-Search-2026/memory/*.md \
+   ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/
 ```
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately (not git-tracked in this repo).
 
