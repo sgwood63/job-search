@@ -30,7 +30,38 @@ pandoc test.md -o test.pdf --pdf-engine=weasyprint --css=templates/resume.css
 pdfinfo test.pdf | grep Pages
 ```
 
-### 3. Establish your experience baseline
+### 3. Map Google Drive for sync
+
+The applicant directory is synced to Google Drive after every content generation step. To set this up:
+
+**Install the Google Drive desktop app** from [drive.google.com](https://drive.google.com) if not already installed. Sign in and let it complete initial sync.
+
+**Find your Google Drive mount path:**
+```bash
+ls ~/Library/CloudStorage/
+```
+You'll see a directory named `GoogleDrive-[your-email@gmail.com]`. The full path to use is:
+```
+~/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive/
+```
+
+**Create the target folder in Google Drive:**
+```bash
+mkdir -p "~/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive/Job Search 2026"
+```
+Or create it in the Google Drive desktop app / Google Drive web UI.
+
+**Test the sync:**
+```bash
+rsync -av --dry-run --exclude='node_modules' --exclude='_temp-*' \
+  ~/Documents/Job-Search-Applicant/ \
+  "~/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive/Job Search 2026/"
+```
+Remove `--dry-run` once the paths look right.
+
+**Record your sync command in `CLAUDE.md`** under "Google Drive Sync" so it runs automatically after every content generation step.
+
+### 4. Establish your experience baseline
 
 Create `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` — the canonical, verified source of every claim you will make in any resume.
 
@@ -43,7 +74,7 @@ Include for each role:
 
 **Rule**: If you're not certain a claim is accurate, mark it unverified and clarify before using it. Resumes are generated from this file — not the other way around.
 
-### 4. Define your job profiles
+### 5. Define your job profiles
 
 Identify 2–5 types of roles you're targeting. For each, create files in `$APPLICANT_DIR/profiles/`:
 
@@ -62,7 +93,7 @@ Identify 2–5 types of roles you're targeting. For each, create files in `$APPL
 - Summary of each profile with key signals
 - Used for fast initial matching when screening a JD
 
-### 5. Create applicant context
+### 6. Create applicant context
 
 Create `$APPLICANT_DIR/applicant.md` with:
 - Contact information (name, location, email, phone, LinkedIn, GitHub)
@@ -70,7 +101,7 @@ Create `$APPLICANT_DIR/applicant.md` with:
 - Role preferences and deal-breakers
 - Any other criteria for fit/no-fit screening
 
-### 6. Initialize the tracker
+### 7. Initialize the tracker
 
 Create `$APPLICANT_DIR/application-tracker.md`:
 
@@ -84,24 +115,12 @@ Create `$APPLICANT_DIR/application-tracker.md`:
 | Date | Company | Role | Outcome | Notes |
 ```
 
-### 7. Configure session context
+### 8. Configure session context
 
-The process repo includes `CLAUDE.md` — this file is auto-loaded by Claude Code at the start of every session. It contains all workflow rules, resume standards, and process rules.
-
-Review `CLAUDE.md` and update:
+Review `CLAUDE.md` in the process repo and update:
 - The `$APP_DIR` and `$APPLICANT_DIR` paths (if different from defaults)
-- The Google Drive sync path
+- The Google Drive sync command (from step 3 above)
 - Any workflow rules you want to adjust
-
-### 8. Configure storage
-
-Set up Google Drive sync. After any content generation, run:
-
-```bash
-rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  ~/Documents/Job-Search-Applicant/ \
-  "~/Library/CloudStorage/GoogleDrive-[your-email]/My Drive/Job Search 2026/"
-```
 
 ---
 
@@ -112,8 +131,8 @@ rsync -av --exclude='node_modules' --exclude='_temp-*' \
 **Step 1 — Provide the JD**
 
 Give Claude Code the job description (URL, PDF, or paste). It will automatically:
-- Screen for location/travel fit
-- Match to the best profile
+- Screen for location/travel fit against `$APPLICANT_DIR/applicant.md`
+- Match to the best profile from `$APPLICANT_DIR/profiles/`
 - Create `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
 - Generate resume and notes if fit; log with reason if no fit
 - Update the tracker
@@ -121,9 +140,9 @@ Give Claude Code the job description (URL, PDF, or paste). It will automatically
 
 **Step 2 — Review the resume**
 
-Claude generates the resume, self-reviews it against the JD, applies improvements, then generates the PDF. You review:
+Claude generates the resume, self-reviews it against the JD, applies improvements, then generates the PDF. Review:
 - Does every bullet have a factual basis in EXPERIENCE-REFERENCE.md?
-- Does it read like you, not like a generated document?
+- Does it read like the applicant, not like a generated document?
 - Does it answer: fit, credibility, environment match?
 
 **Step 3 — Submit and track**
