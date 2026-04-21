@@ -20,17 +20,19 @@ This system uses two directories with distinct purposes:
 
 | Directory | Purpose | Git-tracked |
 |---|---|---|
-| `~/Documents/Job-Search-2026/` | Process, tooling, templates, memory | Yes |
-| `~/Documents/Job-Search-Applicant/` | Applicant data, applications, profiles, tracker | No |
+| `$APP_DIR` (this repo) | Process, tooling, templates, memory | Yes |
+| `$APPLICANT_DIR` | Applicant data, applications, profiles, tracker | No |
+
+Paths are defined in `.env` — see [QUICK-START.md](QUICK-START.md) for setup.
 
 Applicant data is kept out of git to protect PII and keep the process repo clean.
 
 ---
 
-## Process Repo — `Job-Search-2026/`
+## Process Repo — `$APP_DIR`
 
 ```
-Job-Search-2026/
+$APP_DIR/
 ├── CLAUDE.md                    # Auto-loaded session context (rules + workflow)
 ├── README.md                    # This file
 ├── QUICK-START.md               # Setup guide
@@ -52,10 +54,10 @@ Job-Search-2026/
 
 ---
 
-## Applicant Repo — `Job-Search-Applicant/`
+## Applicant Repo — `$APPLICANT_DIR`
 
 ```
-Job-Search-Applicant/
+$APPLICANT_DIR/
 ├── applicant.md                 # Contact info, job criteria, location preferences
 ├── application-tracker.md       # Master tracker (all applications)
 │

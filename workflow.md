@@ -249,7 +249,9 @@ Files tracked in `memory/`:
 
 ```bash
 # After updating a memory file in ~/.claude/.../memory/:
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md memory/
+source .env
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
+cp "$CLAUDE_MEM"*.md memory/
 git add memory/
 git commit -m "Update memory: [what changed]"
 ```
