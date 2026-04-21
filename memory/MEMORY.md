@@ -10,6 +10,10 @@ Job application workflow using profile-based resume customization, Claude Code p
 - See [project_job_search_app.md](project_job_search_app.md) — app architecture, two-directory design, 6 process definitions
 - See [reference_directories.md](reference_directories.md) — **canonical path definitions** (`$APP_DIR`, `$APPLICANT_DIR`)
 
+## Applicant Context
+Applicant-specific context (identity, location, experience, role rules) lives in the applicant directory — not here.
+Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
+
 ## Automated Workflow (DO NOT ASK, JUST DO)
 
 ### Use Haiku for Initial Screening (Cost Optimization)
@@ -105,13 +109,15 @@ Job application workflow using profile-based resume customization, Claude Code p
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
 
 ## Memory Sync Rule
-Memory files are mirrored in `memory/` in the Git repo at `/Users/shermanwood/Documents/Job-Search-2026/` for version control. After creating or updating any memory file, copy it to `memory/` and commit:
+Process memory files are mirrored in `memory/` in the Git repo at `/Users/shermanwood/Documents/Job-Search-2026/` for version control. After creating or updating a process memory file, copy it and commit:
 ```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md \
+cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/MEMORY.md \
    /Users/shermanwood/Documents/Job-Search-2026/memory/
+# copy any other changed process files individually
 git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
 git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
 ```
+Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately (not git-tracked in this repo).
 
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
