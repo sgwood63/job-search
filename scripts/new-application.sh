@@ -5,6 +5,20 @@
 
 set -e
 
+# Load environment variables
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$REPO_ROOT/.env" ]; then
+    source "$REPO_ROOT/.env"
+else
+    echo "Error: $REPO_ROOT/.env not found. Copy .env.example to .env and fill in your paths."
+    exit 1
+fi
+
+if [ -z "$APPLICANT_DIR" ]; then
+    echo "Error: APPLICANT_DIR is not set in .env"
+    exit 1
+fi
+
 # Check arguments
 if [ $# -lt 2 ]; then
     echo "Usage: ./new-application.sh \"Company Name\" \"Role Title\" [profile]"
@@ -25,13 +39,13 @@ ROLE_SLUG=$(echo "$ROLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:a
 FOLDER_NAME="${DATE}-${COMPANY_SLUG}-${ROLE_SLUG}"
 
 # Create application directory
-APP_DIR="applications/${FOLDER_NAME}"
-mkdir -p "$APP_DIR"
+APP_FOLDER="${APPLICANT_DIR}/applications/${FOLDER_NAME}"
+mkdir -p "$APP_FOLDER"
 
-echo "Created application folder: $APP_DIR"
+echo "Created application folder: $APP_FOLDER"
 
 # Create notes.md template
-cat > "$APP_DIR/notes.md" << EOF
+cat > "$APP_FOLDER/notes.md" << EOF
 # ${COMPANY} - ${ROLE}
 
 ## Application Details
@@ -66,16 +80,9 @@ cat > "$APP_DIR/notes.md" << EOF
 - Emphasized:
 - Keywords used:
 
-### Cover Letter
-- Opening angle:
-- Key stories/examples used:
-  1.
-  2.
-
 ## Application Status
 
 - [ ] Resume customized
-- [ ] Cover letter written
 - [ ] Application submitted
 - [ ] Confirmation received
 - [ ] Tracker updated
@@ -113,7 +120,7 @@ cat > "$APP_DIR/notes.md" << EOF
 EOF
 
 # Create job-description.md placeholder
-cat > "$APP_DIR/job-description.md" << EOF
+cat > "$APP_FOLDER/job-description.md" << EOF
 # ${COMPANY} - ${ROLE}
 
 **Posted**:
@@ -124,61 +131,28 @@ cat > "$APP_DIR/job-description.md" << EOF
 
 [Paste the full job description here]
 
-## Quick Analysis
+## Key Info Extracted
 
-**Match Score**: [1-10]
-**Red Flags**: [Any concerns]
-**Excitement Level**: [1-10]
+- Company:
+- Role:
+- Location / Remote:
+- Travel:
+- Compensation:
 
-## Key Takeaways
--
--
-EOF
+## Profile Match
 
-# Create checklist.md
-cat > "$APP_DIR/checklist.md" << EOF
-# Application Checklist: ${COMPANY}
-
-## Pre-Application
-- [ ] Read full job description
-- [ ] Research company (website, news, LinkedIn)
-- [ ] Identify matching profile: ${PROFILE}
-- [ ] Map requirements to your experience
-- [ ] Confirm you genuinely want this role
-
-## Document Preparation
-- [ ] Copy base resume to this folder
-- [ ] Customize resume for this role
-- [ ] Review relevant templates
-- [ ] Write/customize cover letter
-- [ ] Voice check (read both aloud)
-- [ ] Claims audit (can defend everything?)
-
-## Submission
-- [ ] Save final PDFs with proper naming
-- [ ] Submit application
-- [ ] Save confirmation
-- [ ] Update application-tracker.md
-- [ ] Set follow-up reminder
-
-## Quality Gates
-- [ ] Resume sounds like me
-- [ ] Cover letter shows genuine interest
-- [ ] No unsupported claims
-- [ ] Keywords naturally included
-- [ ] Error-free (grammar, spelling, formatting)
+- Best profile:
+- Fit score (1-10):
+- Key gaps:
 EOF
 
 echo ""
 echo "Created files:"
-echo "  - notes.md (main tracking document)"
-echo "  - job-description.md (paste JD here)"
-echo "  - checklist.md (step-by-step guide)"
+echo "  - $APP_FOLDER/notes.md"
+echo "  - $APP_FOLDER/job-description.md"
 echo ""
 echo "Next steps:"
-echo "  1. cd $APP_DIR"
-echo "  2. Paste job description into job-description.md"
-echo "  3. Follow checklist.md for the application process"
-echo "  4. Copy and customize your resume and cover letter"
+echo "  1. Paste job description into job-description.md"
+echo "  2. Generate resume with Claude Code"
+echo "  3. Update ${APPLICANT_DIR}/application-tracker.md when submitted"
 echo ""
-echo "Don't forget to update application-tracker.md when done!"
