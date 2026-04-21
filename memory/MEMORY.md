@@ -72,6 +72,15 @@ Job application workflow using profile-based resume customization, Claude Code p
 - Mid-career (12–20 years ago): **2–4 bullets**
 - Early career (20+ years): **1 bullet or title only**
 
+*Section labels*:
+- Experience section must be labeled **"Relevant Experience"** — never "Experience" or "Professional Experience"
+- Earlier career (20+ years) must be a single **"Earlier Career"** section, not individual role sections
+- Founding Architect (2005–2010) belongs inside Earlier Career by default; only warrants a standalone section when startup engineering depth, connector development, or Salesforce integration is a specific JD requirement
+
+*No duplication*:
+- Capabilities section items must not overlap — merge any that cover the same domain
+- Each achievement must appear in the role period where it actually occurred — never attribute work from one era to another role's section
+
 *Signal density*:
 - Every bullet answers a recruiter question: "Can they talk to customers? Design architectures? Make AI/analytics work?"
 - Bullet formula: **Action → Technical Domain → Context → Outcome**
