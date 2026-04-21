@@ -7,6 +7,8 @@ Job application workflow using profile-based resume customization, Claude Code p
 - `README.md`, `QUICK-START.md`, `workflow.md` - Documentation
 - `templates/` - CSS and reusable content library
 - `scripts/` - Helper utilities
+- See [project_job_search_app.md](project_job_search_app.md) — app architecture, two-directory design, 6 process definitions
+- See [reference_directories.md](reference_directories.md) — **canonical path definitions** (`$APP_DIR`, `$APPLICANT_DIR`)
 
 ## Automated Workflow (DO NOT ASK, JUST DO)
 
@@ -14,12 +16,12 @@ Job application workflow using profile-based resume customization, Claude Code p
 1. User provides JD URL/document
 2. **Use Haiku agent** to fetch JD and perform initial evaluation:
    - Extract JD content (company, role, location, travel, requirements, compensation)
-   - Check location/travel fit per applicant's criteria (see applicant directory)
-   - Match to best profile using applicant's PROFILES-QUICK-REFERENCE.md
+   - Check location/travel fit per applicant's criteria (`$APPLICANT_DIR/applicant.md`)
+   - Match to best profile using `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`
    - Determine fit/no-fit with reasoning
 
 ### For EVERY JD (fit or no-fit)
-3. Create application folder in the applicant directory
+3. Create application folder in `$APPLICANT_DIR/applications/`
 4. Save job-description.md with full JD content and key info
 
 ### If NO FIT (stay in Haiku)
@@ -28,7 +30,7 @@ Job application workflow using profile-based resume customization, Claude Code p
 7. Stop
 
 ### If FIT (switch to Sonnet for quality)
-5. Read profile-specific content library from applicant profiles directory
+5. Read profile-specific content library from `$APPLICANT_DIR/profiles/`
 6. Read full matched profile for strategy/positioning
 7. Generate tailored resume using content library (ALL factual, pre-verified)
 8. Create detailed notes.md (JD analysis, interview prep)
