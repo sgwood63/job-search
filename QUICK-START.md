@@ -2,86 +2,40 @@
 
 This guide covers how to bootstrap this system from scratch. If the system is already running, skip to **Daily Use**.
 
+**Prerequisite:** Install the [Google Drive desktop app](https://drive.google.com), sign in, and let it complete its initial sync before running setup.
+
 ---
 
-## Phase 1: Foundation (One-time setup, ~2 hours)
+## Phase 1: Foundation (One-time setup, ~30 minutes)
 
-### 1. Create the two directories
+### Steps 1–4: Run the setup script
 
-```bash
-mkdir ~/Documents/Job-Search-2026        # Process repo (git-tracked)
-mkdir ~/Documents/Job-Search-Applicant   # Applicant data (not git-tracked)
-```
-
-Initialize the process repo as a git repo. Do NOT initialize the applicant directory — it contains PII.
-
-### 2. Install PDF generation dependencies
+After cloning this repo, run the interactive setup script from the repo root:
 
 ```bash
-pip install weasyprint
-brew install pandoc poppler   # poppler provides pdfinfo
+bash scripts/setup.sh
 ```
 
-Verify `templates/resume.css` is present in the process repo. All resumes use it.
+The script walks you through each step with confirmation prompts and sensible defaults:
 
-Test PDF generation:
-```bash
-pandoc test.md -o test.pdf --pdf-engine=weasyprint --css=templates/resume.css
-pdfinfo test.pdf | grep Pages
-```
+| Step | What it does |
+|---|---|
+| 1 | Creates the applicant data directory (defaults to a sibling of this repo) |
+| 2 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if already installed) |
+| 3 | Auto-detects your Google Drive mount path on macOS; creates the sync target folder |
+| 4 | Sets your Anthropic API key — defaults to any key already in your shell environment |
+| 5 | Writes `.env` with all paths; runs a dry-run rsync to verify sync works |
 
-### 3. Map Google Drive for sync
+`.env` is gitignored and never committed. To update any value, edit `.env` directly or re-run `bash scripts/setup.sh`.
 
-The applicant directory is synced to Google Drive after every content generation step.
+For Windows or Linux Google Drive paths, see `.env.example` for the correct format.
 
-**Install the Google Drive desktop app** from [drive.google.com](https://drive.google.com) if not already installed. Sign in and let it complete its initial sync before continuing.
-
-**Find your Google Drive mount path (macOS):**
-```bash
-ls ~/Library/CloudStorage/
-```
-You'll see a directory named `GoogleDrive-[your-email@gmail.com]`. Note the full path:
-```
-/Users/[you]/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive
-```
-
-For other operating systems, see the path notes in `.env.example`.
-
-**Create the target folder:**
-```bash
-mkdir -p "/Users/[you]/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive/Job Search 2026"
-```
-Or create it in the Google Drive web UI — it will appear at that path once synced.
-
-### 4. Configure environment
-
-All top-level paths are set in a single `.env` file. Scripts and Claude Code load this file at runtime. It is gitignored and never committed.
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and fill in the three variables using the paths from steps 1–3:
-
-```bash
-export APP_DIR="/Users/[you]/Documents/Job-Search-2026"
-export APPLICANT_DIR="/Users/[you]/Documents/Job-Search-Applicant"
-export GDRIVE_DIR="/Users/[you]/Library/CloudStorage/GoogleDrive-[your-email@gmail.com]/My Drive/Job Search 2026"
-```
-
-**Verify the environment loads and the sync path works:**
+To activate the environment in your current shell after setup:
 ```bash
 source .env
-echo "APP_DIR=$APP_DIR"
-echo "APPLICANT_DIR=$APPLICANT_DIR"
-echo "GDRIVE_DIR=$GDRIVE_DIR"
-
-rsync -av --dry-run --exclude='node_modules' --exclude='_temp-*' \
-  "$APPLICANT_DIR/" "$GDRIVE_DIR/"
 ```
-The dry run shows what would be transferred without copying anything. Fix any path errors before continuing.
 
-### 5. Establish your experience baseline
+### 2. Establish your experience baseline
 
 Create `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` — the canonical, verified source of every claim you will make in any resume.
 
@@ -94,7 +48,7 @@ Include for each role:
 
 **Rule**: If you're not certain a claim is accurate, mark it unverified and clarify before using it. Resumes are generated from this file — not the other way around.
 
-### 6. Define your job profiles
+### 3. Define your job profiles
 
 Identify 2–5 types of roles you're targeting. For each, create files in `$APPLICANT_DIR/profiles/`:
 
@@ -113,7 +67,7 @@ Identify 2–5 types of roles you're targeting. For each, create files in `$APPL
 - Summary of each profile with key signals
 - Used for fast initial matching when screening a JD
 
-### 7. Create applicant context
+### 4. Create applicant context
 
 Create `$APPLICANT_DIR/applicant.md` with:
 - Contact information (name, location, email, phone, LinkedIn, GitHub)
@@ -121,7 +75,7 @@ Create `$APPLICANT_DIR/applicant.md` with:
 - Role preferences and deal-breakers
 - Any other criteria for fit/no-fit screening
 
-### 8. Initialize the tracker
+### 5. Initialize the tracker
 
 Create `$APPLICANT_DIR/application-tracker.md`:
 
@@ -135,7 +89,7 @@ Create `$APPLICANT_DIR/application-tracker.md`:
 | Date | Company | Role | Outcome | Notes |
 ```
 
-### 9. Configure session context
+### 6. Configure session context
 
 `CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed there. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
 
