@@ -10,17 +10,53 @@ Every application follows the same pipeline:
 JD → Screen → Profile Match → Generate Resume → Review → Submit → Track → Interview Prep → Debrief
 ```
 
-Each step is supported by AI assistance, with context loaded specifically for that step — not a single long conversation that accumulates and degrades.
+Each step is supported by AI assistance using short, task-scoped sessions. Context is loaded at session start from `CLAUDE.md` — not accumulated across long conversations.
 
 ---
 
-## Directory Structure
+## Two-Repo Structure
+
+This system uses two directories with distinct purposes:
+
+| Directory | Purpose | Git-tracked |
+|---|---|---|
+| `~/Documents/Job-Search-2026/` | Process, tooling, templates, memory | Yes |
+| `~/Documents/Job-Search-Applicant/` | Applicant data, applications, profiles, tracker | No |
+
+Applicant data is kept out of git to protect PII and keep the process repo clean.
+
+---
+
+## Process Repo — `Job-Search-2026/`
 
 ```
 Job-Search-2026/
+├── CLAUDE.md                    # Auto-loaded session context (rules + workflow)
 ├── README.md                    # This file
-├── QUICK-START.md               # Setup guide for a new search
+├── QUICK-START.md               # Setup guide
 ├── workflow.md                  # Detailed process documentation
+│
+├── memory/                      # Process memory (git-tracked)
+│   ├── MEMORY.md                # Master index
+│   └── feedback_*.md            # Accumulated rules
+│
+├── templates/                   # Shared assets
+│   ├── resume.css               # Default PDF stylesheet (2-page)
+│   ├── one-page-override.css    # Override for 1-page resumes
+│   └── cover-letter-override.css
+│
+└── scripts/                     # Utility scripts
+    ├── new-application.sh       # Create application folder
+    └── status-summary.sh        # Print tracker summary
+```
+
+---
+
+## Applicant Repo — `Job-Search-Applicant/`
+
+```
+Job-Search-Applicant/
+├── applicant.md                 # Contact info, job criteria, location preferences
 ├── application-tracker.md       # Master tracker (all applications)
 │
 ├── profiles/                    # Career profiles (5 total)
@@ -30,8 +66,8 @@ Job-Search-2026/
 │
 ├── base-documents/              # Source documents
 │   ├── EXPERIENCE-REFERENCE.md  # Verified facts — canonical source of truth
-│   ├── resume-content-guidance.md    # Resume construction standards
-│   └── achievements-worksheet.md    # Raw achievements and metrics
+│   ├── resume-content-guidance.md
+│   └── achievements-worksheet.md
 │
 ├── applications/                # One folder per application
 │   └── YYYY-MM-DD-company-role/
@@ -40,16 +76,8 @@ Job-Search-2026/
 │       ├── Sherman_Wood_[Role]_[Company].md    # Resume (markdown source)
 │       └── Sherman_Wood_[Role]_[Company].pdf   # Resume (final)
 │
-├── templates/                   # Shared assets
-│   └── resume.css               # PDF generation stylesheet
-│
-├── memory/                      # Memory files (git-tracked mirror)
-│   ├── MEMORY.md                # Master index
-│   ├── EXPERIENCE-REFERENCE.md  # Mirror of base-documents version
-│   ├── feedback_*.md            # Workflow and resume rules
-│   └── user_*.md / project_*.md # User context and project state
-│
-└── scripts/                     # Utility scripts
+└── memory/                      # Applicant-specific memory (not in process repo)
+    └── APPLICANT-MEMORY.md
 ```
 
 ---
@@ -70,51 +98,46 @@ Applications are generated from one of five career profiles. Each has a full str
 
 ## Key Files
 
-**`base-documents/EXPERIENCE-REFERENCE.md`**
+**`$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`**
 Canonical source of verified experience facts. All resume generation draws from this. Never fabricate — if it's not here, ask before adding it.
 
-**`profiles/PROFILES-QUICK-REFERENCE.md`**
+**`$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`**
 One-page matching guide. Use this first when evaluating a new role.
 
-**`profiles/[profile]-CONTENT.md`**
-Pre-compiled resume bullets organized by profile. Eliminates per-application extraction from PDFs.
-
-**`application-tracker.md`**
+**`$APPLICANT_DIR/application-tracker.md`**
 Single source of truth for all application statuses, next actions, and follow-up dates.
 
+**`CLAUDE.md`**
+Auto-loaded by Claude Code at session start. Contains all workflow rules, resume standards, and process rules. Edit this (and `memory/MEMORY.md`) to change how the AI behaves.
+
 **`templates/resume.css`**
-Shared stylesheet for PDF generation via pandoc + weasyprint.
+Shared stylesheet for PDF generation via pandoc + weasyprint. Use `one-page-override.css` for 1-page resumes.
 
 ---
 
-## Storage
+## Google Drive Sync
 
-All files are maintained in two locations — keep both in sync:
+After generating any document, sync the applicant directory to Google Drive:
 
-- **Primary**: `/Users/shermanwood/Documents/Job-Search-2026/`
-- **Google Drive**: `/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/`
-
-After generating any document, sync immediately:
 ```bash
-cp [local-file] "[gdrive-path]/[same-relative-path]"
+rsync -av --exclude='node_modules' --exclude='_temp-*' \
+  ~/Documents/Job-Search-Applicant/ \
+  "~/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
 ```
 
 ---
 
-## Memory System
+## Memory and Session Context
 
-Persistent memory lives in `~/.claude/projects/.../memory/` and is mirrored in `memory/` for git tracking. Key files:
+**`CLAUDE.md`** is the primary session context — loaded automatically by Claude Code at the start of every session. It contains the complete workflow, rules, and resume standards.
 
-- `MEMORY.md` — auto-loaded at session start; indexes all other memory
-- `feedback_*.md` — accumulated rules about how to do the work
-- `user_*.md` — user context (location, preferences, coding profile)
-- `project_*.md` — project-level context (LatticeFlow departure, etc.)
+**`memory/`** contains supporting files (feedback rules, reference paths) that are indexed in `CLAUDE.md`. Edit these to update specific rules; then update `CLAUDE.md` if the change affects auto-loaded behavior.
 
-After creating or updating any memory file, sync and commit:
+After editing any memory file, commit from the repo:
+
 ```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+git add memory/ CLAUDE.md
+git commit -m "Update memory: [what changed]"
 ```
 
 ---
@@ -124,17 +147,23 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [w
 Resumes are authored in Markdown and converted to PDF:
 
 ```bash
+# Standard 2-page resume
 pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=../../templates/resume.css
-```
 
-Target: 2 pages for enterprise/direct applications. Verify with `pdfinfo [file].pdf | grep Pages`.
+# 1-page variant
+pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint \
+  --css=../../templates/resume.css --css=../../templates/one-page-override.css
+
+# Verify page count
+pdfinfo [resume].pdf | grep Pages
+```
 
 ---
 
 ## Principles
 
-- **Factual accuracy**: Every claim in a resume must be verifiable. Source: `EXPERIENCE-REFERENCE.md`.
+- **Factual accuracy**: Every claim must be verifiable. Source: `EXPERIENCE-REFERENCE.md`.
 - **Authentic voice**: All materials sound like the person, not like an LLM.
 - **Profile-based generation**: Resumes are generated from pre-compiled content libraries, not improvised per application.
-- **No cover letters**: Not used in this search.
+- **Short sessions**: One task per session. Long sessions degrade through repeated context compression.
 - **Organized tracking**: One tracker, updated immediately after every status change.
