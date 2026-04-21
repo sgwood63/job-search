@@ -2,7 +2,11 @@
 
 This guide covers how to bootstrap this system from scratch. If the system is already running, skip to **Daily Use**.
 
-**Prerequisite:** Install the [Google Drive desktop app](https://drive.google.com), sign in, and let it complete its initial sync before running setup.
+**Before you begin:**
+
+1. **Install Claude Code** — download the desktop app at [claude.ai/code](https://claude.ai/code) or run `npm install -g @anthropic-ai/claude-code`. This is the AI runtime for the entire system.
+2. **Get an Anthropic API key** — at [console.anthropic.com](https://console.anthropic.com). The automated workflow calls Claude Haiku (JD screening) and Claude Sonnet (document generation) directly via the API. `scripts/setup.sh` will prompt you for this key.
+3. **Install Google Drive desktop app** — download from [drive.google.com](https://drive.google.com), sign in, and let it complete its initial sync before running setup.
 
 ---
 
