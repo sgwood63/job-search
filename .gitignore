@@ -12,6 +12,9 @@ base-documents/Jobs*
 base-documents/AI\ Architect*
 base-documents/linkedin-job-listing-page.html
 
+# Environment — contains local paths, never commit
+.env
+
 # macOS
 .DS_Store
 **/.DS_Store

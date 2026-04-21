@@ -1,15 +1,32 @@
 ---
 name: Directory Path Definitions
-description: Canonical paths for $APP_DIR and $APPLICANT_DIR — resolve these before any file operation
+description: Canonical paths for $APP_DIR, $APPLICANT_DIR, and $GDRIVE_DIR — resolve these before any file operation
 type: reference
 originSessionId: c0149eb9-2d07-4301-a2c8-2d751f157124
 ---
-## Path Definitions
+## Path Variables
 
-| Variable | Path | Notes |
+All paths are defined in `$APP_DIR/.env` (gitignored). Read that file to resolve variables.
+
+| Variable | Default Location | Notes |
 |---|---|---|
-| `$APP_DIR` | `/Users/shermanwood/Documents/Job-Search-2026/` | App source, git-tracked |
-| `$APPLICANT_DIR` | `/Users/shermanwood/Documents/Job-Search-Applicant/` | Applicant data, NOT git-tracked |
+| `$APP_DIR` | `~/Documents/Job-Search-2026/` | Process repo, git-tracked |
+| `$APPLICANT_DIR` | `~/Documents/Job-Search-Applicant/` | Applicant data, NOT git-tracked |
+| `$GDRIVE_DIR` | OS-specific (see below) | Google Drive sync target |
+
+## Google Drive Path by OS
+
+| OS | Typical path |
+|---|---|
+| macOS | `~/Library/CloudStorage/GoogleDrive-[email]/My Drive/[folder]` |
+| Windows (WSL) | `/mnt/g/My Drive/[folder]` |
+| Windows (native) | `C:/Users/[name]/Google Drive/[folder]` |
+| Linux (rclone) | `~/gdrive/[folder]` |
+
+On macOS, find the exact path with:
+```bash
+ls ~/Library/CloudStorage/
+```
 
 ## Applicant Directory Layout
 
@@ -31,4 +48,9 @@ $APPLICANT_DIR/
 
 ## How to Apply
 
-Whenever a memory file or workflow step references `$APPLICANT_DIR` or `$APP_DIR`, resolve to the paths above. Do not hardcode paths elsewhere.
+Before any file operation, resolve `$APP_DIR`, `$APPLICANT_DIR`, and `$GDRIVE_DIR` from `$APP_DIR/.env`. Do not hardcode paths.
+
+Shell scripts load variables with:
+```bash
+source "$(dirname "$0")/../.env"
+```

@@ -4,10 +4,13 @@ This file is auto-loaded at session start. It contains all rules and context nee
 
 ## Directory Paths
 
-| Variable | Path |
-|---|---|
-| `$APP_DIR` | `/Users/shermanwood/Documents/Job-Search-2026/` |
-| `$APPLICANT_DIR` | `/Users/shermanwood/Documents/Job-Search-Applicant/` |
+Canonical paths are defined in `$APP_DIR/.env` (gitignored). Read that file at session start to resolve path variables. If `.env` is not present, ask the user to create it from `.env.example`.
+
+| Variable | Defined in `.env` | Notes |
+|---|---|---|
+| `$APP_DIR` | Yes | Process repo, git-tracked |
+| `$APPLICANT_DIR` | Yes | Applicant data, NOT git-tracked |
+| `$GDRIVE_DIR` | Yes | Google Drive sync target (OS-specific path) |
 
 `$APP_DIR` is git-tracked. `$APPLICANT_DIR` is NOT git-tracked (contains applicant PII and application files).
 
@@ -45,12 +48,13 @@ Spawn a Haiku agent to:
 
 ## Google Drive Sync
 
-After ANY content generation (application folder, resume, notes, tracker update), run:
+After ANY content generation (application folder, resume, notes, tracker update), read `$GDRIVE_DIR` from `.env` and run:
 
 ```bash
+source "$APP_DIR/.env"
 rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  /Users/shermanwood/Documents/Job-Search-Applicant/ \
-  "/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
+  "$APPLICANT_DIR/" \
+  "$GDRIVE_DIR/"
 ```
 
 Never skip this step.
@@ -134,13 +138,14 @@ Before ending a session, save anything important that isn't already in memory fi
 `$APP_DIR/memory/` is the source of truth for process memory. After editing memory files:
 
 ```bash
-# 1. Edit files in /Users/shermanwood/Documents/Job-Search-2026/memory/
+source "$APP_DIR/.env"
+# 1. Edit files in $APP_DIR/memory/
 # 2. Commit:
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
-# 3. Sync to live memory:
-cp /Users/shermanwood/Documents/Job-Search-2026/memory/*.md \
-   ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/
+git -C "$APP_DIR" add memory/
+git -C "$APP_DIR" commit -m "Update memory: [what changed]"
+# 3. Sync to live memory (derive .claude project path from $APP_DIR):
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
+cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately.

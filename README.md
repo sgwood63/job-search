@@ -112,12 +112,13 @@ Shared stylesheet for PDF generation via pandoc + weasyprint. Use `one-page-over
 After generating any document, sync the applicant directory to Google Drive:
 
 ```bash
+source .env
 rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  ~/Documents/Job-Search-Applicant/ \
-  "~/Library/CloudStorage/GoogleDrive-[your-email]/My Drive/[your-folder-name]/"
+  "$APPLICANT_DIR/" \
+  "$GDRIVE_DIR/"
 ```
 
-See QUICK-START.md for how to find and configure your Google Drive path.
+`$GDRIVE_DIR` is defined in `.env`. See [QUICK-START.md](QUICK-START.md) for setup.
 
 ---
 
