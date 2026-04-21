@@ -37,7 +37,7 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
    - If location doesn't match criteria → Update tracker with reason → STOP
 
 3. **Profile matching:**
-   - Compare JD against all profiles in [profiles/](profiles/)
+   - Compare JD against all profiles in the applicant directory
    - Identify best-fit profile based on:
      - Technical requirements alignment
      - Role responsibilities match
@@ -49,7 +49,7 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
      - Reorder experience bullets for relevance
      - Incorporate JD keywords naturally
      - Emphasize matching achievements
-     - Pull from [templates/](templates/) library
+     - Pull from [templates/](templates/) library (in this repo)
    - **Cover Letter**: Tailored to JD
      - Reference specific company/role details
      - Highlight 2-3 key matching qualifications
@@ -64,7 +64,7 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
    - Create initial notes.md file with JD analysis
 
 6. **Update tracker:**
-   - Add to [application-tracker.md](application-tracker.md)
+   - Add to application-tracker.md in the applicant directory
    - Status: "Draft - Ready for Review"
    - Profile used
    - Key match points
@@ -75,7 +75,7 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
 
 - [ ] Read the full job description
 - [ ] Verify location/travel requirements match criteria
-- [ ] Identify which job profile(s) it matches (see [profiles/](profiles/))
+- [ ] Identify which job profile(s) it matches (see applicant directory profiles/)
 - [ ] Note the company, role title, and key requirements
 - [ ] Save job description to a file (for reference during customization)
 
@@ -109,7 +109,7 @@ This creates: `applications/YYYY-MM-DD-company-role/`
 
 ### 5. Customize Resume (Manual)
 
-**Start with your base resume** from [base-documents/](base-documents/)
+**Start with your base resume** from the applicant directory base-documents/
 
 **Customization approach:**
 
@@ -137,7 +137,7 @@ This creates: `applications/YYYY-MM-DD-company-role/`
 
 ### 6. Customize Cover Letter (Manual)
 
-**Start with your base cover letter** from [base-documents/](base-documents/)
+**Start with your base cover letter** from the applicant directory base-documents/
 
 **Structure:**
 ```
@@ -207,7 +207,7 @@ In the application folder, create `notes.md`:
 
 - [ ] Upload/submit through the appropriate channel
 - [ ] Save confirmation email/screenshot
-- [ ] Update [application-tracker.md](application-tracker.md)
+- [ ] Update application-tracker.md in the applicant directory
 
 ### 10. Track & Follow-up
 
@@ -245,9 +245,7 @@ Claude maintains a persistent memory system at `~/.claude/projects/.../memory/`.
 
 Files tracked in `memory/`:
 - `MEMORY.md` — master index
-- `EXPERIENCE-REFERENCE.md` — verified experience facts
 - `feedback_*.md` — workflow and resume rules
-- `user_location.md` — location and logistics preferences
 
 ```bash
 # After updating a memory file in ~/.claude/.../memory/:
