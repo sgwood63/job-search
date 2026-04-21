@@ -24,7 +24,10 @@ The script walks you through each step with confirmation prompts and sensible de
 | 2 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if already installed) |
 | 3 | Auto-detects your Google Drive mount path on macOS; creates the sync target folder |
 | 4 | Sets your Anthropic API key — defaults to any key already in your shell environment |
-| 5 | Writes `.env` with all paths; runs a dry-run rsync to verify sync works |
+| 5 | Writes `.env`; runs a dry-run rsync to verify sync works |
+| 6 | Scaffolds the applicant directory: all subdirectories plus stub files for `applicant.md`, `application-tracker.md`, `EXPERIENCE-REFERENCE.md`, `resume-content-guidance.md`, `PROFILES-QUICK-REFERENCE.md`, and `APPLICANT-MEMORY.md` |
+
+Existing files are never overwritten — safe to re-run.
 
 `.env` is gitignored and never committed. To update any value, edit `.env` directly or re-run `bash scripts/setup.sh`.
 
@@ -35,63 +38,45 @@ To activate the environment in your current shell after setup:
 source .env
 ```
 
-### 2. Establish your experience baseline
+### 2. Fill in `applicant.md`
 
-Create `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` — the canonical, verified source of every claim you will make in any resume.
+Open `$APPLICANT_DIR/applicant.md` (created by setup) and fill in:
+- Contact information (name, location, email, phone, LinkedIn, GitHub)
+- Location preferences (remote-only, hybrid regions, travel limit)
+- Role preferences and deal-breakers
 
-Include for each role:
-- Exact title, company, dates
+This file is used by Claude to screen every JD for fit.
+
+### 3. Fill in `EXPERIENCE-REFERENCE.md`
+
+Open `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` (created by setup) and document every role:
+- Exact title, company, and dates
 - What the company did (one sentence)
-- What you specifically did — your actual contributions, not generic job duties
-- Technologies, platforms, tools you genuinely used
-- Any public credentials (repos, publications, certifications)
+- Your specific contributions — not generic job duties
+- Technologies and tools you genuinely used
+- Verifiable metrics or outcomes
 
-**Rule**: If you're not certain a claim is accurate, mark it unverified and clarify before using it. Resumes are generated from this file — not the other way around.
+**Rule**: If you're not certain a claim is accurate, mark it `[UNVERIFIED]`. Resumes are generated from this file — never the other way around.
 
-### 3. Define your job profiles
+### 4. Define your profiles
 
-Identify 2–5 types of roles you're targeting. For each, create files in `$APPLICANT_DIR/profiles/`:
+For each type of role you're targeting, create two files in `$APPLICANT_DIR/profiles/`:
 
 **`[profile-name].md`** — Strategy document:
 - What makes you strong for this role type
 - How to frame your experience for this audience
 - What to emphasize, what to compress
-- Target companies and environments
 
 **`[profile-name]-CONTENT.md`** — Pre-compiled content library:
 - Resume bullets organized by role, ready to pull from
-- Eliminates re-extraction from PDFs per application
-- Update when base resume changes, not per application
+- Eliminates per-application re-extraction from PDFs
+- Update when your experience changes, not per application
 
-**`PROFILES-QUICK-REFERENCE.md`** — One-page matching guide:
-- Summary of each profile with key signals
-- Used for fast initial matching when screening a JD
+Then fill in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md` with a one-row summary per profile. Claude uses this for fast JD matching.
 
-### 4. Create applicant context
+### 5. Configure session context
 
-Create `$APPLICANT_DIR/applicant.md` with:
-- Contact information (name, location, email, phone, LinkedIn, GitHub)
-- Location preferences (remote-only, hybrid regions, travel limit)
-- Role preferences and deal-breakers
-- Any other criteria for fit/no-fit screening
-
-### 5. Initialize the tracker
-
-Create `$APPLICANT_DIR/application-tracker.md`:
-
-```markdown
-# Job Application Tracker
-
-## Active Applications
-| Date | Company | Role | Profile | Source | Status | Next Action | Priority |
-
-## Closed / Rejected
-| Date | Company | Role | Outcome | Notes |
-```
-
-### 6. Configure session context
-
-`CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed there. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
+`CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
 
 ---
 
