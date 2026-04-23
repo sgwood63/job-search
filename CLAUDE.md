@@ -46,6 +46,27 @@ Spawn a Haiku agent to:
 - Sync to Google Drive (see below)
 - Present for user review
 
+## notes.md Structure Rules
+
+Every `notes.md` must include a **Table of Contents** immediately after the header block (title, date, status, profile, fit). The TOC must reflect the actual sections in the file using markdown anchor links.
+
+### Required Section Order
+
+1. Table of Contents
+2. JD Analysis
+3. Fit Assessment
+4. Resume Strategy
+5. Company Research
+6. Notes from Recruiter Interview *(add when available)*
+7. Process *(hiring process steps)*
+8. Interview Prep sections — **in chronological interview order** (e.g., HM interview before technical screen before panel)
+9. Process Reminder *(recap of next steps)*
+
+### Interview Prep Section Rules
+- Each interview stage gets its own H2: `## Interview Prep N — [Stage Name]`
+- Sections appear in the order the interviews occur — never out of sequence
+- Within each interview prep section, subsections follow this order: Logistics → Research → Talking Points → Technical Questions → Questions to Ask → Differentiators / What Not to Bring Up
+
 ## Google Drive Sync
 
 Sync is automatic. A `PostToolUse` hook in `.claude/settings.json` triggers rsync after every `Write` or `Edit` to a file under `$APPLICANT_DIR`. No manual step needed.
