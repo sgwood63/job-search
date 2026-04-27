@@ -16,6 +16,20 @@ Canonical paths are defined in `$APP_DIR/.env` (gitignored). Read that file at s
 
 Applicant-specific context (identity, location, experience, job criteria) is in `$APPLICANT_DIR/applicant.md`.
 
+## New Applicant Setup — DO NOT ASK, JUST DO
+
+When the user says "start setup", "set up applicant", "run applicant setup", or expresses clear intent to begin the new applicant onboarding process:
+
+1. Verify `.env` is loaded and `$APPLICANT_DIR` exists — if not, tell the user to run `bash scripts/setup.sh` first
+2. Read `$APP_DIR/applicant-setup.md` for the full process
+3. Execute **Phase A** (document upload): tell the user exactly what to upload and where, wait for confirmation
+4. Execute **Phase B** (interview): work through each topic, ask questions, take notes — do not rush or batch
+5. Execute **Phase C** (generate documents): produce all files using only what was gathered; present each for review before moving on
+6. Execute **Phase D** (profile validation): find example JDs, store them, run fit checks, generate one sample resume per profile
+7. Use **Sonnet** throughout — this is generative work, not screening
+
+Pause at the end of each phase and confirm with the user before proceeding to the next.
+
 ## Automated Workflow — DO NOT ASK, JUST DO
 
 When the user provides a job description (URL, document, or paste):
