@@ -4,15 +4,14 @@ This guide covers how to bootstrap this system from scratch. If the system is al
 
 **Before you begin:**
 
-1. **Install Claude Code** — download the desktop app at [claude.ai/code](https://claude.ai/code) or run `npm install -g @anthropic-ai/claude-code`. This is the AI runtime for the entire system.
-2. **Get an Anthropic API key** — at [console.anthropic.com](https://console.anthropic.com). The automated workflow calls Claude Haiku (JD screening) and Claude Sonnet (document generation) directly via the API. `scripts/setup.sh` will prompt you for this key.
-3. **Install Google Drive desktop app** — download from [drive.google.com](https://drive.google.com), sign in, and let it complete its initial sync before running setup.
+1. **Install Claude Code** — download the desktop app at [claude.ai/code](https://claude.ai/code) or run `npm install -g @anthropic-ai/claude-code`. This is the AI runtime for the entire system. `scripts/setup.sh` will exit if it cannot find Claude Code.
+2. **Install Google Drive desktop app** *(optional)* — download from [drive.google.com](https://drive.google.com), sign in, and let it complete its initial sync. If not installed, Google Drive sync will be skipped and can be configured later by re-running setup.
 
 ---
 
 ## Phase 1: Foundation (One-time setup, ~30 minutes)
 
-### Steps 1–4: Run the setup script
+### Step 1: Run the setup script
 
 After cloning this repo, run the interactive setup script from the repo root:
 
@@ -20,18 +19,20 @@ After cloning this repo, run the interactive setup script from the repo root:
 bash scripts/setup.sh
 ```
 
-The script walks you through each step with confirmation prompts and sensible defaults:
+The script detects whether an existing applicant is already configured and offers a **refresh** path (re-check deps, auth, and sync) or a **new applicant** path:
 
 | Step | What it does |
 |---|---|
-| 1 | Creates the applicant data directory (defaults to a sibling of this repo) |
-| 2 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if already installed) |
-| 3 | Auto-detects your Google Drive mount path on macOS; creates the sync target folder |
-| 4 | Sets your Anthropic API key — defaults to any key already in your shell environment |
-| 5 | Writes `.env`; runs a dry-run rsync to verify sync works |
-| 6 | Scaffolds the applicant directory: all subdirectories plus stub files for `applicant.md`, `application-tracker.md`, `EXPERIENCE-REFERENCE.md`, `resume-content-guidance.md`, `PROFILES-QUICK-REFERENCE.md`, and `APPLICANT-MEMORY.md` |
+| Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key |
+| Existing check | If a valid `.env` + applicant directory is found, offers to refresh the existing setup and exit |
+| Applicant name | Prompts for the applicant's full name; derives a slug for directory naming |
+| 1 | Creates the applicant directory — defaults to `~/Documents/job-applicant-<slug>` |
+| 2 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if installed) |
+| 3 | Auto-detects Google Drive on macOS; generates `<GDrive>/job-applicant-<slug>` as the sync folder; skipped if GDrive not installed |
+| 4 | Writes `.env` with `APPLICANT_NAME`, `APP_DIR`, `APPLICANT_DIR`, `GDRIVE_DIR`, and auth config |
+| 5 | Scaffolds the applicant directory with stub files; pre-fills `applicant.md` with the applicant name |
 
-Existing files are never overwritten — safe to re-run.
+Existing files are never overwritten — safe to re-run (triggers the refresh path).
 
 `.env` is gitignored and never committed. To update any value, edit `.env` directly or re-run `bash scripts/setup.sh`.
 
@@ -42,43 +43,18 @@ To activate the environment in your current shell after setup:
 source .env
 ```
 
-### 2. Fill in `applicant.md`
+### Step 2: Run the applicant setup process
 
-Open `$APPLICANT_DIR/applicant.md` (created by setup) and fill in:
-- Contact information (name, location, email, phone, LinkedIn, GitHub)
-- Location preferences (remote-only, hybrid regions, travel limit)
-- Role preferences and deal-breakers
+Open a new Claude Code session and follow [applicant-setup.md](applicant-setup.md). This guided process replaces manual file-filling — Claude interviews the applicant, extracts content from uploaded documents, and generates all required files:
 
-This file is used by Claude to screen every JD for fit.
+- `applicant.md` — contact info, location preferences, role criteria
+- `base-documents/EXPERIENCE-REFERENCE.md` — verified facts for every role
+- `profiles/[name].md` + `profiles/[name]-CONTENT.md` — one pair per target role type
+- `profiles/PROFILES-QUICK-REFERENCE.md` — fast JD-matching index
 
-### 3. Fill in `EXPERIENCE-REFERENCE.md`
+The session ends with profile validation against example JDs and a sample resume for each profile.
 
-Open `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` (created by setup) and document every role:
-- Exact title, company, and dates
-- What the company did (one sentence)
-- Your specific contributions — not generic job duties
-- Technologies and tools you genuinely used
-- Verifiable metrics or outcomes
-
-**Rule**: If you're not certain a claim is accurate, mark it `[UNVERIFIED]`. Resumes are generated from this file — never the other way around.
-
-### 4. Define your profiles
-
-For each type of role you're targeting, create two files in `$APPLICANT_DIR/profiles/`:
-
-**`[profile-name].md`** — Strategy document:
-- What makes you strong for this role type
-- How to frame your experience for this audience
-- What to emphasize, what to compress
-
-**`[profile-name]-CONTENT.md`** — Pre-compiled content library:
-- Resume bullets organized by role, ready to pull from
-- Eliminates per-application re-extraction from PDFs
-- Update when your experience changes, not per application
-
-Then fill in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md` with a one-row summary per profile. Claude uses this for fast JD matching.
-
-### 5. Configure session context
+### Step 3: Configure session context
 
 `CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
 

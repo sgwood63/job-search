@@ -1,10 +1,10 @@
 #!/bin/bash
-# setup.sh — First-time setup for Job Search 2026
+# setup.sh — Job Search 2026 setup
 #
 # Run from the repo root after cloning:
 #   bash scripts/setup.sh
 #
-# Creates .env with your local paths and installs dependencies.
+# Detects existing applicant or sets up a new one.
 
 set -e
 
@@ -13,13 +13,12 @@ ENV_FILE="$REPO_ROOT/.env"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-bold() { printf '\033[1m%s\033[0m' "$1"; }
-green() { printf '\033[32m%s\033[0m' "$1"; }
+bold()   { printf '\033[1m%s\033[0m' "$1"; }
+green()  { printf '\033[32m%s\033[0m' "$1"; }
 yellow() { printf '\033[33m%s\033[0m' "$1"; }
-red() { printf '\033[31m%s\033[0m' "$1"; }
+red()    { printf '\033[31m%s\033[0m' "$1"; }
 
 prompt() {
-    # prompt <label> <default>  →  prints prompt, reads into REPLY
     local label="$1" default="$2"
     if [[ -n "$default" ]]; then
         printf '%s [%s]: ' "$label" "$(yellow "$default")"
@@ -31,7 +30,6 @@ prompt() {
 }
 
 confirm() {
-    # confirm <question>  →  returns 0 for yes, 1 for no
     printf '%s [Y/n]: ' "$1"
     read -r REPLY
     [[ -z "$REPLY" || "$REPLY" =~ ^[Yy] ]]
@@ -43,56 +41,337 @@ print_section() {
     echo ""
 }
 
+scaffold_file() {
+    local path="$1" content="$2"
+    if [[ -e "$path" ]]; then
+        echo "  $(yellow "–") exists: $path"
+    else
+        mkdir -p "$(dirname "$path")"
+        printf '%s\n' "$content" > "$path"
+        echo "  $(green "✓") created: $path"
+    fi
+}
+
 # ── Header ─────────────────────────────────────────────────────────────────
 
 clear
 echo ""
-echo "$(bold "Job Search 2026 — First-Time Setup")"
+echo "$(bold "Job Search 2026 — Setup")"
 echo ""
 echo "This script will:"
-echo "  1. Locate or create the applicant data directory"
-echo "  2. Install PDF generation dependencies (pandoc, weasyprint, poppler)"
-echo "  3. Find your Google Drive sync path"
-echo "  4. Set your Anthropic API key"
-echo "  5. Write .env with all configuration"
+echo "  1. Verify Claude Code and configure authentication"
+echo "  2. Detect existing applicant or set up a new one"
+echo "  3. Install PDF generation dependencies"
+echo "  4. Configure Google Drive sync"
+echo "  5. Write .env and scaffold the applicant directory"
 echo ""
-echo "$(yellow "APP_DIR (this repo) is already set: $REPO_ROOT")"
+echo "$(yellow "APP_DIR (this repo): $REPO_ROOT")"
 echo ""
 if ! confirm "Ready to begin?"; then
     echo "Aborted."
     exit 0
 fi
 
+# ── Claude Code + Authentication ────────────────────────────────────────────
+#
+# Uses `claude auth status` to both verify Claude Code is installed and
+# determine the auth method in one step:
+#   exit 127  → command not found → Claude Code not installed → exit
+#   exit 0    → OAuth active → no API key needed
+#   other     → installed but no OAuth → prompt for API key
+
+print_section "Claude Code & Authentication"
+
+USE_OAUTH=false
+ANTHROPIC_API_KEY=""
+
+set +e
+auth_output=$(claude auth status --text 2>&1)
+auth_exit=$?
+set -e
+
+if [[ $auth_exit -eq 127 ]]; then
+    echo "$(red "✗") Claude Code not found in PATH."
+    echo "  Claude Code is the AI runtime for this system. Install it first:"
+    echo "    npm install -g @anthropic-ai/claude-code"
+    echo "  Or download the desktop app at https://claude.ai/code"
+    exit 1
+elif [[ $auth_exit -eq 0 ]]; then
+    USE_OAUTH=true
+    echo "$(green "✓") Claude Code OAuth active"
+    echo "  $auth_output"
+else
+    echo "  $auth_output"
+    echo ""
+    echo "No active OAuth session — API key required."
+    echo "Get your key at https://console.anthropic.com/"
+    echo ""
+
+    # Pull existing key from .env or current shell for the default
+    EXISTING_API_KEY="${ANTHROPIC_API_KEY:-}"
+    if [[ -z "$EXISTING_API_KEY" && -f "$ENV_FILE" ]]; then
+        set +e
+        # shellcheck disable=SC1090
+        _loaded_key=$(source "$ENV_FILE" 2>/dev/null && echo "${ANTHROPIC_API_KEY:-}")
+        set -e
+        EXISTING_API_KEY="$_loaded_key"
+    fi
+
+    while true; do
+        if [[ -n "$EXISTING_API_KEY" && -z "$ANTHROPIC_API_KEY" ]]; then
+            MASKED="${EXISTING_API_KEY:0:8}…${EXISTING_API_KEY: -4}"
+            echo "Found existing key: $(yellow "$MASKED")"
+            if confirm "Use this key?"; then
+                ANTHROPIC_API_KEY="$EXISTING_API_KEY"
+            else
+                printf 'Enter new Anthropic API key: '
+                read -rs ANTHROPIC_API_KEY
+                echo ""
+            fi
+        else
+            printf 'Anthropic API key (Enter to skip): '
+            read -rs ANTHROPIC_API_KEY
+            echo ""
+        fi
+
+        if [[ -z "$ANTHROPIC_API_KEY" ]]; then
+            echo "$(yellow "⚠") No key entered. Run 'claude auth login' or add ANTHROPIC_API_KEY to .env manually."
+            break
+        fi
+
+        echo "Validating key…"
+        set +e
+        validate_output=$(ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" claude auth status --text 2>&1)
+        validate_exit=$?
+        set -e
+        echo "  $validate_output"
+        if [[ $validate_exit -eq 0 ]]; then
+            echo "$(green "✓") Key validated"
+            break
+        else
+            echo "$(red "✗") Auth check failed."
+            if confirm "Retry with a different key?"; then
+                EXISTING_API_KEY=""
+                ANTHROPIC_API_KEY=""
+            else
+                echo "$(yellow "⚠") Continuing with unvalidated key. Update .env manually if needed."
+                break
+            fi
+        fi
+    done
+fi
+
 # ── Pre-populate from existing .env ────────────────────────────────────────
 
+EXISTING_APPLICANT_NAME=""
 EXISTING_APPLICANT_DIR=""
 EXISTING_GDRIVE_DIR=""
-EXISTING_API_KEY=""
 
 if [[ -f "$ENV_FILE" ]]; then
-    print_section "Existing .env found"
-    echo "Loading previous values as defaults…"
+    set +e
     # shellcheck disable=SC1090
-    source "$ENV_FILE" 2>/dev/null || true
+    source "$ENV_FILE" 2>/dev/null
+    set -e
+    EXISTING_APPLICANT_NAME="${APPLICANT_NAME:-}"
     EXISTING_APPLICANT_DIR="${APPLICANT_DIR:-}"
     EXISTING_GDRIVE_DIR="${GDRIVE_DIR:-}"
-    EXISTING_API_KEY="${ANTHROPIC_API_KEY:-}"
 fi
 
-# Also pick up API key from current shell if not already found
-if [[ -z "$EXISTING_API_KEY" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    EXISTING_API_KEY="$ANTHROPIC_API_KEY"
+# ── Shared helpers (used by both refresh and new-applicant paths) ───────────
+
+detect_gdrive_base() {
+    # Sets GDRIVE_BASE to the detected "My Drive" root, or empty if not found.
+    GDRIVE_BASE=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        local cloudstore="$HOME/Library/CloudStorage"
+        if [[ -d "$cloudstore" ]]; then
+            mapfile -t _mounts < <(ls "$cloudstore" 2>/dev/null | grep "^GoogleDrive-")
+            if [[ ${#_mounts[@]} -eq 1 ]]; then
+                GDRIVE_BASE="$cloudstore/${_mounts[0]}/My Drive"
+                echo "  Detected Google Drive: $(yellow "${_mounts[0]}")"
+            elif [[ ${#_mounts[@]} -gt 1 ]]; then
+                echo "  Multiple Google Drive mounts found:"
+                for i in "${!_mounts[@]}"; do
+                    echo "    $((i+1)). ${_mounts[$i]}"
+                done
+                prompt "  Which account to use?" "1"
+                local idx=$(( REPLY - 1 ))
+                GDRIVE_BASE="$cloudstore/${_mounts[$idx]}/My Drive"
+            fi
+        fi
+    fi
+}
+
+run_deps() {
+    print_section "PDF Generation Dependencies"
+    local missing=()
+    command -v pandoc  &>/dev/null || missing+=("pandoc (brew install pandoc)")
+    command -v pdfinfo &>/dev/null || missing+=("poppler (brew install poppler)")
+    python3 -c "import weasyprint" &>/dev/null 2>&1 || missing+=("weasyprint (pip install weasyprint)")
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        echo "$(green "✓") All dependencies installed (pandoc, poppler, weasyprint)"
+    else
+        echo "Missing dependencies:"
+        for dep in "${missing[@]}"; do echo "  • $dep"; done
+        echo ""
+        if confirm "Install missing dependencies now?"; then
+            command -v pandoc  &>/dev/null || brew install pandoc
+            command -v pdfinfo &>/dev/null || brew install poppler
+            python3 -c "import weasyprint" &>/dev/null 2>&1 || pip3 install weasyprint
+            echo "$(green "✓") Dependencies installed"
+        else
+            echo "$(yellow "⚠") Skipped. PDF generation will not work until these are installed."
+        fi
+    fi
+}
+
+write_env() {
+    cat > "$ENV_FILE" << ENVEOF
+# Job Search 2026 — Environment Configuration
+# Generated by scripts/setup.sh — gitignored, never commit this file.
+# To update, edit this file directly or re-run: bash scripts/setup.sh
+
+export APPLICANT_NAME="${APPLICANT_NAME}"
+export APP_DIR="${REPO_ROOT}"
+export APPLICANT_DIR="${APPLICANT_DIR}"
+ENVEOF
+
+    if [[ -n "${GDRIVE_DIR:-}" ]]; then
+        echo "export GDRIVE_DIR=\"${GDRIVE_DIR}\"" >> "$ENV_FILE"
+    else
+        echo "# GDRIVE_DIR not set — Google Drive not detected locally" >> "$ENV_FILE"
+    fi
+
+    if $USE_OAUTH; then
+        echo "# ANTHROPIC_API_KEY not needed — using Claude Code OAuth" >> "$ENV_FILE"
+    elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        echo "export ANTHROPIC_API_KEY=\"${ANTHROPIC_API_KEY}\"" >> "$ENV_FILE"
+    else
+        echo "# export ANTHROPIC_API_KEY=\"sk-ant-...\"" >> "$ENV_FILE"
+    fi
+
+    echo "$(green "✓") Written: $ENV_FILE"
+}
+
+run_verification() {
+    print_section "Verification"
+    set +e
+    # shellcheck disable=SC1090
+    source "$ENV_FILE" 2>/dev/null
+    set -e
+    echo "  APPLICANT_NAME = ${APPLICANT_NAME:-(not set)}"
+    echo "  APP_DIR        = ${APP_DIR:-$REPO_ROOT}"
+    echo "  APPLICANT_DIR  = ${APPLICANT_DIR:-}"
+    if [[ -n "${GDRIVE_DIR:-}" ]]; then
+        echo "  GDRIVE_DIR     = ${GDRIVE_DIR}"
+    else
+        echo "  GDRIVE_DIR     = $(yellow "(not set)")"
+    fi
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        echo "  ANTHROPIC_API_KEY = ${ANTHROPIC_API_KEY:0:8}…${ANTHROPIC_API_KEY: -4}"
+    else
+        echo "  ANTHROPIC_API_KEY = $(yellow "(not set — OAuth active)")"
+    fi
+
+    if [[ -n "${GDRIVE_DIR:-}" && -d "${APPLICANT_DIR:-}" ]]; then
+        echo ""
+        echo "Testing rsync dry run…"
+        if rsync -a --dry-run --exclude='node_modules' --exclude='_temp-*' \
+            "$APPLICANT_DIR/" "$GDRIVE_DIR/" 2>&1 | head -3; then
+            echo "$(green "✓") Sync path verified"
+        fi
+    fi
+}
+
+# ── Existing applicant ──────────────────────────────────────────────────────
+
+if [[ -n "$EXISTING_APPLICANT_DIR" && -d "$EXISTING_APPLICANT_DIR" ]]; then
+    print_section "Existing Applicant Detected"
+    if [[ -n "$EXISTING_APPLICANT_NAME" ]]; then
+        echo "  Applicant : $(bold "$EXISTING_APPLICANT_NAME")"
+    fi
+    echo "  Directory : $EXISTING_APPLICANT_DIR"
+    echo ""
+
+    if confirm "Refresh existing setup?"; then
+        APPLICANT_NAME="$EXISTING_APPLICANT_NAME"
+        APPLICANT_DIR="$EXISTING_APPLICANT_DIR"
+        GDRIVE_DIR="$EXISTING_GDRIVE_DIR"
+
+        run_deps
+
+        print_section "Google Drive Sync Path"
+        detect_gdrive_base
+        if [[ -n "$GDRIVE_BASE" ]]; then
+            # Derive folder name from existing applicant dir basename
+            local_slug="$(basename "$EXISTING_APPLICANT_DIR")"
+            DEFAULT_GDRIVE="${EXISTING_GDRIVE_DIR:-$GDRIVE_BASE/$local_slug}"
+            prompt "Google Drive sync folder" "$DEFAULT_GDRIVE"
+            GDRIVE_DIR="$REPLY"
+            if [[ -n "$GDRIVE_DIR" && ! -d "$GDRIVE_DIR" ]]; then
+                if confirm "Folder does not exist. Create it?"; then
+                    mkdir -p "$GDRIVE_DIR"
+                    echo "$(green "✓") Created: $GDRIVE_DIR"
+                else
+                    echo "$(yellow "⚠") Skipped. Sync will fail until this folder exists."
+                fi
+            elif [[ -n "$GDRIVE_DIR" ]]; then
+                echo "$(green "✓") Exists: $GDRIVE_DIR"
+            fi
+        else
+            echo "  $(yellow "–") Google Drive not detected. GDRIVE_DIR unchanged."
+            GDRIVE_DIR="$EXISTING_GDRIVE_DIR"
+        fi
+
+        write_env
+        run_verification
+
+        echo ""
+        echo "$(bold "════════════════════════════════════════════════")"
+        echo "$(green "Refresh complete!")"
+        echo "$(bold "════════════════════════════════════════════════")"
+        echo ""
+        exit 0
+    fi
+
+    echo ""
+    # User declined refresh — fall through to new applicant creation
 fi
 
-# ── Step 1: Applicant directory ─────────────────────────────────────────────
+# ── New applicant ────────────────────────────────────────────────────────────
+
+print_section "New Applicant Setup"
+
+if ! confirm "Create a new applicant?"; then
+    echo "Aborted."
+    exit 0
+fi
+
+echo ""
+printf 'Applicant name: '
+read -r APPLICANT_NAME
+if [[ -z "$APPLICANT_NAME" ]]; then
+    echo "$(red "✗") Applicant name is required."
+    exit 1
+fi
+echo "$(green "✓") Name: $APPLICANT_NAME"
+
+SLUG="$(echo "$APPLICANT_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-')"
+
+# ── Step 1: Applicant Directory ─────────────────────────────────────────────
 
 print_section "Step 1 — Applicant Directory"
-echo "The applicant directory holds your applications, profiles, and base documents."
-echo "It is NOT git-tracked (keeps your PII out of version control)."
+echo "Holds all applications, profiles, and documents. Not git-tracked."
 echo ""
 
-DEFAULT_APPLICANT_DIR="${EXISTING_APPLICANT_DIR:-$(dirname "$REPO_ROOT")/Job-Search-Applicant}"
+if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
+    DOCS_DIR="${XDG_DOCUMENTS_DIR:-$HOME/Documents}"
+else
+    DOCS_DIR="$HOME/Documents"
+fi
 
+DEFAULT_APPLICANT_DIR="$DOCS_DIR/job-applicant-$SLUG"
 prompt "Applicant directory path" "$DEFAULT_APPLICANT_DIR"
 APPLICANT_DIR="$REPLY"
 
@@ -108,171 +387,51 @@ else
     echo "$(green "✓") Exists: $APPLICANT_DIR"
 fi
 
-# ── Step 2: PDF generation dependencies ────────────────────────────────────
+# ── Step 2: PDF Dependencies ────────────────────────────────────────────────
 
-print_section "Step 2 — PDF Generation Dependencies"
-
-MISSING_DEPS=()
-command -v pandoc &>/dev/null  || MISSING_DEPS+=("pandoc (brew install pandoc)")
-command -v pdfinfo &>/dev/null || MISSING_DEPS+=("poppler (brew install poppler)")
-python3 -c "import weasyprint" &>/dev/null 2>&1 || MISSING_DEPS+=("weasyprint (pip install weasyprint)")
-
-if [[ ${#MISSING_DEPS[@]} -eq 0 ]]; then
-    echo "$(green "✓") All dependencies already installed (pandoc, poppler, weasyprint)"
-else
-    echo "Missing dependencies:"
-    for dep in "${MISSING_DEPS[@]}"; do
-        echo "  • $dep"
-    done
-    echo ""
-    if confirm "Install missing dependencies now?"; then
-        command -v pandoc  &>/dev/null || brew install pandoc
-        command -v pdfinfo &>/dev/null || brew install poppler
-        python3 -c "import weasyprint" &>/dev/null 2>&1 || pip3 install weasyprint
-        echo "$(green "✓") Dependencies installed"
-    else
-        echo "$(yellow "⚠") Skipped. PDF generation will not work until these are installed."
-    fi
-fi
+run_deps
 
 # ── Step 3: Google Drive ────────────────────────────────────────────────────
 
 print_section "Step 3 — Google Drive Sync Path"
-echo "The applicant directory is synced to Google Drive after every content generation step."
+echo "The applicant directory syncs to Google Drive after every content generation step."
 echo ""
 
-# Auto-detect on macOS
-DETECTED_GDRIVE=""
-if [[ "$(uname)" == "Darwin" ]]; then
-    CLOUDSTORE="$HOME/Library/CloudStorage"
-    if [[ -d "$CLOUDSTORE" ]]; then
-        # Find all GoogleDrive mounts
-        mapfile -t GDRIVE_MOUNTS < <(ls "$CLOUDSTORE" 2>/dev/null | grep "^GoogleDrive-")
-        if [[ ${#GDRIVE_MOUNTS[@]} -eq 1 ]]; then
-            DETECTED_GDRIVE="$CLOUDSTORE/${GDRIVE_MOUNTS[0]}/My Drive/Job Search 2026"
-            echo "Detected Google Drive mount: $(yellow "${GDRIVE_MOUNTS[0]}")"
-        elif [[ ${#GDRIVE_MOUNTS[@]} -gt 1 ]]; then
-            echo "Multiple Google Drive mounts found:"
-            for i in "${!GDRIVE_MOUNTS[@]}"; do
-                echo "  $((i+1)). ${GDRIVE_MOUNTS[$i]}"
-            done
-            prompt "Which account number to use?" "1"
-            IDX=$(( REPLY - 1 ))
-            DETECTED_GDRIVE="$CLOUDSTORE/${GDRIVE_MOUNTS[$IDX]}/My Drive/Job Search 2026"
-        fi
-    fi
-fi
+GDRIVE_DIR=""
+detect_gdrive_base
 
-if [[ -z "$DETECTED_GDRIVE" && "$(uname)" == "Darwin" ]]; then
-    echo "$(yellow "⚠") Google Drive desktop app not found under ~/Library/CloudStorage."
-    echo "  Install it from https://drive.google.com, sign in, and re-run this script."
-    echo "  Or enter the path manually below."
-fi
-
-DEFAULT_GDRIVE="${EXISTING_GDRIVE_DIR:-${DETECTED_GDRIVE}}"
-
-if [[ -z "$DEFAULT_GDRIVE" ]]; then
-    echo "Enter your Google Drive sync folder path."
-    echo "See .env.example for Windows/Linux path formats."
-fi
-
-prompt "Google Drive sync folder" "$DEFAULT_GDRIVE"
-GDRIVE_DIR="$REPLY"
-
-if [[ -n "$GDRIVE_DIR" ]]; then
-    if [[ ! -d "$GDRIVE_DIR" ]]; then
-        if confirm "Folder does not exist. Create it?"; then
-            mkdir -p "$GDRIVE_DIR"
-            echo "$(green "✓") Created: $GDRIVE_DIR"
+if [[ -n "$GDRIVE_BASE" ]]; then
+    DEFAULT_GDRIVE="$GDRIVE_BASE/job-applicant-$SLUG"
+    prompt "Google Drive sync folder" "$DEFAULT_GDRIVE"
+    GDRIVE_DIR="$REPLY"
+    if [[ -n "$GDRIVE_DIR" ]]; then
+        if [[ ! -d "$GDRIVE_DIR" ]]; then
+            if confirm "Folder does not exist. Create it?"; then
+                mkdir -p "$GDRIVE_DIR"
+                echo "$(green "✓") Created: $GDRIVE_DIR"
+            else
+                echo "$(yellow "⚠") Skipped. Sync will fail until this folder exists."
+            fi
         else
-            echo "$(yellow "⚠") Skipped. Sync will fail until this folder exists."
+            echo "$(green "✓") Exists: $GDRIVE_DIR"
         fi
-    else
-        echo "$(green "✓") Exists: $GDRIVE_DIR"
     fi
 else
-    echo "$(yellow "⚠") No Google Drive path set. You can add it to .env later."
+    echo "$(yellow "–") Google Drive not detected locally. GDRIVE_DIR will not be set."
+    echo "  Install the Google Drive desktop app and re-run this script to configure sync."
 fi
 
-# ── Step 4: Anthropic API key ───────────────────────────────────────────────
+# ── Step 4: Write .env ──────────────────────────────────────────────────────
 
-print_section "Step 4 — Anthropic API Key"
-echo "Used by scripts and Claude Code to call the Anthropic API."
-echo ""
+print_section "Step 4 — Writing .env"
+write_env
 
-if [[ -n "$EXISTING_API_KEY" ]]; then
-    MASKED="${EXISTING_API_KEY:0:8}…${EXISTING_API_KEY: -4}"
-    echo "Found existing key: $(yellow "$MASKED")"
-    if confirm "Use this key?"; then
-        ANTHROPIC_API_KEY="$EXISTING_API_KEY"
-        echo "$(green "✓") Using existing key"
-    else
-        printf 'Enter new Anthropic API key: '
-        read -rs ANTHROPIC_API_KEY
-        echo ""
-        echo "$(green "✓") Key set"
-    fi
-else
-    echo "No existing ANTHROPIC_API_KEY found in environment or .env."
-    echo "Get your key at https://console.anthropic.com/"
-    echo ""
-    printf 'Anthropic API key (Enter to skip): '
-    read -rs ANTHROPIC_API_KEY
-    echo ""
-    if [[ -n "$ANTHROPIC_API_KEY" ]]; then
-        echo "$(green "✓") Key set"
-    else
-        echo "$(yellow "⚠") Skipped. Add ANTHROPIC_API_KEY to .env manually if needed."
-    fi
-fi
+# ── Step 5: Scaffold applicant directory ────────────────────────────────────
 
-# ── Step 5: Write .env ──────────────────────────────────────────────────────
-
-print_section "Step 5 — Writing .env"
-
-cat > "$ENV_FILE" << ENVEOF
-# Job Search 2026 — Environment Configuration
-# Generated by scripts/setup.sh — gitignored, never commit this file.
-# To update, edit this file directly or re-run: bash scripts/setup.sh
-
-export APP_DIR="$REPO_ROOT"
-export APPLICANT_DIR="$APPLICANT_DIR"
-ENVEOF
-
-if [[ -n "$GDRIVE_DIR" ]]; then
-    echo "export GDRIVE_DIR=\"$GDRIVE_DIR\"" >> "$ENV_FILE"
-else
-    echo "# export GDRIVE_DIR=\"/path/to/gdrive/Job Search 2026\"" >> "$ENV_FILE"
-fi
-
-if [[ -n "$ANTHROPIC_API_KEY" ]]; then
-    echo "export ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\"" >> "$ENV_FILE"
-else
-    echo "# export ANTHROPIC_API_KEY=\"sk-ant-...\"" >> "$ENV_FILE"
-fi
-
-echo "$(green "✓") Written: $ENV_FILE"
-
-# ── Step 6: Scaffold applicant directory ────────────────────────────────────
-
-print_section "Step 6 — Applicant Directory Structure"
+print_section "Step 5 — Applicant Directory Structure"
 echo "Creating directories and stub files (existing files are never overwritten)."
 echo ""
 
-scaffold_file() {
-    # scaffold_file <path> <heredoc-content>
-    local path="$1"
-    local content="$2"
-    if [[ -e "$path" ]]; then
-        echo "  $(yellow "–") exists: $path"
-    else
-        mkdir -p "$(dirname "$path")"
-        printf '%s\n' "$content" > "$path"
-        echo "  $(green "✓") created: $path"
-    fi
-}
-
-# Directories
 for dir in profiles base-documents applications memory; do
     if [[ ! -d "$APPLICANT_DIR/$dir" ]]; then
         mkdir -p "$APPLICANT_DIR/$dir"
@@ -284,12 +443,12 @@ done
 
 echo ""
 
-# applicant.md
+# applicant.md — name pre-filled
 scaffold_file "$APPLICANT_DIR/applicant.md" \
-'# Applicant
+"# Applicant
 
 ## Contact Information
-- Name:
+- Name: ${APPLICANT_NAME}
 - Location:
 - Email:
 - Phone:
@@ -312,7 +471,7 @@ scaffold_file "$APPLICANT_DIR/applicant.md" \
 - Target base:
 - Acceptable range:
 
-## Notes'
+## Notes"
 
 # application-tracker.md
 scaffold_file "$APPLICANT_DIR/application-tracker.md" \
@@ -372,7 +531,7 @@ Never fabricate — if a claim is not here, add it here first.
 <!-- Add a section for each role, most-recent-first. -->
 <!-- Mark anything uncertain as: [UNVERIFIED — confirm before use] -->'
 
-# base-documents/resume-content-guidance.md  (only if not present)
+# base-documents/resume-content-guidance.md
 scaffold_file "$APPLICANT_DIR/base-documents/resume-content-guidance.md" \
 '# Resume Content Guidance
 
@@ -421,32 +580,7 @@ Applicant-specific context loaded by Claude Code sessions.
 
 # ── Verification ────────────────────────────────────────────────────────────
 
-print_section "Verification"
-
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-
-echo "  APP_DIR       = $APP_DIR"
-echo "  APPLICANT_DIR = $APPLICANT_DIR"
-if [[ -n "${GDRIVE_DIR:-}" ]]; then
-    echo "  GDRIVE_DIR    = $GDRIVE_DIR"
-else
-    echo "  GDRIVE_DIR    = $(yellow "(not set)")"
-fi
-if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    echo "  ANTHROPIC_API_KEY = ${ANTHROPIC_API_KEY:0:8}…${ANTHROPIC_API_KEY: -4}"
-else
-    echo "  ANTHROPIC_API_KEY = $(yellow "(not set)")"
-fi
-
-if [[ -n "${GDRIVE_DIR:-}" && -d "$APPLICANT_DIR" ]]; then
-    echo ""
-    echo "Testing rsync dry run…"
-    if rsync -a --dry-run --exclude='node_modules' --exclude='_temp-*' \
-        "$APPLICANT_DIR/" "$GDRIVE_DIR/" 2>&1 | head -3; then
-        echo "$(green "✓") Sync path verified"
-    fi
-fi
+run_verification
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
@@ -458,14 +592,8 @@ echo ""
 echo "To activate in your current shell:"
 echo "  $(bold "source .env")"
 echo ""
-echo "Stub files have been created — fill these in before your first application:"
-echo "  $(bold "$APPLICANT_DIR/applicant.md")"
-echo "    → Your contact info, location preferences, and role criteria"
-echo "  $(bold "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md")"
-echo "    → Verified facts for every role — the source of truth for all resumes"
-echo "  $(bold "$APPLICANT_DIR/profiles/")"
-echo "    → Create one [profile-name].md + [profile-name]-CONTENT.md per target role type"
-echo "    → Then fill in profiles/PROFILES-QUICK-REFERENCE.md"
-echo ""
-echo "See QUICK-START.md §2–4 for guidance on each."
+echo "Next: run the applicant setup process."
+echo "  Open a Claude Code session and follow: $(bold "applicant-setup.md")"
+echo "  Claude will interview the applicant, extract content from uploaded documents,"
+echo "  and generate applicant.md, EXPERIENCE-REFERENCE.md, and all profile files."
 echo ""
