@@ -114,27 +114,19 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 
 Every resume must include these sections, in this order, after Relevant Experience:
 
-1. **`## Education`** — always present, regardless of role type or page count:
-   ```
-   **Bachelor of Science — University of Sydney**
-   Majors: Computer Science, Pure Mathematics, Psychology
-   ```
-2. **`## Certifications`** — always present:
-   ```
-   AWS Certified Solutions Architect – Associate  |  AWS Certified Cloud Practitioner
-   ```
+1. **`## Education`** — always present, regardless of role type or page count
+2. **`## Certifications`** — always present
 
-These sections are sourced from `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`. Do not omit them. Do not derive them from context — copy from the reference.
+Content for both sections must be copied verbatim from `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`. Do not omit them. Do not derive content from memory or context.
 
 ### Section Labels
 - Experience section: **`## RELEVANT EXPERIENCE`** — never "Experience" or "Professional Experience"
-- All roles before 2010 must be grouped under **`### Earlier Career`** (subsection under Relevant Experience), not listed individually in the main section
+- Roles that ended more than 12 years ago must be grouped under **`### Earlier Career`** (subsection under Relevant Experience), not listed individually in the main section
 
 ### Role Ordering — Strict Reverse Chronological
 - All included roles: most-recent-first, no exceptions
 - Skipping roles is OK; displaying them out of order is not
-- Earlier Career order (most recent first): Founding Architect (2005–2010) → GalenWorks (2003–2005) → Consulting (1999–2003) → Financial Services Technology (1985–1999)
-- Always verify role order against `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`
+- Earlier Career entries also follow reverse chronological order — verify against `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`
 
 ### Content Library Section Headers Are NOT Job Titles
 - Headers like "AI Solution Architect - Presales Experience" in content library files are source material labels
