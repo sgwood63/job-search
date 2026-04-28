@@ -27,7 +27,7 @@ prompt() {
         printf '%s: ' "$label"
     fi
     read -r REPLY
-    [[ -z "$REPLY" ]] && REPLY="$default"
+    [[ -n "$REPLY" ]] || REPLY="$default"
 }
 
 confirm() {
