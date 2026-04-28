@@ -10,7 +10,6 @@ Canonical paths are defined in `$APP_DIR/.env` (gitignored). Read that file at s
 |---|---|---|
 | `$APP_DIR` | Yes | Process repo, git-tracked |
 | `$APPLICANT_DIR` | Yes | Applicant data, NOT git-tracked |
-| `$GDRIVE_DIR` | Yes | Google Drive sync target (OS-specific path) |
 
 `$APP_DIR` is git-tracked. `$APPLICANT_DIR` is NOT git-tracked (contains applicant PII and application files).
 
@@ -49,7 +48,6 @@ Spawn a Haiku agent to:
 ### If NO FIT (stay in Haiku)
 - Create brief `notes.md` with no-fit reasoning
 - Update `$APPLICANT_DIR/application-tracker.md` (Rejected/Closed section)
-- Sync to Google Drive (see below)
 - Stop
 
 ### If FIT (switch to Sonnet for quality)
@@ -57,7 +55,6 @@ Spawn a Haiku agent to:
 - Generate tailored resume (see Resume Generation Rules below)
 - Create detailed `notes.md` (JD analysis, interview prep hooks)
 - Update `$APPLICANT_DIR/application-tracker.md` (Active Applications)
-- Sync to Google Drive (see below)
 - Present for user review
 
 ## notes.md Structure Rules
@@ -81,18 +78,9 @@ Every `notes.md` must include a **Table of Contents** immediately after the head
 - Sections appear in the order the interviews occur — never out of sequence
 - Within each interview prep section, subsections follow this order: Logistics → Research → Talking Points → Technical Questions → Questions to Ask → Differentiators / What Not to Bring Up
 
-## Google Drive Sync
+## File Storage
 
-Sync is automatic. A `PostToolUse` hook in `.claude/settings.json` triggers rsync after every `Write` or `Edit` to a file under `$APPLICANT_DIR`. No manual step needed.
-
-If sync ever needs to be run manually (hook missing, fresh setup, etc.):
-
-```bash
-source "$APP_DIR/.env"
-rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  "$APPLICANT_DIR/" \
-  "$GDRIVE_DIR/"
-```
+Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `bash scripts/setup.sh` to either a local directory or a cloud sync service's managed local folder (Google Drive, OneDrive, iCloud, Dropbox, or Box). When a cloud service is chosen, the OS syncs `$APPLICANT_DIR` automatically — no separate step needed.
 
 ## Resume Generation Rules
 

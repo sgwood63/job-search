@@ -12,7 +12,7 @@ Claude will read this file and execute each phase in order, pausing between phas
 
 ---
 
-This document describes how to onboard a new applicant into the job search system. It augments [QUICK-START.md](QUICK-START.md), which covers the technical foundation (directory creation, dependencies, Google Drive sync). Run the technical setup first, then use this process to populate the applicant's data.
+This document describes how to onboard a new applicant into the job search system. It augments [QUICK-START.md](QUICK-START.md), which covers the technical foundation (directory creation, dependencies, storage setup). Run the technical setup first, then use this process to populate the applicant's data.
 
 ---
 

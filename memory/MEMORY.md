@@ -30,8 +30,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 ### If NO FIT (stay in Haiku)
 5. Create brief notes.md with reasoning
 6. Update tracker (Rejected/Closed section)
-7. Sync to Google Drive (see below)
-8. Stop
+7. Stop
 
 ### If FIT (switch to Sonnet for quality)
 5. Read profile-specific content library from `$APPLICANT_DIR/profiles/`
@@ -39,20 +38,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 7. Generate tailored resume using content library (ALL factual, pre-verified)
 8. Create detailed notes.md (JD analysis, interview prep)
 9. Update tracker (Active Applications)
-10. Sync to Google Drive (see below)
-11. Present for user review
-
-## Google Drive Sync
-
-**GDrive path**: `/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/`
-
-**CRITICAL**: After ANY content generation (application folder, resume, notes, tracker update), sync `$APPLICANT_DIR` to GDrive. Never skip this step.
-
-```bash
-rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  /Users/shermanwood/Documents/Job-Search-Applicant/ \
-  "/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/"
-```
+10. Present for user review
 
 ## Resume Generation Workflow
 - See `feedback_resume_review.md` — always assess resume vs JD and apply improvements BEFORE generating the PDF
