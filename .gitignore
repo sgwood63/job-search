@@ -2,7 +2,7 @@
 applications/
 
 # Application tracker — contains personal application history
-application-tracker.md
+/application-tracker.md
 
 # Base documents — personal resume PDFs and LinkedIn exports
 base-documents/*.pdf
