@@ -59,11 +59,19 @@ $APP_DIR/
 ├── templates/                   # Shared assets
 │   ├── resume.css               # Default PDF stylesheet (2-page)
 │   ├── one-page-override.css    # Override for 1-page resumes
-│   └── cover-letter-override.css
+│   ├── cover-letter-override.css
+│   ├── achievements-example.md  # Reference example for writing achievements
+│   ├── PROFILES-README.md       # Guide for authoring profile files
+│   └── scaffold/                # Stub files written by scripts/setup.sh
+│       ├── applicant.md
+│       ├── application-tracker.md
+│       ├── base-documents/
+│       ├── profiles/
+│       └── memory/
 │
 └── scripts/                     # Utility scripts
-    ├── new-application.sh       # Create application folder
-    └── status-summary.sh        # Print tracker summary
+    ├── setup.sh                 # One-time setup: auth, deps, applicant dir, .env
+    └── README.md                # LinkedIn job URL collector notes
 ```
 
 ---
