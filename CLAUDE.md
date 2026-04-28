@@ -110,6 +110,22 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 - **2 pages** — enterprise, consulting, governance, direct applications
 - **1 page** — networking, warm referrals, recruiter outreach, pre-sales SE roles, role pivoting
 
+### Required Sections — Every Resume
+
+Every resume must include these sections, in this order, after Relevant Experience:
+
+1. **`## Education`** — always present, regardless of role type or page count:
+   ```
+   **Bachelor of Science — University of Sydney**
+   Majors: Computer Science, Pure Mathematics, Psychology
+   ```
+2. **`## Certifications`** — always present:
+   ```
+   AWS Certified Solutions Architect – Associate  |  AWS Certified Cloud Practitioner
+   ```
+
+These sections are sourced from `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`. Do not omit them. Do not derive them from context — copy from the reference.
+
 ### Section Labels
 - Experience section: **`## RELEVANT EXPERIENCE`** — never "Experience" or "Professional Experience"
 - All roles before 2010 must be grouped under **`### Earlier Career`** (subsection under Relevant Experience), not listed individually in the main section
