@@ -237,6 +237,37 @@ run_deps() {
     fi
 }
 
+detect_playwright_python() {
+    # Sets PLAYWRIGHT_PYTHON to the first python that has playwright installed.
+    # Tries common locations; defaults to "python3" if none found.
+    PLAYWRIGHT_PYTHON=""
+
+    local candidates=(
+        "/opt/homebrew/anaconda3/bin/python3"
+        "/opt/homebrew/bin/python3"
+        "/usr/local/bin/python3"
+        "$(command -v python3 2>/dev/null || true)"
+    )
+
+    for py in "${candidates[@]}"; do
+        [[ -z "$py" ]] && continue
+        if "$py" -c "import playwright" &>/dev/null 2>&1; then
+            PLAYWRIGHT_PYTHON="$py"
+            break
+        fi
+    done
+
+    if [[ -n "$PLAYWRIGHT_PYTHON" ]]; then
+        echo "$(green "✓") Playwright found: $PLAYWRIGHT_PYTHON"
+    else
+        echo "$(yellow "⚠") Playwright not found in common locations."
+        echo "  To install:  pip install playwright && playwright install chromium"
+        echo "  Then set PLAYWRIGHT_PYTHON in .env to the python path that has it."
+        echo "  (fetch-jd.py needs this to fetch job pages that require login.)"
+        PLAYWRIGHT_PYTHON="python3"
+    fi
+}
+
 write_env() {
     cat > "$ENV_FILE" << ENVEOF
 # Job Search 2026 — Environment Configuration
@@ -255,6 +286,15 @@ ENVEOF
     else
         echo "# export ANTHROPIC_API_KEY=\"sk-ant-...\"" >> "$ENV_FILE"
     fi
+
+    # Playwright Python — used by scripts/fetch-jd.py to fetch login-walled pages
+    cat >> "$ENV_FILE" << ENVEOF
+
+# Python interpreter with Playwright installed (for fetch-jd.py)
+# Run: python3 -c "import playwright" — if it fails, find the right python.
+# Common locations: /opt/homebrew/anaconda3/bin/python3, /usr/local/bin/python3
+export PLAYWRIGHT_PYTHON="${PLAYWRIGHT_PYTHON:-python3}"
+ENVEOF
 
     echo "$(green "✓") Written: $ENV_FILE"
 }
@@ -290,6 +330,7 @@ if [[ -n "$EXISTING_APPLICANT_DIR" && -d "$EXISTING_APPLICANT_DIR" ]]; then
         APPLICANT_DIR="$EXISTING_APPLICANT_DIR"
 
         run_deps
+        detect_playwright_python
         write_env
         run_verification
 
@@ -323,9 +364,10 @@ if [[ -z "$APPLICANT_NAME" ]]; then
 fi
 echo "$(green "✓") Name: $APPLICANT_NAME"
 
-# ── Step 1: PDF Dependencies ────────────────────────────────────────────────
+# ── Step 1: PDF Dependencies + Playwright ───────────────────────────────────
 
 run_deps
+detect_playwright_python
 
 # ── Step 2: Storage Location ─────────────────────────────────────────────────
 
@@ -430,4 +472,9 @@ echo "Next: run the applicant setup process."
 echo "  Open a Claude Code session and follow: $(bold "applicant-setup.md")"
 echo "  Claude will interview the applicant, extract content from uploaded documents,"
 echo "  and generate applicant.md, EXPERIENCE-REFERENCE.md, and all profile files."
+echo ""
+echo "To fetch job pages that require login (LinkedIn, Greenhouse, etc.):"
+echo "  ${PLAYWRIGHT_PYTHON:-python3} scripts/fetch-jd.py --setup '<url>'"
+echo "  → opens a browser → log in → press Enter → auth saved for that site"
+echo "  Subsequent fetches are headless (Claude does this automatically)."
 echo ""
