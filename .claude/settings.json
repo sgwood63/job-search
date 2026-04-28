@@ -1,1 +1,7 @@
-{}
+{
+  "statusLine": {
+    "type": "command",
+    "command": "printf \"Job Search 2026 | Phase D done | %s | Drop a JD to screen\" \"$(date '+%b %d')\"",
+    "refreshInterval": 3600
+  }
+}

@@ -102,6 +102,9 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 2. Do they have credible experience?
 3. Can they succeed in our environment?
 
+## Session End (DO WITHOUT BEING ASKED)
+- See `feedback_session_end.md` — always update `$APPLICANT_DIR/memory/applicant-setup-status.md` and ensure `.claude/settings.json` statusLine is current before ending any session
+
 ## Workflow Rules
 - See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
