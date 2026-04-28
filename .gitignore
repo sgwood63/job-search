@@ -14,6 +14,10 @@ base-documents/linkedin-job-listing-page.html
 
 # Environment — contains local paths, never commit
 .env
+.env-backup
+
+# Auto-memory duplicate (canonical copy lives in memory/)
+/MEMORY.md
 
 # macOS
 .DS_Store
