@@ -16,6 +16,9 @@ base-documents/linkedin-job-listing-page.html
 .env
 .env-backup
 
+# Authenticated browser sessions (per-user, never commit)
+.auth/
+
 # Auto-memory duplicate (canonical copy lives in memory/)
 /MEMORY.md
 
