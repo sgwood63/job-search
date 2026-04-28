@@ -10,6 +10,7 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env"
+TEMPLATES_DIR="$REPO_ROOT/templates/scaffold"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -42,12 +43,12 @@ print_section() {
 }
 
 scaffold_file() {
-    local path="$1" content="$2"
+    local path="$1" template="$2"
     if [[ -e "$path" ]]; then
         echo "  $(yellow "–") exists: $path"
     else
         mkdir -p "$(dirname "$path")"
-        printf '%s\n' "$content" > "$path"
+        sed "s|\${APPLICANT_NAME}|${APPLICANT_NAME}|g" "$template" > "$path"
         echo "  $(green "✓") created: $path"
     fi
 }
@@ -443,140 +444,12 @@ done
 
 echo ""
 
-# applicant.md — name pre-filled
-scaffold_file "$APPLICANT_DIR/applicant.md" \
-"# Applicant
-
-## Contact Information
-- Name: ${APPLICANT_NAME}
-- Location:
-- Email:
-- Phone:
-- LinkedIn:
-- GitHub:
-
-## Job Search Criteria
-
-### Locations Accepted
-- Remote (US): Yes / No
-- Hybrid / Onsite regions:
-- Max travel:
-
-### Role Preferences
-- Target titles:
-- Industries of interest:
-- Deal-breakers:
-
-### Compensation
-- Target base:
-- Acceptable range:
-
-## Notes"
-
-# application-tracker.md
-scaffold_file "$APPLICANT_DIR/application-tracker.md" \
-'# Job Application Tracker
-
-## Active Applications
-
-| Date | Company | Role | Profile | Source | Status | Next Action | Priority |
-|---|---|---|---|---|---|---|---|
-
-## Closed / Rejected
-
-| Date | Company | Role | Outcome | Notes |
-|---|---|---|---|---|'
-
-# base-documents/EXPERIENCE-REFERENCE.md
-scaffold_file "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md" \
-'# Experience Reference
-
-Canonical source of verified facts. All resume generation draws from this file.
-Never fabricate — if a claim is not here, add it here first.
-
----
-
-## [Most Recent Role Title] — [Company] ([Start Year]–[End Year or Present])
-
-**Company:** One sentence describing what the company does.
-
-**Your role:** What you specifically did (not generic job duties).
-
-**Key contributions:**
-- [Specific thing you built, designed, led, or delivered]
-- [Specific thing you built, designed, led, or delivered]
-- [Specific thing you built, designed, led, or delivered]
-
-**Technologies / tools:** List only ones you genuinely used.
-
-**Metrics / outcomes (if verifiable):**
--
-
----
-
-## [Previous Role Title] — [Company] ([Start Year]–[End Year])
-
-**Company:**
-
-**Your role:**
-
-**Key contributions:**
--
--
-
-**Technologies / tools:**
-
----
-
-<!-- Add a section for each role, most-recent-first. -->
-<!-- Mark anything uncertain as: [UNVERIFIED — confirm before use] -->'
-
-# base-documents/resume-content-guidance.md
-scaffold_file "$APPLICANT_DIR/base-documents/resume-content-guidance.md" \
-'# Resume Content Guidance
-
-Notes on framing, tone, and what to emphasize across all resumes.
-
-## Voice Guidelines
-- Write like you talk (professionally)
-- Use specific examples from actual experience
-- First person — "I designed" not "Designed"
-- Avoid corporate jargon you would not say aloud
-
-## What to Emphasize
-
-## What to Compress or Omit
-
-## Keywords to Include Naturally'
-
-# profiles/PROFILES-QUICK-REFERENCE.md
-scaffold_file "$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md" \
-'# Profiles — Quick Reference
-
-Use this file for fast JD-to-profile matching. One row per profile.
-
-| Profile | Best For | Key Signals in JD | Avoid When |
-|---|---|---|---|
-| [profile-name] | | | |
-
----
-
-## Matching Rules
-
-- Score each profile 1–10 against the JD requirements
-- Use the profile with the highest score (minimum 7/10 for a fit)
-- If no profile scores 7+, flag as no-fit with reasoning'
-
-# memory/APPLICANT-MEMORY.md
-scaffold_file "$APPLICANT_DIR/memory/APPLICANT-MEMORY.md" \
-'# Applicant Memory Index
-
-Applicant-specific context loaded by Claude Code sessions.
-
-## Files in This Directory
-
-<!-- Add entries as you create memory files: -->
-<!-- - [filename.md](filename.md) — one-line description -->'
+scaffold_file "$APPLICANT_DIR/applicant.md"                                  "$TEMPLATES_DIR/applicant.md"
+scaffold_file "$APPLICANT_DIR/application-tracker.md"                         "$TEMPLATES_DIR/application-tracker.md"
+scaffold_file "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md"         "$TEMPLATES_DIR/base-documents/EXPERIENCE-REFERENCE.md"
+scaffold_file "$APPLICANT_DIR/base-documents/resume-content-guidance.md"      "$TEMPLATES_DIR/base-documents/resume-content-guidance.md"
+scaffold_file "$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md"           "$TEMPLATES_DIR/profiles/PROFILES-QUICK-REFERENCE.md"
+scaffold_file "$APPLICANT_DIR/memory/APPLICANT-MEMORY.md"                     "$TEMPLATES_DIR/memory/APPLICANT-MEMORY.md"
 
 # ── Verification ────────────────────────────────────────────────────────────
 
