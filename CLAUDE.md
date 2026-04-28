@@ -33,9 +33,19 @@ Pause at the end of each phase and confirm with the user before proceeding to th
 
 When the user provides a job description (URL, document, or paste):
 
-### Step 1 — Use Haiku for Initial Screening
+### Step 1 — Fetch the JD Content
+
+**Try WebFetch first.** If it returns a login wall (page title/body contains "sign in", "authwall", "join now", etc.) or fails:
+
+1. Fall back to `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"` (requires `.env` sourced for `$PLAYWRIGHT_PYTHON`)
+2. If exit code 2 (auth required): tell the user to run the setup command printed to stderr — do not proceed until they confirm auth is done, then retry
+3. If exit code 1 (navigation error): ask the user to paste the JD text directly
+
+**PDF and document JDs:** Use `pdftotext` or ask the user to paste if WebFetch fails.
+
+### Step 1b — Use Haiku for Initial Screening
 Spawn a Haiku agent to:
-- Fetch/extract JD content
+- Fetch/extract JD content (using whichever fetch method succeeded above)
 - Extract: company, role, location, travel requirement, compensation, core requirements
 - Check location/travel fit against `$APPLICANT_DIR/applicant.md`
 - Match to best profile using `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`
