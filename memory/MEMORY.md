@@ -126,4 +126,8 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separ
 - Switch to Sonnet only for document generation
 - Reuse resume extraction within session
 
-**Last Updated**: 2026-04-21
+**Last Updated**: 2026-04-28
+
+---
+
+*Note: Applicant-specific session state (setup completion, active profiles, unverified items) lives in `$APPLICANT_DIR/memory/`. Read `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md` at session start for current applicant context.*

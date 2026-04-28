@@ -29,7 +29,9 @@ $APPLICANT_DIR/
 │   └── YYYY-MM-DD-company-role/
 ├── base-documents/
 │   ├── EXPERIENCE-REFERENCE.md
-│   └── resume-content-guidance.md
+│   ├── resume-content-guidance.md
+│   ├── role-achievements.md          # Per-role achievements scored against active profiles
+│   └── applicant-interview-[date].md # Interview session summary and gap list
 └── memory/                       # Applicant-specific memory
 ```
 
