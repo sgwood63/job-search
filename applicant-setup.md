@@ -107,8 +107,19 @@ Verified fact sheet for every role:
 
 Mark any uncertain claims `[UNVERIFIED]`. This is the canonical source of truth — resumes are generated from it, never the reverse.
 
-### `$APPLICANT_DIR/base-documents/achievements-worksheet.md` (optional)
-Pulled from resumes and the interview initially. Offer to review and edit achievements with the applicant during this session. Can be extended in later sessions.
+### `$APPLICANT_DIR/base-documents/role-achievements.md` (required)
+Canonical achievement set organized by role (most-recent first), scored against all active profiles. Generated during Phase B using the following process:
+
+1. Extract all achievements from uploaded resumes and LinkedIn (de-duplicate across resume versions)
+2. For each role, display a table with columns: `# | Achievement | Power | P1 | P2 | P4 | Notes`
+   - **Power** (1–5): specificity + metrics + named entity + clear outcome
+   - **Profile relevance** (1–5): 5 = must include | 3 = situational | 1 = omit
+   - **Notes**: scoring rationale and what would improve the achievement
+3. After the table, show a **Gaps & prompts** section: what's missing per profile and specific questions to fill those gaps
+4. Allow the applicant to edit existing achievements or add new ones before proceeding to the next role
+5. After all roles, include an **Achievement Completeness by Profile** summary table
+
+This file replaces per-application resume extraction. All resume generation draws from it.
 
 ### `$APPLICANT_DIR/base-documents/resume-content-guidance.md`
 Format rules per profile: 1-page vs. 2-page, section structure, what to include/exclude, tone.
