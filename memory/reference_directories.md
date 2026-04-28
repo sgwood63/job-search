@@ -1,6 +1,6 @@
 ---
 name: Directory Path Definitions
-description: Canonical paths for $APP_DIR, $APPLICANT_DIR, and $GDRIVE_DIR — resolve these before any file operation
+description: Canonical paths for $APP_DIR and $APPLICANT_DIR — resolve these before any file operation
 type: reference
 originSessionId: c0149eb9-2d07-4301-a2c8-2d751f157124
 ---
@@ -11,22 +11,9 @@ All paths are defined in `$APP_DIR/.env` (gitignored). Read that file to resolve
 | Variable | Default Location | Notes |
 |---|---|---|
 | `$APP_DIR` | `~/Documents/Job-Search-2026/` | Process repo, git-tracked |
-| `$APPLICANT_DIR` | `~/Documents/Job-Search-Applicant/` | Applicant data, NOT git-tracked |
-| `$GDRIVE_DIR` | OS-specific (see below) | Google Drive sync target |
+| `$APPLICANT_DIR` | Chosen during setup | Applicant data, NOT git-tracked |
 
-## Google Drive Path by OS
-
-| OS | Typical path |
-|---|---|
-| macOS | `~/Library/CloudStorage/GoogleDrive-[email]/My Drive/[folder]` |
-| Windows (WSL) | `/mnt/g/My Drive/[folder]` |
-| Windows (native) | `C:/Users/[name]/Google Drive/[folder]` |
-| Linux (rclone) | `~/gdrive/[folder]` |
-
-On macOS, find the exact path with:
-```bash
-ls ~/Library/CloudStorage/
-```
+`$APPLICANT_DIR` is set by `bash scripts/setup.sh` to either a local directory (default `~/Documents/job-applications`) or a cloud sync service's managed folder. When a cloud service is chosen, the OS syncs files automatically.
 
 ## Applicant Directory Layout
 
@@ -48,7 +35,7 @@ $APPLICANT_DIR/
 
 ## How to Apply
 
-Before any file operation, resolve `$APP_DIR`, `$APPLICANT_DIR`, and `$GDRIVE_DIR` from `$APP_DIR/.env`. Do not hardcode paths.
+Before any file operation, resolve `$APP_DIR` and `$APPLICANT_DIR` from `$APP_DIR/.env`. Do not hardcode paths.
 
 Shell scripts load variables with:
 ```bash

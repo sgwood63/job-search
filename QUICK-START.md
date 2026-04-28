@@ -5,7 +5,7 @@ This guide covers how to bootstrap this system from scratch. If the system is al
 **Before you begin:**
 
 1. **Install Claude Code** — download the desktop app at [claude.ai/code](https://claude.ai/code) or run `npm install -g @anthropic-ai/claude-code`. This is the AI runtime for the entire system. `scripts/setup.sh` will exit if it cannot find Claude Code.
-2. **Install Google Drive desktop app** *(optional)* — download from [drive.google.com](https://drive.google.com), sign in, and let it complete its initial sync. If not installed, Google Drive sync will be skipped and can be configured later by re-running setup.
+2. **Install a cloud sync app** *(optional)* — Google Drive, OneDrive, Dropbox, iCloud, or Box. If installed, setup will detect it and offer to store applicant files inside the service's managed folder so they sync automatically.
 
 ---
 
@@ -25,18 +25,15 @@ The script detects whether an existing applicant is already configured and offer
 |---|---|
 | Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key |
 | Existing check | If a valid `.env` + applicant directory is found, offers to refresh the existing setup and exit |
-| Applicant name | Prompts for the applicant's full name; derives a slug for directory naming |
-| 1 | Creates the applicant directory — defaults to `~/Documents/job-applicant-<slug>` |
-| 2 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if installed) |
-| 3 | Auto-detects Google Drive on macOS; generates `<GDrive>/job-applicant-<slug>` as the sync folder; skipped if GDrive not installed |
-| 4 | Writes `.env` with `APPLICANT_NAME`, `APP_DIR`, `APPLICANT_DIR`, `GDRIVE_DIR`, and auth config |
-| 5 | Scaffolds the applicant directory with stub files; pre-fills `applicant.md` with the applicant name |
+| Applicant name | Prompts for the applicant's full name |
+| 1 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if installed) |
+| 2 | Detects installed cloud sync services; presents a numbered menu — Local (default `~/Documents/job-applications`) or any detected service; sets `APPLICANT_DIR` to the chosen location |
+| 3 | Writes `.env` with `APPLICANT_NAME`, `APP_DIR`, `APPLICANT_DIR`, and auth config |
+| 4 | Scaffolds the applicant directory with stub files; pre-fills `applicant.md` with the applicant name |
 
 Existing files are never overwritten — safe to re-run (triggers the refresh path).
 
 `.env` is gitignored and never committed. To update any value, edit `.env` directly or re-run `bash scripts/setup.sh`.
-
-For Windows or Linux Google Drive paths, see `.env.example` for the correct format.
 
 To activate the environment in your current shell after setup:
 ```bash
@@ -72,7 +69,6 @@ Give Claude Code the job description (URL, PDF, or paste). It will automatically
 - Create `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
 - Generate resume and notes if fit; log with reason if no fit
 - Update the tracker
-- Sync to Google Drive
 
 **Step 2 — Review the resume**
 
@@ -86,7 +82,6 @@ Claude generates the resume, self-reviews it against the JD, applies improvement
 After submitting:
 - Update `notes.md` with submission date and follow-up date
 - Update `application-tracker.md` status to Applied
-- Sync to Google Drive
 
 ---
 
@@ -118,7 +113,6 @@ After each interview, add to `notes.md`:
 **When something changes** (offer, rejection, interview scheduled):
 - Update `application-tracker.md` immediately
 - Update the application's `notes.md`
-- Sync to Google Drive
 
 **Weekly (15 min)**:
 - Review tracker for pending follow-ups

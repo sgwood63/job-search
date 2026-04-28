@@ -63,7 +63,7 @@ echo "This script will:"
 echo "  1. Verify Claude Code and configure authentication"
 echo "  2. Detect existing applicant or set up a new one"
 echo "  3. Install PDF generation dependencies"
-echo "  4. Configure Google Drive sync"
+echo "  4. Choose storage location for applicant files"
 echo "  5. Write .env and scaffold the applicant directory"
 echo ""
 echo "$(yellow "APP_DIR (this repo): $REPO_ROOT")"
@@ -166,7 +166,6 @@ fi
 
 EXISTING_APPLICANT_NAME=""
 EXISTING_APPLICANT_DIR=""
-EXISTING_GDRIVE_DIR=""
 
 if [[ -f "$ENV_FILE" ]]; then
     set +e
@@ -175,31 +174,42 @@ if [[ -f "$ENV_FILE" ]]; then
     set -e
     EXISTING_APPLICANT_NAME="${APPLICANT_NAME:-}"
     EXISTING_APPLICANT_DIR="${APPLICANT_DIR:-}"
-    EXISTING_GDRIVE_DIR="${GDRIVE_DIR:-}"
 fi
 
 # ── Shared helpers (used by both refresh and new-applicant paths) ───────────
 
-detect_gdrive_base() {
-    # Sets GDRIVE_BASE to the detected "My Drive" root, or empty if not found.
-    GDRIVE_BASE=""
+detect_cloud_services() {
+    # Populates CLOUD_SERVICES (display names) and CLOUD_PATHS (base paths).
+    CLOUD_SERVICES=()
+    CLOUD_PATHS=()
+
     if [[ "$(uname)" == "Darwin" ]]; then
         local cloudstore="$HOME/Library/CloudStorage"
         if [[ -d "$cloudstore" ]]; then
-            mapfile -t _mounts < <(ls "$cloudstore" 2>/dev/null | grep "^GoogleDrive-")
-            if [[ ${#_mounts[@]} -eq 1 ]]; then
-                GDRIVE_BASE="$cloudstore/${_mounts[0]}/My Drive"
-                echo "  Detected Google Drive: $(yellow "${_mounts[0]}")"
-            elif [[ ${#_mounts[@]} -gt 1 ]]; then
-                echo "  Multiple Google Drive mounts found:"
-                for i in "${!_mounts[@]}"; do
-                    echo "    $((i+1)). ${_mounts[$i]}"
-                done
-                prompt "  Which account to use?" "1"
-                local idx=$(( REPLY - 1 ))
-                GDRIVE_BASE="$cloudstore/${_mounts[$idx]}/My Drive"
-            fi
+            while IFS= read -r mount; do
+                CLOUD_SERVICES+=("Google Drive (${mount#GoogleDrive-})")
+                CLOUD_PATHS+=("$cloudstore/$mount/My Drive")
+            done < <(ls "$cloudstore" 2>/dev/null | grep "^GoogleDrive-")
+            while IFS= read -r mount; do
+                CLOUD_SERVICES+=("OneDrive (${mount#OneDrive-})")
+                CLOUD_PATHS+=("$cloudstore/$mount")
+            done < <(ls "$cloudstore" 2>/dev/null | grep "^OneDrive")
         fi
+        local icloud="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+        if [[ -d "$icloud" ]]; then
+            CLOUD_SERVICES+=("iCloud Drive")
+            CLOUD_PATHS+=("$icloud")
+        fi
+    else
+        [[ -d "$HOME/OneDrive" ]] && CLOUD_SERVICES+=("OneDrive") && CLOUD_PATHS+=("$HOME/OneDrive")
+    fi
+    [[ -d "$HOME/Dropbox" ]] && CLOUD_SERVICES+=("Dropbox") && CLOUD_PATHS+=("$HOME/Dropbox")
+    if [[ -d "$HOME/Box" ]]; then
+        CLOUD_SERVICES+=("Box")
+        CLOUD_PATHS+=("$HOME/Box")
+    elif [[ -d "$HOME/Box Sync" ]]; then
+        CLOUD_SERVICES+=("Box")
+        CLOUD_PATHS+=("$HOME/Box Sync")
     fi
 }
 
@@ -238,12 +248,6 @@ export APP_DIR="${REPO_ROOT}"
 export APPLICANT_DIR="${APPLICANT_DIR}"
 ENVEOF
 
-    if [[ -n "${GDRIVE_DIR:-}" ]]; then
-        echo "export GDRIVE_DIR=\"${GDRIVE_DIR}\"" >> "$ENV_FILE"
-    else
-        echo "# GDRIVE_DIR not set — Google Drive not detected locally" >> "$ENV_FILE"
-    fi
-
     if $USE_OAUTH; then
         echo "# ANTHROPIC_API_KEY not needed — using Claude Code OAuth" >> "$ENV_FILE"
     elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
@@ -264,24 +268,10 @@ run_verification() {
     echo "  APPLICANT_NAME = ${APPLICANT_NAME:-(not set)}"
     echo "  APP_DIR        = ${APP_DIR:-$REPO_ROOT}"
     echo "  APPLICANT_DIR  = ${APPLICANT_DIR:-}"
-    if [[ -n "${GDRIVE_DIR:-}" ]]; then
-        echo "  GDRIVE_DIR     = ${GDRIVE_DIR}"
-    else
-        echo "  GDRIVE_DIR     = $(yellow "(not set)")"
-    fi
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
         echo "  ANTHROPIC_API_KEY = ${ANTHROPIC_API_KEY:0:8}…${ANTHROPIC_API_KEY: -4}"
     else
         echo "  ANTHROPIC_API_KEY = $(yellow "(not set — OAuth active)")"
-    fi
-
-    if [[ -n "${GDRIVE_DIR:-}" && -d "${APPLICANT_DIR:-}" ]]; then
-        echo ""
-        echo "Testing rsync dry run…"
-        if rsync -a --dry-run --exclude='node_modules' --exclude='_temp-*' \
-            "$APPLICANT_DIR/" "$GDRIVE_DIR/" 2>&1 | head -3; then
-            echo "$(green "✓") Sync path verified"
-        fi
     fi
 }
 
@@ -298,33 +288,8 @@ if [[ -n "$EXISTING_APPLICANT_DIR" && -d "$EXISTING_APPLICANT_DIR" ]]; then
     if confirm "Refresh existing setup?"; then
         APPLICANT_NAME="$EXISTING_APPLICANT_NAME"
         APPLICANT_DIR="$EXISTING_APPLICANT_DIR"
-        GDRIVE_DIR="$EXISTING_GDRIVE_DIR"
 
         run_deps
-
-        print_section "Google Drive Sync Path"
-        detect_gdrive_base
-        if [[ -n "$GDRIVE_BASE" ]]; then
-            # Derive folder name from existing applicant dir basename
-            local_slug="$(basename "$EXISTING_APPLICANT_DIR")"
-            DEFAULT_GDRIVE="${EXISTING_GDRIVE_DIR:-$GDRIVE_BASE/$local_slug}"
-            prompt "Google Drive sync folder" "$DEFAULT_GDRIVE"
-            GDRIVE_DIR="$REPLY"
-            if [[ -n "$GDRIVE_DIR" && ! -d "$GDRIVE_DIR" ]]; then
-                if confirm "Folder does not exist. Create it?"; then
-                    mkdir -p "$GDRIVE_DIR"
-                    echo "$(green "✓") Created: $GDRIVE_DIR"
-                else
-                    echo "$(yellow "⚠") Skipped. Sync will fail until this folder exists."
-                fi
-            elif [[ -n "$GDRIVE_DIR" ]]; then
-                echo "$(green "✓") Exists: $GDRIVE_DIR"
-            fi
-        else
-            echo "  $(yellow "–") Google Drive not detected. GDRIVE_DIR unchanged."
-            GDRIVE_DIR="$EXISTING_GDRIVE_DIR"
-        fi
-
         write_env
         run_verification
 
@@ -358,12 +323,16 @@ if [[ -z "$APPLICANT_NAME" ]]; then
 fi
 echo "$(green "✓") Name: $APPLICANT_NAME"
 
-SLUG="$(echo "$APPLICANT_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-')"
+# ── Step 1: PDF Dependencies ────────────────────────────────────────────────
 
-# ── Step 1: Applicant Directory ─────────────────────────────────────────────
+run_deps
 
-print_section "Step 1 — Applicant Directory"
-echo "Holds all applications, profiles, and documents. Not git-tracked."
+# ── Step 2: Storage Location ─────────────────────────────────────────────────
+
+print_section "Step 2 — Storage Location"
+echo "Choose where applicant files are stored. For a cloud sync service, files are"
+echo "placed inside the service's managed local folder and synced automatically by"
+echo "the OS — no extra step needed."
 echo ""
 
 if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
@@ -372,9 +341,35 @@ else
     DOCS_DIR="$HOME/Documents"
 fi
 
-DEFAULT_APPLICANT_DIR="$DOCS_DIR/job-applicant-$SLUG"
-prompt "Applicant directory path" "$DEFAULT_APPLICANT_DIR"
-APPLICANT_DIR="$REPLY"
+DEFAULT_LOCAL="$DOCS_DIR/job-applications"
+
+detect_cloud_services
+
+echo "  1. Local only  ($DEFAULT_LOCAL)"
+for i in "${!CLOUD_SERVICES[@]}"; do
+    echo "  $((i+2)). ${CLOUD_SERVICES[$i]}  (${CLOUD_PATHS[$i]})"
+done
+echo ""
+prompt "Storage option" "1"
+STORAGE_CHOICE="$REPLY"
+
+if [[ "$STORAGE_CHOICE" == "1" || -z "$STORAGE_CHOICE" ]]; then
+    prompt "Local storage path" "$DEFAULT_LOCAL"
+    APPLICANT_DIR="$REPLY"
+else
+    idx=$(( STORAGE_CHOICE - 2 ))
+    if [[ $idx -lt 0 || $idx -ge ${#CLOUD_SERVICES[@]} ]]; then
+        echo "$(yellow "⚠") Invalid choice. Using local default."
+        APPLICANT_DIR="$DEFAULT_LOCAL"
+    else
+        CLOUD_BASE="${CLOUD_PATHS[$idx]}"
+        SERVICE_NAME="${CLOUD_SERVICES[$idx]}"
+        prompt "Sub-directory name within $SERVICE_NAME" "job-applications"
+        APPLICANT_DIR="$CLOUD_BASE/$REPLY"
+        echo "  $(green "→") Files will be stored at: $(yellow "$APPLICANT_DIR")"
+        echo "  $SERVICE_NAME will sync this folder automatically."
+    fi
+fi
 
 if [[ ! -d "$APPLICANT_DIR" ]]; then
     if confirm "Directory does not exist. Create it?"; then
@@ -388,48 +383,14 @@ else
     echo "$(green "✓") Exists: $APPLICANT_DIR"
 fi
 
-# ── Step 2: PDF Dependencies ────────────────────────────────────────────────
+# ── Step 3: Write .env ──────────────────────────────────────────────────────
 
-run_deps
-
-# ── Step 3: Google Drive ────────────────────────────────────────────────────
-
-print_section "Step 3 — Google Drive Sync Path"
-echo "The applicant directory syncs to Google Drive after every content generation step."
-echo ""
-
-GDRIVE_DIR=""
-detect_gdrive_base
-
-if [[ -n "$GDRIVE_BASE" ]]; then
-    DEFAULT_GDRIVE="$GDRIVE_BASE/job-applicant-$SLUG"
-    prompt "Google Drive sync folder" "$DEFAULT_GDRIVE"
-    GDRIVE_DIR="$REPLY"
-    if [[ -n "$GDRIVE_DIR" ]]; then
-        if [[ ! -d "$GDRIVE_DIR" ]]; then
-            if confirm "Folder does not exist. Create it?"; then
-                mkdir -p "$GDRIVE_DIR"
-                echo "$(green "✓") Created: $GDRIVE_DIR"
-            else
-                echo "$(yellow "⚠") Skipped. Sync will fail until this folder exists."
-            fi
-        else
-            echo "$(green "✓") Exists: $GDRIVE_DIR"
-        fi
-    fi
-else
-    echo "$(yellow "–") Google Drive not detected locally. GDRIVE_DIR will not be set."
-    echo "  Install the Google Drive desktop app and re-run this script to configure sync."
-fi
-
-# ── Step 4: Write .env ──────────────────────────────────────────────────────
-
-print_section "Step 4 — Writing .env"
+print_section "Step 3 — Writing .env"
 write_env
 
-# ── Step 5: Scaffold applicant directory ────────────────────────────────────
+# ── Step 4: Scaffold applicant directory ────────────────────────────────────
 
-print_section "Step 5 — Applicant Directory Structure"
+print_section "Step 4 — Applicant Directory Structure"
 echo "Creating directories and stub files (existing files are never overwritten)."
 echo ""
 

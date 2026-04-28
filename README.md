@@ -131,18 +131,9 @@ Shared stylesheet for PDF generation via pandoc + weasyprint. Use `one-page-over
 
 ---
 
-## Google Drive Sync
+## File Storage and Sync
 
-After generating any document, sync the applicant directory to Google Drive:
-
-```bash
-source .env
-rsync -av --exclude='node_modules' --exclude='_temp-*' \
-  "$APPLICANT_DIR/" \
-  "$GDRIVE_DIR/"
-```
-
-`$GDRIVE_DIR` is defined in `.env`. See [QUICK-START.md](QUICK-START.md) for setup.
+`$APPLICANT_DIR` is set during `bash scripts/setup.sh` to a local directory or a cloud sync service's managed folder (Google Drive, OneDrive, iCloud, Dropbox, or Box). When a cloud service is chosen, the OS syncs files automatically — no manual step needed.
 
 ---
 
