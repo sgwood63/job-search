@@ -117,6 +117,13 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 4. Then generate PDF and verify page count
 5. Only present to user after this full cycle is complete
 
+### File Naming Convention
+Resume `.md` and `.pdf` files must be named `Sherman_Wood_<Role_Title>.md` / `.pdf` — spaces replaced by underscores, special characters removed.
+
+Example: "Principal Solution Architect" → `Sherman_Wood_Principal_Solution_Architect.md` / `.pdf`
+
+Set `RESUME_MD` and `RESUME_PDF` variables to this pattern before running the PDF command.
+
 ### PDF Generation Command
 Always use the Playwright script — never `--print-to-pdf` via Chrome directly (Chrome adds filename/filepath to header/footer).
 
