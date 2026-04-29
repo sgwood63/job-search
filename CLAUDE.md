@@ -141,7 +141,7 @@ Content for both sections must be copied verbatim from `$APPLICANT_DIR/base-docu
 - Bullet formula: **Action → Technical Domain → Context → Outcome**
 - Use hands-on IC verbs: designed, implemented, architected, built, delivered
 - Avoid management language (led large teams, departmental strategy, oversaw transformation)
-- Capabilities section: use technology *categories*, not exhaustive tool lists — specific tools go in role bullets
+- Capabilities section: categorized format with bold labels — see `$APPLICANT_DIR/base-documents/resume-content-guidance.md` for the required format and rules
 - Write natural sentences with embedded keywords — not ATS keyword stuffing
 
 ### No Duplication
