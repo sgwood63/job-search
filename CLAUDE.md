@@ -88,6 +88,17 @@ Every `notes.md` must include a **Table of Contents** immediately after the head
 - Sections appear in the order the interviews occur — never out of sequence
 - Within each interview prep section, subsections follow this order: Logistics → Research → Talking Points → Technical Questions → Questions to Ask → Differentiators / What Not to Bring Up
 
+## Profiles Directory
+
+`$APPLICANT_DIR/profiles/` is the working source of truth for resume generation:
+- `EXPERIENCE-REFERENCE.md` — canonical verified career history; source for Education and Certifications sections
+- `role-achievements.md` — scored achievement matrix; source for role bullets; must stay in sync with `EXPERIENCE-REFERENCE.md` and the profile CONTENT files
+- `[profile].md` — positioning strategy and framing guidance per profile
+- `[profile]-CONTENT.md` — pre-compiled bullet library for resume generation
+- `PROFILES-QUICK-REFERENCE.md` — fast-match index for Haiku screening
+
+`$APPLICANT_DIR/base-documents/` contains setup inputs (uploaded PDFs, interview notes, source resumes). Do not access it after setup unless the applicant is adding new source material to support an updated or new profile.
+
 ## File Storage
 
 Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `bash scripts/setup.sh` to either a local directory or a cloud sync service's managed local folder (Google Drive, OneDrive, iCloud, Dropbox, or Box). When a cloud service is chosen, the OS syncs `$APPLICANT_DIR` automatically — no separate step needed.
@@ -117,7 +128,7 @@ Every resume must include these sections, in this order, after Relevant Experien
 1. **`## Education`** — always present, regardless of role type or page count
 2. **`## Certifications`** — always present
 
-Content for both sections must be copied verbatim from `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`. Do not omit them. Do not derive content from memory or context.
+Content for both sections must be copied verbatim from `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Do not omit them. Do not derive content from memory or context.
 
 ### Section Labels
 - Experience section: **`## RELEVANT EXPERIENCE`** — never "Experience" or "Professional Experience"
@@ -126,7 +137,7 @@ Content for both sections must be copied verbatim from `$APPLICANT_DIR/base-docu
 ### Role Ordering — Strict Reverse Chronological
 - All included roles: most-recent-first, no exceptions
 - Skipping roles is OK; displaying them out of order is not
-- Earlier Career entries also follow reverse chronological order — verify against `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`
+- Earlier Career entries also follow reverse chronological order — verify against `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 
 ### Content Library Section Headers Are NOT Job Titles
 - Headers like "AI Solution Architect - Presales Experience" in content library files are source material labels
