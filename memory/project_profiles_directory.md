@@ -7,7 +7,7 @@ originSessionId: 68569e82-4680-4c68-b1a8-00f7172b43e3
 `$APPLICANT_DIR/profiles/` is the working source of truth for all resume generation:
 
 - `EXPERIENCE-REFERENCE.md` — canonical verified career history; source for Education and Certifications sections
-- `role-achievements.md` — scored achievement matrix; source for role bullets; must stay in sync with EXPERIENCE-REFERENCE.md and profile CONTENT files
+- `role-achievements.md` — **canonical source for all achievement bullet text and metrics** (verified or qualitative). Changes flow one-way: `role-achievements.md` → `EXPERIENCE-REFERENCE.md` → `*-CONTENT.md`. When achievement text is updated here, sync the corresponding bullet in EXPERIENCE-REFERENCE.md and any CONTENT files that use it.
 - `[profile].md` — positioning strategy and framing per profile
 - `[profile]-CONTENT.md` — pre-compiled bullet library
 - `PROFILES-QUICK-REFERENCE.md` — fast-match index for Haiku screening
