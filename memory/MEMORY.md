@@ -109,6 +109,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
+- See `feedback_domain_connection.md` — always identify and surface Sherman's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 
 ## Memory Sync Rule
 `Job-Search-2026/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
