@@ -92,7 +92,7 @@ Every `notes.md` must include a **Table of Contents** immediately after the head
 
 `$APPLICANT_DIR/profiles/` is the working source of truth for resume generation:
 - `EXPERIENCE-REFERENCE.md` — canonical verified career history; source for Education and Certifications sections
-- `role-achievements.md` — scored achievement matrix; source for role bullets; must stay in sync with `EXPERIENCE-REFERENCE.md` and the profile CONTENT files
+- `role-achievements.md` — **canonical source for all achievement bullet text and metrics** (verified or qualitative); changes here must propagate downstream: `role-achievements.md` → `EXPERIENCE-REFERENCE.md` → `*-CONTENT.md`
 - `[profile].md` — positioning strategy and framing guidance per profile
 - `[profile]-CONTENT.md` — pre-compiled bullet library for resume generation
 - `PROFILES-QUICK-REFERENCE.md` — fast-match index for Haiku screening
