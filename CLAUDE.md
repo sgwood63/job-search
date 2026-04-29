@@ -117,6 +117,19 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 4. Then generate PDF and verify page count
 5. Only present to user after this full cycle is complete
 
+### PDF Generation Command
+Always use the Playwright script — never `--print-to-pdf` via Chrome directly (Chrome adds filename/filepath to header/footer).
+
+```bash
+source "$APP_DIR/.env"
+pandoc "$RESUME_MD" -o "$RESUME_HTML" --css="$APP_DIR/templates/resume.css" --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
+```
+
+Output: date in header (right), page number in footer (center), no filename or filepath anywhere.
+
 ### Length
 - **2 pages** — enterprise, consulting, governance, direct applications
 - **1 page** — networking, warm referrals, recruiter outreach, pre-sales SE roles, role pivoting
