@@ -41,7 +41,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 10. Present for user review
 
 ## Resume Generation Workflow
-- See `feedback_resume_review.md` — always assess resume vs JD and apply improvements BEFORE generating the PDF
+- See `feedback_resume_review.md` — always assess resume vs JD before PDF; no percentage metrics in bullets; correct file naming
 
 ## Critical Rules: Document Generation
 

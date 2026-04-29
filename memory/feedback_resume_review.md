@@ -1,6 +1,6 @@
 ---
 name: feedback_resume_review
-description: Resume generation rules — review before PDF, no title duplication, correct file naming convention
+description: Resume generation rules — review before PDF, no percentage metrics, no title duplication, correct file naming convention
 type: feedback
 originSessionId: 92dfb0eb-bd42-476d-ae34-d5414d71d670
 ---
@@ -14,6 +14,14 @@ When generating resumes, always complete a full assessment of the resume vs the 
 3. Apply the recommended edits to the .md file
 4. Then generate the PDF and verify page count
 5. Only present to user after this full cycle is complete
+
+## No Percentage Metrics in Resume Bullets
+
+Do NOT include percentage-based metrics (e.g. "improved speed by 30%", "reduced time by 20%", "200% user growth") in resume bullets.
+
+**Why:** Sherman has explicitly asked for these to be removed across multiple sessions. Hard percentage metrics are not desired in resume copy.
+
+**How to apply:** Use qualitative outcome language instead — "substantially improved", "significantly reduced", "materially shortened", "scaled to support significant growth". Counts and named outputs are fine (50+ engagements, 400+ customers, 156 GitHub stars) — it's the X% form specifically that must be avoided. Scan every bullet before generating the PDF.
 
 ## Title Format
 
