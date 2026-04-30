@@ -1,16 +1,16 @@
 # LinkedIn Job URL Extractors
 
-Two tools for extracting job URLs from LinkedIn search results.
+One tool for extracting job URLs from LinkedIn search results.
 
 ---
 
-## ⚡ Option 1: Browser Console Script (RECOMMENDED)
+## ⚡ Browser Console Script (RECOMMENDED)
 
 **Fast, safe, no installation needed**
 
-### ⭐ Manual-Assist Collector (BEST - ACTUALLY WORKS)
+### ⭐ Manual-Assist Collector
 **File:** `linkedin-job-url-collector-manual.js`
-**Use when:** LinkedIn's job list doesn't use href links (most common now)
+**Use when:** Extracting job URLs from LinkedIn search results
 
 **How it works:**
 - Run script in console once
@@ -36,135 +36,17 @@ Two tools for extracting job URLs from LinkedIn search results.
 6. When done, type: `downloadUrls()` and press Enter
 7. URLs will be copied + downloaded
 
----
-
-### Version A: Single Page Extractor
-**File:** `linkedin-job-url-extractor.js`
-**Use when:** Extracting from current page only (quick checks)
-
-### Version B: Multi-Page Extractor (v2)
-**File:** `linkedin-job-url-extractor-multi-page.js`
-**Use when:** Processing complete search results (all pages)
-**Status:** May not work with current LinkedIn layout
-
-**Features:**
-- ✅ Automatically scrolls through infinite scroll
-- ✅ Automatically clicks "Next" pagination
-- ✅ Shows progress in console
-- ✅ Stops when no more results found
-- ✅ Deduplicates URLs
-
-### Version C: Multi-Page Extractor v3
-**File:** `linkedin-job-url-extractor-multi-page-v3.js`
-**Use when:** Processing complete search results (all pages)
-**Status:** May not work - LinkedIn job lists don't use href links
-
-**Why v3?** LinkedIn uses obfuscated class names that change frequently. V3 uses a robust DOM inspection approach that doesn't rely on specific class names.
-
-**Features:**
-- ✅ Works with LinkedIn's obfuscated/hashed class names
-- ✅ Inspects ALL links and filters for job URLs
-- ✅ Scrolls both main page AND job list container
-- ✅ Automatically clicks "Next" pagination
-- ✅ Enhanced debugging output
-- ✅ Multiple extraction strategies (5 different approaches)
-- ✅ Stops when no more results found
-- ✅ Deduplicates URLs
-
-### Version D: Multi-Page Extractor v4 ⭐ BEST (LATEST)
-**File:** `linkedin-job-url-extractor-multi-page-v4.js`
-**Use when:** Processing complete search results (all pages)
-
-**Why v4?** LinkedIn's job list uses JavaScript click handlers, not traditional href links. V4 actually clicks through each job and captures the URL from the browser's address bar.
-
-**How it works:**
-1. Finds all job list items on the page
-2. Clicks each job one by one
-3. Captures the URL from `window.location` after each click
-4. Moves to next page and repeats
-
-**Features:**
-- ✅ Works with JavaScript-rendered job lists
-- ✅ Clicks through each job to capture URL
-- ✅ Handles dynamic content and React routing
-- ✅ Automatically paginates through all pages
-- ✅ Shows progress as it clicks through jobs
-- ✅ Deduplicates URLs
-- ✅ Visual feedback - you'll see jobs being selected
-
-### How to Use:
-
-1. **Open LinkedIn** and run your saved search
-2. **Open browser console:**
-   - Chrome/Edge: Press `F12` or `Ctrl+Shift+J` (Cmd+Option+J on Mac)
-   - Firefox: Press `F12` or `Ctrl+Shift+K` (Cmd+Option+K on Mac)
-   - Safari: Enable Developer menu first, then `Cmd+Option+C`
-
-3. **Copy the manual-assist script** from `linkedin-job-url-collector-manual.js` (⭐ RECOMMENDED - actually works)
-4. **Paste into console** and press Enter
-5. **Click through jobs!** You can:
-   - Click each job in the list
-   - Or use arrow keys (↓ to go down, ↑ to go up) - much faster!
-   - Script captures each URL automatically
-   - Console shows: `✅ Job 1: 4292457426`, `✅ Job 2: 4298765432`, etc.
-   - Navigate through pages as needed
-
-6. **When done, type:** `downloadUrls()` in console and press Enter
-
-7. **URLs will be:**
-   - ✅ Copied to clipboard
-   - ✅ Downloaded as text file to your Downloads folder
-   - ✅ Displayed in console with count
-
-8. **Paste URLs to Claude** for automatic processing
+### How to Open Console:
+- Chrome/Edge: Press `F12` or `Ctrl+Shift+J` (Cmd+Option+J on Mac)
+- Firefox: Press `F12` or `Ctrl+Shift+K` (Cmd+Option+K on Mac)
+- Safari: Enable Developer menu first, then `Cmd+Option+C`
 
 ### Advantages:
 - ✅ No installation required
 - ✅ Works in any browser
 - ✅ Uses your existing LinkedIn session
 - ✅ Doesn't violate ToS (you're manually triggering it)
-- ✅ Handles pagination automatically
 - ✅ Fast and simple
-
----
-
-## 🤖 Option 2: Python Automation Script
-
-**Full automation, but requires setup**
-
-⚠️ **WARNING**: May violate LinkedIn's Terms of Service. Use at your own risk.
-
-### Requirements:
-
-```bash
-pip install selenium webdriver-manager
-```
-
-### How to Use:
-
-1. **Run the script:**
-   ```bash
-   python linkedin-job-scraper.py
-   ```
-
-2. **Browser will open** - log in to LinkedIn manually
-
-3. **Navigate to your saved search** in the browser
-
-4. **Press Enter in terminal** to extract URLs
-
-5. **URLs saved to file** in scripts directory
-
-### Advantages:
-- ✅ Can be scheduled/automated
-- ✅ Works with headless browser
-- ✅ Customizable search parameters
-
-### Disadvantages:
-- ❌ Requires Python + Selenium
-- ❌ May violate LinkedIn ToS
-- ❌ LinkedIn may block/throttle
-- ❌ Requires maintenance as LinkedIn changes
 
 ---
 
@@ -172,13 +54,13 @@ pip install selenium webdriver-manager
 
 **Best approach:**
 
-1. Use **Option 1 (Browser Console)** to extract URLs (safe, fast, simple)
+1. Use the **Browser Console script** to extract URLs (safe, fast, simple)
 2. Paste URLs to Claude
 3. Claude automatically:
-   - Evaluates each JD (Haiku - cheap & fast)
+   - Evaluates each JD (Haiku — cheap & fast)
    - Rejects non-fits with documentation
-   - Creates full applications for fits (Sonnet - high quality)
-   - Syncs everything to Google Drive
+   - Creates full applications for fits (Sonnet — high quality)
+   - Saves everything to `$APPLICANT_DIR`
 
 **Example:**
 ```
@@ -205,33 +87,25 @@ Claude can process **20-30 URLs at once**:
 
 ## 🔒 Privacy & Security Notes
 
-**Option 1 (Browser Console):**
 - ✅ Uses your authenticated session
 - ✅ No credentials stored
 - ✅ No third-party access
 - ✅ Runs entirely in your browser
 
-**Option 2 (Python Script):**
-- ⚠️ You manually log in (credentials not stored)
-- ⚠️ Browser automation may trigger LinkedIn security
-- ⚠️ Use at your own risk
-
 ---
 
 **Created:** 2026-02-18
-**Last Updated:** 2026-02-19
+**Last Updated:** 2026-04-30
 
 ## 🔧 Troubleshooting
 
 **Issue: Script only finds 1 URL**
 - **Cause:** LinkedIn's job list uses JavaScript click handlers, not href links in the HTML
-- **Solution:** Use v4 (`linkedin-job-url-extractor-multi-page-v4.js`) which clicks through each job
-- V4 captures URLs from the browser address bar after clicking each job
-- You'll see jobs being selected one by one as the script runs
+- **Solution:** Click through each job manually — the script captures URLs from the browser address bar as you navigate
 
 **Issue: Clipboard error**
 - **Cause:** Browser requires page focus for clipboard access
-- **Solution:** Script includes fallback - file download always works
+- **Solution:** Script includes fallback — file download always works
 - Check your Downloads folder for the text file
 
 **Issue: Script clicks but doesn't find jobs**

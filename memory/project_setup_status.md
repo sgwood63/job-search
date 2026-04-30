@@ -16,9 +16,9 @@ Phases A, B, and C of applicant setup are complete as of 2026-04-28.
 - Phase B: Interview complete (profiles, preferences, compensation, deal-breakers)
 - Phase C: All documents generated:
   - applicant.md
-  - base-documents/EXPERIENCE-REFERENCE.md
+  - profiles/EXPERIENCE-REFERENCE.md
   - base-documents/resume-content-guidance.md
-  - base-documents/role-achievements.md (achievement set with P1/P2/P4 scoring)
+  - profiles/role-achievements.md (achievement set with P1/P2/P4 scoring)
   - base-documents/applicant-interview-2026-04-28.md (session summary + gap list)
   - profiles/presales-se.md + presales-se-CONTENT.md
   - profiles/ai-governance-se.md + ai-governance-se-CONTENT.md

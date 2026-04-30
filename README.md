@@ -19,7 +19,7 @@ Each step is supported by AI assistance using short, task-scoped sessions. Conte
 | Requirement | Notes |
 |---|---|
 | [Claude Code](https://claude.ai/code) | The CLI that runs all AI-assisted steps. Install via the desktop app or `npm install -g @anthropic-ai/claude-code`. |
-| Anthropic API key | Required for automated workflows. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
+| Anthropic API key | Required if not using Claude Code OAuth. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
 | Claude Haiku | Used for JD screening (fast, low-cost). Requires API access. |
 | Claude Sonnet | Used for resume and document generation (quality). Requires API access. |
 | pandoc + Playwright + poppler | PDF generation. Installed/detected by `scripts/setup.sh`. |
@@ -71,7 +71,12 @@ $APP_DIR/
 │
 └── scripts/                     # Utility scripts
     ├── setup.sh                 # One-time setup: auth, deps, applicant dir, .env
-    └── README.md                # LinkedIn job URL collector notes
+    ├── fetch-jd.py              # Playwright-based JD fetcher with auth support
+    ├── generate-pdf.py          # PDF generation via Playwright
+    ├── check-md-hygiene.sh      # Pre-commit hook: no personal names or hard-coded paths
+    ├── install-hooks.sh         # Installs git hooks into .git/hooks/
+    ├── README.md                # Script documentation
+    └── README-linkedin-extractors.md  # LinkedIn job URL collector notes
 ```
 
 ---
@@ -83,15 +88,15 @@ $APPLICANT_DIR/
 ├── applicant.md                 # Contact info, job criteria, location preferences
 ├── application-tracker.md       # Master tracker (all applications)
 │
-├── profiles/                    # Career profiles (5 total)
+├── profiles/                    # Career profiles
 │   ├── PROFILES-QUICK-REFERENCE.md   # Fast matching guide
+│   ├── EXPERIENCE-REFERENCE.md       # Verified facts — canonical source of truth
+│   ├── role-achievements.md          # Achievement set scored against active profiles
 │   ├── [profile-name].md             # Full profile strategy
 │   └── [profile-name]-CONTENT.md     # Pre-compiled resume content library
 │
-├── base-documents/              # Source documents
-│   ├── EXPERIENCE-REFERENCE.md  # Verified facts — canonical source of truth
-│   ├── resume-content-guidance.md
-│   └── achievements-worksheet.md
+├── base-documents/              # Source documents (uploaded PDFs, interview notes)
+│   └── resume-content-guidance.md
 │
 ├── .auth/                       # Playwright session cookies for login-walled job sites
 │   └── linkedin.com.json        # Applicant-specific; never committed; expires periodically
@@ -118,7 +123,7 @@ Applications are generated from one of several career profiles defined in `$APPL
 
 ## Key Files
 
-**`$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`**
+**`$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`**
 Canonical source of verified experience facts. All resume generation draws from this. Never fabricate — if it's not here, ask before adding it.
 
 **`$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`**

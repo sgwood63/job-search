@@ -49,12 +49,7 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
      - Reorder experience bullets for relevance
      - Incorporate JD keywords naturally
      - Emphasize matching achievements
-     - Pull from [templates/](templates/) library (in this repo)
-   - **Cover Letter**: Tailored to JD
-     - Reference specific company/role details
-     - Highlight 2-3 key matching qualifications
-     - Use authentic voice and genuine interest
-     - Connect experience to their needs
+     - Pull from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` content library
 
 5. **Create application folder:**
    - Format: `applications/YYYY-MM-DD-company-role/`
@@ -81,13 +76,11 @@ JD Provided → AI Evaluation → Profile Match → Auto-Generate Docs → Revie
 
 ### 3. Create Application Folder (Manual)
 
-Use the helper script or manually:
+Create the application folder manually:
 
-```bash
-./scripts/new-application.sh "Company Name" "Role Title"
 ```
-
-This creates: `applications/YYYY-MM-DD-company-role/`
+$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/
+```
 
 ### 4. Analyze Requirements vs. Your Experience (Manual)
 
@@ -133,7 +126,7 @@ This creates: `applications/YYYY-MM-DD-company-role/`
    - Highlight relevant work
    - Use terminology that connects to their needs
 
-**Save as**: `applications/[date-company-role]/resume-[company]-[role].pdf`
+**Save as**: `$APPLICANT_DIR/applications/[date-company-role]/[FirstName_LastName]_[Role_Title].pdf`
 
 ### 6. Customize Cover Letter (Manual)
 
@@ -248,17 +241,19 @@ Files tracked in `memory/`:
 - `feedback_*.md` — workflow and resume rules
 
 ```bash
-# After updating a memory file in ~/.claude/.../memory/:
-source .env
-CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
-cp "$CLAUDE_MEM"*.md memory/
-git add memory/
-git commit -m "Update memory: [what changed]"
+source "$APP_DIR/.env"
+# 1. Edit files in $APP_DIR/memory/
+# 2. Commit:
+git -C "$APP_DIR" add memory/
+git -C "$APP_DIR" commit -m "Update memory: [what changed]"
+# 3. Sync to live memory:
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
+cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 
 ## Efficiency Tips
 
-1. **Build your templates library**: As you write strong bullets or paragraphs, save them to [templates/](templates/) for reuse
+1. **Build your content library**: As you write strong bullets, add them to `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` for reuse across applications
 
 2. **Profile-based starting points**: Create resume/cover letter variants for each job profile to reduce per-application work
 
