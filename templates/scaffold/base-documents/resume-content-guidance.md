@@ -5,7 +5,7 @@ Notes on framing, tone, and what to emphasize across all resumes.
 ## Voice Guidelines
 - Write like you talk (professionally)
 - Use specific examples from actual experience
-- First person — "I designed" not "Designed"
+- Third person — "Designed" not "I designed"
 - Avoid corporate jargon you would not say aloud
 
 ## What to Emphasize

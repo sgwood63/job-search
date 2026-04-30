@@ -119,7 +119,7 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 ## Resume Generation Rules
 
 ### No Fabrication
-- ONLY use information from actual base resume (extract with `pdftotext` if needed)
+- ONLY use information from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 - Do NOT invent companies, titles, achievements, metrics, projects, skills, or certifications
 - If uncertain about a fact, ASK — never guess
 

@@ -39,7 +39,7 @@ Before the interview, upload source documents to `$APPLICANT_DIR/base-documents/
 | Cover letters (if any) | PDF or Word | Optional but useful for voice calibration |
 | Example JDs (optional) | PDF, HTML, or URL | Roles the applicant already has in mind |
 
-For JDs provided as URLs: fetch the HTML content and save as a PDF in `base-documents/`.
+For JDs provided as URLs: use `fetch-jd.py --md-out` to save as a markdown file in `base-documents/`. See [README.md](README.md) for setup and usage.
 
 ---
 
@@ -97,7 +97,7 @@ Pre-compiled resume content library:
 ### `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`
 One-row summary per profile for fast JD matching. Claude uses this as the first lookup during screening.
 
-### `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`
+### `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 Verified fact sheet for every role:
 - Exact title, company, and dates
 - What the company did (one sentence)
@@ -107,7 +107,7 @@ Verified fact sheet for every role:
 
 Mark any uncertain claims `[UNVERIFIED]`. This is the canonical source of truth — resumes are generated from it, never the reverse.
 
-### `$APPLICANT_DIR/base-documents/role-achievements.md` (required)
+### `$APPLICANT_DIR/profiles/role-achievements.md` (required)
 Canonical achievement set organized by role (most-recent first), scored against all active profiles. Generated during Phase B using the following process:
 
 1. Extract all achievements from uploaded resumes and LinkedIn (de-duplicate across resume versions)
@@ -146,8 +146,8 @@ Once profiles are generated:
 The applicant can review and update any of these files at any time. Common reasons to update:
 
 - **`applicant.md`** — preferences shift, new deal-breakers emerge, compensation target changes
-- **`EXPERIENCE-REFERENCE.md`** — completing a project, remembering a detail, adding a metric
-- **`profiles/`** — new role type to target, framing improvement after an interview
-- **`base-documents/achievements-worksheet.md`** — capturing a new accomplishment
+- **`$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`** — completing a project, remembering a detail, adding a metric
+- **`$APPLICANT_DIR/profiles/`** — new role type to target, framing improvement after an interview
+- **`$APPLICANT_DIR/profiles/role-achievements.md`** — capturing a new accomplishment
 
 When updating process rules (how Claude behaves), edit `CLAUDE.md` or `memory/` in the process repo and commit.

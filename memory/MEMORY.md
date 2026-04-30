@@ -53,8 +53,8 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 
 **NEVER fabricate or hallucinate**:
 - Do NOT invent companies, titles, achievements, metrics, projects, skills, certifications
-- ONLY use information from actual base resume (extract with pdftotext)
-- If uncertain, ASK - never guess
+- ONLY use information from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
+- If uncertain about a fact, ASK — never guess
 - All claims must be supportable with real evidence
 
 **Resume role generation — two specific failure modes to avoid**:
@@ -82,7 +82,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - Early career (20+ years): **1 bullet or title only**
 
 *Section labels*:
-- Experience section must be labeled **"Relevant Experience"** — never "Experience" or "Professional Experience"
+- Experience section must be labeled **`## RELEVANT EXPERIENCE`** (all caps) — never "Experience" or "Professional Experience"
 - Roles that ended more than 12 years ago must be compressed into a single **"Earlier Career"** section, not individual role sections
 
 *No duplication*:
@@ -138,7 +138,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separ
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
 - Switch to Sonnet only for document generation
-- Reuse resume extraction within session
+- Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
 
 **Last Updated**: 2026-04-28
 

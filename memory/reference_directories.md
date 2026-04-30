@@ -23,14 +23,14 @@ $APPLICANT_DIR/
 ├── application-tracker.md        # Master tracker (all applications)
 ├── profiles/
 │   ├── PROFILES-QUICK-REFERENCE.md
+│   ├── EXPERIENCE-REFERENCE.md           # Verified facts — canonical source of truth
+│   ├── role-achievements.md              # Per-role achievements scored against active profiles
 │   ├── [profile-name].md
 │   └── [profile-name]-CONTENT.md
 ├── applications/                 # One folder per application
 │   └── YYYY-MM-DD-company-role/
 ├── base-documents/
-│   ├── EXPERIENCE-REFERENCE.md
 │   ├── resume-content-guidance.md
-│   ├── role-achievements.md          # Per-role achievements scored against active profiles
 │   └── applicant-interview-[date].md # Interview session summary and gap list
 └── memory/                       # Applicant-specific memory
 ```

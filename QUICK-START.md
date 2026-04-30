@@ -26,7 +26,7 @@ The script detects whether an existing applicant is already configured and offer
 | Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key |
 | Existing check | If a valid `.env` + applicant directory is found, offers to refresh the existing setup and exit |
 | Applicant name | Prompts for the applicant's full name |
-| 1 | Installs PDF generation dependencies — pandoc, poppler, weasyprint (checks first, skips if installed) |
+| 1 | Installs PDF generation dependencies — pandoc, poppler (checks first, skips if installed); detects Playwright Python installation |
 | 2 | Detects installed cloud sync services; presents a numbered menu — Local (default `~/Documents/job-applications`) or any detected service; sets `APPLICANT_DIR` to the chosen location |
 | 3 | Writes `.env` with `APPLICANT_NAME`, `APP_DIR`, `APPLICANT_DIR`, and auth config |
 | 4 | Scaffolds the applicant directory with stub files; pre-fills `applicant.md` with the applicant name |
@@ -45,7 +45,7 @@ source .env
 Open a new Claude Code session and follow [applicant-setup.md](applicant-setup.md). This guided process replaces manual file-filling — Claude interviews the applicant, extracts content from uploaded documents, and generates all required files:
 
 - `applicant.md` — contact info, location preferences, role criteria
-- `base-documents/EXPERIENCE-REFERENCE.md` — verified facts for every role
+- `profiles/EXPERIENCE-REFERENCE.md` — verified facts for every role
 - `profiles/[name].md` + `profiles/[name]-CONTENT.md` — one pair per target role type
 - `profiles/PROFILES-QUICK-REFERENCE.md` — fast JD-matching index
 
@@ -119,8 +119,9 @@ After each interview, add to `notes.md`:
 - Any applications past follow-up date? Send a note.
 
 **When you learn something new about your experience**:
-- Update `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md` first
-- Then update the relevant `profiles/[profile]-CONTENT.md`
+- Update `$APPLICANT_DIR/profiles/role-achievements.md` first
+- Then propagate to `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
+- Then update the relevant `$APPLICANT_DIR/profiles/[profile]-CONTENT.md`
 - If it's a process rule: update `memory/` in the process repo and commit
 
 **When you want to change how Claude behaves**:

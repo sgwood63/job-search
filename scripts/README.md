@@ -1,66 +1,88 @@
-# Helper Scripts
+# Scripts
 
-Automation tools to make your job search process more efficient.
+## setup.sh
 
-## Available Scripts
+One-time setup script. Run from the repo root before starting a job search.
 
-### new-application.sh
-Creates a new application folder with all necessary template files.
-
-**Usage**:
 ```bash
-./scripts/new-application.sh "Company Name" "Role Title" [profile]
+bash scripts/setup.sh
 ```
 
-**Example**:
+Detects an existing applicant configuration and offers a **refresh** path (re-check deps, auth, sync) or a **new applicant** path. On new setup:
+
+1. Checks Claude Code auth (OAuth or API key)
+2. Installs PDF generation dependencies: pandoc, poppler
+3. Detects Playwright Python installation and records it in `.env`
+4. Detects installed cloud sync services; presents a numbered menu to set `$APPLICANT_DIR`
+5. Writes `.env` with `APP_DIR`, `APPLICANT_DIR`, `APPLICANT_NAME`, `PLAYWRIGHT_PYTHON`, and auth config
+6. Scaffolds `$APPLICANT_DIR` with stub files from `templates/scaffold/`
+
+Safe to re-run — existing files are never overwritten (triggers refresh path instead).
+
+---
+
+## fetch-jd.py
+
+Playwright-based job description fetcher. Called automatically by Claude during the JD workflow.
+
 ```bash
-./scripts/new-application.sh "Acme Corp" "Senior Product Manager" "product-manager-b2b"
+source "$APP_DIR/.env"
+
+# Fetch a public URL (no auth needed)
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"
+
+# Fetch and save full page text as markdown
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
+
+# First-time auth setup for a login-walled site (e.g. LinkedIn)
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
+
+# Import cookies from Firefox without opening a browser
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --import linkedin.com
 ```
 
-**What it creates**:
-- Application folder with date-stamped name
-- `notes.md` - Main tracking document
-- `job-description.md` - Place to paste and analyze JD
-- `checklist.md` - Step-by-step application process
+Exit codes:
+- `0` — success
+- `1` — navigation error (ask user to paste JD text)
+- `2` — auth required or expired (re-run `--setup` or `--import`)
 
-### status-summary.sh
-Generates a quick overview of your job search status.
+Auth cookies are saved to `$APPLICANT_DIR/.auth/<domain>.json`. Re-run `--setup` or `--import` when exit code 2 is returned.
 
-**Usage**:
+---
+
+## generate-pdf.py
+
+Converts an HTML resume file to PDF using Playwright (headless Chromium). Produces clean output with no filename or filepath in headers/footers.
+
 ```bash
-./scripts/status-summary.sh
+source "$APP_DIR/.env"
+pandoc "$RESUME_MD" -o "$RESUME_HTML" --css="$APP_DIR/templates/resume.css" --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
 ```
 
-**Shows**:
-- Total applications count
-- Recent activity
-- Applications needing follow-up
-- Quick stats on your setup
+Always source `.env` before running — `$PLAYWRIGHT_PYTHON` must be set. Never use `--print-to-pdf` via Chrome directly; Chrome adds filename/filepath to the header/footer.
 
-**When to use**:
-- Weekly reviews
-- Before planning your next batch of applications
-- When checking on follow-up actions
+---
 
-## Future Script Ideas
+## check-md-hygiene.sh
 
-As you use this system, you might want to add:
+Pre-commit hook that enforces two rules on every `.md` file staged in `$APP_DIR`:
 
-- **profile-stats.sh**: Compare success rates across different profiles
-- **response-time-tracker.sh**: Analyze how quickly companies respond
-- **interview-prep.sh**: Generate interview prep checklist from application notes
-- **weekly-review.sh**: Automated weekly summary report
+1. **No personal names** — rejects commits containing the applicant's name (read from `.env`)
+2. **No hard-coded absolute paths** — rejects commits containing literal home directory paths
 
-## Adding Your Own Scripts
+Install once with `bash scripts/install-hooks.sh`. Runs automatically on every `git commit`.
 
-1. Create the script file in this directory
-2. Make it executable: `chmod +x scripts/your-script.sh`
-3. Add documentation to this README
-4. Use bash/python/whatever works for you
+---
 
-## Tips
+## install-hooks.sh
 
-- Run scripts from the project root directory
-- Test scripts on dummy data first
-- Keep scripts simple and focused on one task
-- Add error handling for better user experience
+Installs git hooks into `.git/hooks/`. Run once after cloning:
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+Installs `pre-commit` → `scripts/check-md-hygiene.sh`.

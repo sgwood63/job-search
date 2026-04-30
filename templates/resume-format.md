@@ -28,7 +28,7 @@ Every resume must follow this section order:
 7. `## Education`
 8. `## Certifications`
 
-Sections 7 and 8 must always be present. Content sourced from `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`.
+Sections 7 and 8 must always be present. Content sourced from `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`.
 
 ---
 
@@ -38,7 +38,7 @@ Sections 7 and 8 must always be present. Content sourced from `$APPLICANT_DIR/ba
 - Skipping roles is OK; out-of-order is not
 - Roles that ended more than 12 years ago → group under `### Earlier Career`
 - Earlier Career entries also follow reverse chronological order
-- Always verify role order against `$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`
+- Always verify role order against `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 
 ---
 
