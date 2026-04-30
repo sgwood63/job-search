@@ -26,10 +26,10 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 ### For EVERY JD (fit or no-fit)
 3. Create application folder in `$APPLICANT_DIR/applications/`
 4. Save job-description.md with full JD content and key info
-5. Save original JD content to a separate file:
-   - URL source → `job-description-original.html` (full expanded HTML via `fetch-jd.py --html-out`)
-   - PDF source → `job-description-original.pdf` (copy of original file)
-   - Pasted text → `job-description-original.txt` (verbatim)
+5. Save original JD content to a separate file named `[Company]_[Role_Title]-original.[ext]`:
+   - URL source → `[Company]_[Role_Title]-original.pdf` (full rendered PDF via `fetch-jd.py --pdf-out`)
+   - PDF source → `[Company]_[Role_Title]-original.pdf` (copy of original file)
+   - Pasted text → `[Company]_[Role_Title]-original.txt` (verbatim)
 6. In notes.md JD Analysis section: record the full source URL and the original filename saved
 
 ### If NO FIT (stay in Haiku)
