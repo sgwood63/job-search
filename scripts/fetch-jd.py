@@ -26,9 +26,13 @@ EXIT CODES
     2  Auth required — no saved auth (or expired); run --setup <url> first
 
 AUTH STORAGE
-    .auth/<domain>.json (gitignored, per-user, never committed)
+    $APPLICANT_DIR/.auth/<domain>.json  (applicant-specific, never committed)
+    Requires APPLICANT_DIR env var — source $APP_DIR/.env before running.
+    Session cookies expire; re-run --setup or refresh cookie manually when
+    exit code 2 is returned for a previously working domain.
 """
 
+import os
 import sys
 import json
 from pathlib import Path
@@ -46,8 +50,11 @@ except ImportError:
     )
     sys.exit(1)
 
-REPO_DIR = Path(__file__).parent.parent
-AUTH_DIR = REPO_DIR / ".auth"
+_applicant_dir = os.environ.get("APPLICANT_DIR")
+if not _applicant_dir:
+    print("[error] APPLICANT_DIR not set — source $APP_DIR/.env before running", file=sys.stderr)
+    sys.exit(1)
+AUTH_DIR = Path(_applicant_dir) / ".auth"
 
 # URL fragments that indicate an auth wall
 AUTH_URL_SIGNALS = ["authwall", "signin", "login", "signup", "join", "challenge", "session"]
