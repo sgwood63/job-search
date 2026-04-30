@@ -105,32 +105,29 @@ def fetch(url: str, pdf_out: str | None = None) -> None:
             browser.close()
             sys.exit(1)
 
-        # Scroll to trigger lazy-loaded content before expanding
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-        page.wait_for_timeout(800)
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(800)
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(500)
-
-        # Expand all collapsed sections via JS (bypasses scroll-position visibility checks)
+        # Force all truncated content visible.
+        # Uses a JS-injected <style> element (not add_style_tag, which CSP blocks)
+        # plus inline overrides on elements with small max-height constraints.
         page.evaluate("""
             () => {
-                const selectors = [
-                    '.show-more-less-html__button',
-                    '.jobs-description__footer-button',
-                    'button[aria-expanded="false"]',
-                    'button[aria-label*="more" i]',
-                    'button[aria-label*="see more" i]',
-                ];
-                for (const sel of selectors) {
-                    document.querySelectorAll(sel).forEach(el => {
-                        try { el.click(); } catch (e) {}
-                    });
-                }
+                // Inject a <style> override — created via JS so CSP doesn't block it
+                const s = document.createElement('style');
+                s.textContent = '* { max-height: none !important; overflow: visible !important; }';
+                document.head.appendChild(s);
+
+                // Belt-and-suspenders: also set inline styles on constrained elements
+                document.querySelectorAll('*').forEach(el => {
+                    const mh = window.getComputedStyle(el).maxHeight;
+                    if (mh && mh !== 'none') {
+                        const px = parseFloat(mh);
+                        if (!isNaN(px) && px > 0 && px < 2000) {
+                            el.style.cssText += '; max-height: none !important; overflow: visible !important;';
+                        }
+                    }
+                });
             }
         """)
-        page.wait_for_timeout(1000)  # Settle after all expansions
+        page.wait_for_timeout(1000)
 
         title = page.title()
         final_url = page.url
