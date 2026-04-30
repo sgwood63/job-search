@@ -458,6 +458,10 @@ scaffold_file "$APPLICANT_DIR/memory/APPLICANT-MEMORY.md"                     "$
 
 run_verification
 
+# ── Git hooks ───────────────────────────────────────────────────────────────
+
+bash "$REPO_ROOT/scripts/install-hooks.sh"
+
 # ── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
