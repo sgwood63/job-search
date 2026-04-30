@@ -62,6 +62,11 @@ Spawn a Haiku agent to:
 ### Step 2 — Create Application Folder (every JD, fit or no-fit)
 - Folder: `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
 - Save `job-description.md` with full JD text and extracted key info
+- Save the original JD content to a separate file in the same folder:
+  - **URL source**: `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --html-out "$FOLDER/job-description-original.html" "<url>"` — saves the full expanded HTML page (run this even if WebFetch was used for screening, to ensure full content with all "Show more" sections expanded)
+  - **PDF source**: copy the original PDF file to `$FOLDER/job-description-original.pdf`
+  - **Pasted text**: save the user's verbatim paste to `$FOLDER/job-description-original.txt`
+- In `notes.md`, record the full source URL (if URL-sourced) and the filename of the saved original (e.g. `job-description-original.html`) in the JD Analysis section
 
 ### If NO FIT (stay in Haiku)
 - Create brief `notes.md` with no-fit reasoning
