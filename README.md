@@ -158,17 +158,35 @@ git commit -m "Update memory: [what changed]"
 
 ## JD Fetching
 
-`scripts/fetch-jd.py` fetches job description pages using Playwright. It is called automatically by Claude during the JD workflow.
+`scripts/fetch-jd.py` fetches job description pages using Playwright. It is called automatically by Claude during the JD workflow. Works on macOS, Linux, and Windows.
 
 - **Public sites** (e.g. company careers pages): fetched with no setup needed
-- **Login-walled sites** (e.g. LinkedIn): require a one-time auth setup per domain:
-  ```bash
-  source "$APP_DIR/.env"
-  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
-  ```
-  Opens a browser → log in → press Enter → auth saved to `$APPLICANT_DIR/.auth/linkedin.com.json`
+- **Login-walled sites** (e.g. LinkedIn): require a one-time auth setup per domain
 
-**Cookie expiry:** Session cookies expire periodically. When a previously working domain returns exit code 2 (auth-expired), either re-run `--setup` or refresh the cookie manually — for LinkedIn, copy the `li_at` cookie value from Chrome DevTools (Application → Cookies → linkedin.com) and overwrite the auth file.
+### First-time setup for a login-walled site
+
+```bash
+source "$APP_DIR/.env"
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
+```
+
+Opens your default browser to the URL → log in → press Enter. The script then:
+1. Scans Firefox profiles on disk for session cookies (no prompts, works on all platforms)
+2. If no Firefox cookies found → prompts for manual entry: open DevTools (F12), go to Application → Cookies, copy the session cookie name and value (e.g. `li_at` for LinkedIn)
+
+Auth is saved to `$APPLICANT_DIR/.auth/linkedin.com.json`.
+
+> **Note:** Chromium-family browsers (Chrome, Edge, Brave, Arc, Atlas, etc.) encrypt cookies using the OS keychain, which requires system-level access that triggers password prompts and is not reliably available to external tools. Use Firefox, or the manual DevTools entry fallback, instead.
+
+### If already logged in on Firefox
+
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --import linkedin.com
+```
+
+Scans Firefox profiles on disk without opening a browser. Falls back to manual cookie entry if no Firefox session found.
+
+**Cookie expiry:** Session cookies expire periodically. When a previously working domain returns exit code 2 (auth-expired), re-run `--setup` or `--import` to refresh. If prompted for manual entry, open DevTools in your browser (F12) → Application → Cookies → copy the session cookie name and value.
 
 **Save JD text:** Use `--md-out` to save the full page text as markdown alongside the processed `job-description.md`:
 ```bash

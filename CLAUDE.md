@@ -46,7 +46,7 @@ When the user provides a job description (URL, document, or paste):
 **Try WebFetch first.** If it returns a login wall (page title/body contains "sign in", "authwall", "join now", etc.) or fails:
 
 1. Fall back to `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"` (requires `.env` sourced for both `$PLAYWRIGHT_PYTHON` and `$APPLICANT_DIR`)
-2. If exit code 2 (auth required or expired): tell the user to run the setup command printed to stderr — do not proceed until they confirm auth is done, then retry. Auth files live in `$APPLICANT_DIR/.auth/` (applicant-specific session cookies, never committed). Cookies expire periodically — re-run `--setup` or refresh the cookie manually (e.g. copy `li_at` from Chrome DevTools → Application → Cookies → linkedin.com).
+2. If exit code 2 (auth required or expired): tell the user to run the setup command printed to stderr — do not proceed until they confirm auth is done, then retry. Auth files live in `$APPLICANT_DIR/.auth/` (applicant-specific session cookies, never committed). Cookies expire periodically — re-run `--setup <url>` or `--import <domain>` to refresh. If prompted for manual entry: open DevTools (F12) → Application → Cookies → copy the session cookie name and value.
 3. If exit code 1 (navigation error): ask the user to paste the JD text directly
 
 **PDF and document JDs:** Use `pdftotext` or ask the user to paste if WebFetch fails.
