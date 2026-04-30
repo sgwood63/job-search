@@ -93,12 +93,16 @@ $APPLICANT_DIR/
 │   ├── resume-content-guidance.md
 │   └── achievements-worksheet.md
 │
+├── .auth/                       # Playwright session cookies for login-walled job sites
+│   └── linkedin.com.json        # Applicant-specific; never committed; expires periodically
+│
 ├── applications/                # One folder per application
 │   └── YYYY-MM-DD-company-role/
-│       ├── job-description.md   # Full JD + extracted key info
-│       ├── notes.md             # Analysis, interview prep, debrief
-│       ├── [FirstName_LastName]_[Role]_[Company].md    # Resume (markdown source)
-│       └── [FirstName_LastName]_[Role]_[Company].pdf   # Resume (final)
+│       ├── job-description.md         # Processed JD + extracted key info
+│       ├── jd-<company>-<role>.md     # Original JD full text (for reference)
+│       ├── notes.md                   # Analysis, interview prep, debrief
+│       ├── [FirstName_LastName]_[Role].md    # Resume (markdown source)
+│       └── [FirstName_LastName]_[Role].pdf   # Resume (final)
 │
 └── memory/                      # Applicant-specific memory (not in process repo)
     └── APPLICANT-MEMORY.md
@@ -148,6 +152,27 @@ After editing any memory file, commit from the repo:
 ```bash
 git add memory/ CLAUDE.md
 git commit -m "Update memory: [what changed]"
+```
+
+---
+
+## JD Fetching
+
+`scripts/fetch-jd.py` fetches job description pages using Playwright. It is called automatically by Claude during the JD workflow.
+
+- **Public sites** (e.g. company careers pages): fetched with no setup needed
+- **Login-walled sites** (e.g. LinkedIn): require a one-time auth setup per domain:
+  ```bash
+  source "$APP_DIR/.env"
+  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
+  ```
+  Opens a browser → log in → press Enter → auth saved to `$APPLICANT_DIR/.auth/linkedin.com.json`
+
+**Cookie expiry:** Session cookies expire periodically. When a previously working domain returns exit code 2 (auth-expired), either re-run `--setup` or refresh the cookie manually — for LinkedIn, copy the `li_at` cookie value from Chrome DevTools (Application → Cookies → linkedin.com) and overwrite the auth file.
+
+**Save JD text:** Use `--md-out` to save the full page text as markdown alongside the processed `job-description.md`:
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
 ```
 
 ---
