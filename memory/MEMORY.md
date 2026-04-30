@@ -30,7 +30,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
    - URL source → `jd-<company>-<role-title>.md` (full page text via `fetch-jd.py --md-out`)
    - PDF source → `jd-<company>-<role-title>.pdf` (copy of original file)
    - Pasted text → `jd-<company>-<role-title>.md` (verbatim)
-   - Auth files for login-walled sites live in `$APPLICANT_DIR/.auth/` — set up once per domain with `fetch-jd.py --setup <url>`; session cookies expire and must be refreshed when exit code 2 is returned
+   - Auth files for login-walled sites live in `$APPLICANT_DIR/.auth/` — set up once per domain with `fetch-jd.py --setup <url>` (opens default browser, scans Firefox, falls back to manual DevTools entry); re-run `--setup` or `--import <domain>` when exit code 2 is returned
 6. In notes.md JD Analysis section: record the full source URL and the original filename saved
 
 ### If NO FIT (stay in Haiku)
