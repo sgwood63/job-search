@@ -1,15 +1,15 @@
 ---
 name: Domain connection to target company's business
-description: Always surface Sherman's domain connection to the target company's business (not just the role) in each resume and notes.md
+description: Always surface the applicant's domain connection to the target company's business (not just the role) in each resume and notes.md
 type: feedback
 ---
 
-For each application, identify the target company's business domain and surface Sherman's relevant domain connections explicitly in the resume — not just in "Domain Expertise" capabilities, but in actual role bullets.
+For each application, identify the target company's business domain and surface the applicant's relevant domain connections explicitly in the resume — not just in "Domain Expertise" capabilities, but in actual role bullets.
 
-**Why:** Sherman's background often includes direct experience with the business problem the target company is solving. This is a differentiator that hiring teams at product companies find credible. It was being omitted or buried in Earlier Career.
+**Why:** The applicant's background often includes direct experience with the business problem the target company is solving. This is a differentiator that hiring teams at product companies find credible. It was being omitted or buried in Earlier Career.
 
 **How to apply:**
-- After JD fit check, add a "Domain Connection" item to the Fit Assessment section of notes.md — what does this company's product do, and where does Sherman's background intersect?
+- After JD fit check, add a "Domain Connection" item to the Fit Assessment section of notes.md — what does this company's product do, and where does the applicant's background intersect?
 - Surface the matching experience in a role bullet, not just a capabilities label
 - If the connection is in Earlier Career or Consulting Period, consider whether it warrants a brief explicit callout in the resume
 

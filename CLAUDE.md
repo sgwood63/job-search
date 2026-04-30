@@ -118,9 +118,9 @@ Applicant files are stored directly in `$APPLICANT_DIR`, which is set during `ba
 5. Only present to user after this full cycle is complete
 
 ### File Naming Convention
-Resume `.md` and `.pdf` files must be named `Sherman_Wood_<Role_Title>.md` / `.pdf` — spaces replaced by underscores, special characters removed.
+Resume `.md` and `.pdf` files must be named `[FirstName_LastName]_<Role_Title>.md` / `.pdf` — spaces replaced by underscores, special characters removed. Derive the applicant's first and last name from `$APPLICANT_DIR/applicant.md`.
 
-Example: "Principal Solution Architect" → `Sherman_Wood_Principal_Solution_Architect.md` / `.pdf`
+Example: "Principal Solution Architect" → `[FirstName_LastName]_Principal_Solution_Architect.md` / `.pdf`
 
 Set `RESUME_MD` and `RESUME_PDF` variables to this pattern before running the PDF command.
 
