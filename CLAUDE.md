@@ -15,6 +15,14 @@ Canonical paths are defined in `$APP_DIR/.env` (gitignored). Read that file at s
 
 Applicant-specific context (identity, location, experience, job criteria) is in `$APPLICANT_DIR/applicant.md`.
 
+## APP_DIR File Authoring Rules
+
+These rules apply to every `.md` file written or edited in `$APP_DIR`. A pre-commit hook (`scripts/check-md-hygiene.sh`) enforces them at commit time.
+
+**No personal names.** Never refer to the applicant by name in prose or examples. Use "the applicant" or "the user". Use `[FirstName_LastName]` as a placeholder in file naming examples.
+
+**No hard-coded paths.** Never write hard-coded absolute paths. Always use `$APP_DIR`, `$APPLICANT_DIR`, or other variables defined in `.env`.
+
 ## New Applicant Setup — DO NOT ASK, JUST DO
 
 When the user says "start setup", "set up applicant", "run applicant setup", or expresses clear intent to begin the new applicant onboarding process:
