@@ -10,17 +10,77 @@ Every application follows the same pipeline:
 JD → Screen → Profile Match → Generate Resume → Review → Submit → Track → Interview Prep → Debrief
 ```
 
-Each step is supported by AI assistance, with context loaded specifically for that step — not a single long conversation that accumulates and degrades.
+Each step is supported by AI assistance using short, task-scoped sessions. Context is loaded at session start from `CLAUDE.md` — not accumulated across long conversations.
 
 ---
 
-## Directory Structure
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| [Claude Code](https://claude.ai/code) | The CLI that runs all AI-assisted steps. Install via the desktop app or `npm install -g @anthropic-ai/claude-code`. |
+| Anthropic API key | Required for automated workflows. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
+| Claude Haiku | Used for JD screening (fast, low-cost). Requires API access. |
+| Claude Sonnet | Used for resume and document generation (quality). Requires API access. |
+| pandoc + Playwright + poppler | PDF generation. Installed/detected by `scripts/setup.sh`. |
+
+This system is built around Claude Code's session model: `CLAUDE.md` is auto-loaded at the start of every session, giving the AI its full context without relying on conversation history.
+
+---
+
+## Two-Repo Structure
+
+This system uses two directories with distinct purposes:
+
+| Directory | Purpose | Git-tracked |
+|---|---|---|
+| `$APP_DIR` (this repo) | Process, tooling, templates, memory | Yes |
+| `$APPLICANT_DIR` | Applicant data, applications, profiles, tracker | No |
+
+Paths are defined in `.env` — see [QUICK-START.md](QUICK-START.md) for setup.
+
+Applicant data is kept out of git to protect PII and keep the process repo clean.
+
+---
+
+## Process Repo — `$APP_DIR`
 
 ```
-Job-Search-2026/
+$APP_DIR/
+├── CLAUDE.md                    # Auto-loaded session context (rules + workflow)
 ├── README.md                    # This file
-├── QUICK-START.md               # Setup guide for a new search
+├── QUICK-START.md               # Setup guide
 ├── workflow.md                  # Detailed process documentation
+│
+├── memory/                      # Process memory (git-tracked)
+│   ├── MEMORY.md                # Master index
+│   └── feedback_*.md            # Accumulated rules
+│
+├── templates/                   # Shared assets
+│   ├── resume.css               # Default PDF stylesheet (2-page)
+│   ├── one-page-override.css    # Override for 1-page resumes
+│   ├── cover-letter-override.css
+│   ├── achievements-example.md  # Reference example for writing achievements
+│   ├── PROFILES-README.md       # Guide for authoring profile files
+│   └── scaffold/                # Stub files written by scripts/setup.sh
+│       ├── applicant.md
+│       ├── application-tracker.md
+│       ├── base-documents/
+│       ├── profiles/
+│       └── memory/
+│
+└── scripts/                     # Utility scripts
+    ├── setup.sh                 # One-time setup: auth, deps, applicant dir, .env
+    └── README.md                # LinkedIn job URL collector notes
+```
+
+---
+
+## Applicant Repo — `$APPLICANT_DIR`
+
+```
+$APPLICANT_DIR/
+├── applicant.md                 # Contact info, job criteria, location preferences
 ├── application-tracker.md       # Master tracker (all applications)
 │
 ├── profiles/                    # Career profiles (5 total)
@@ -30,91 +90,107 @@ Job-Search-2026/
 │
 ├── base-documents/              # Source documents
 │   ├── EXPERIENCE-REFERENCE.md  # Verified facts — canonical source of truth
-│   ├── resume-content-guidance.md    # Resume construction standards
-│   └── achievements-worksheet.md    # Raw achievements and metrics
+│   ├── resume-content-guidance.md
+│   └── achievements-worksheet.md
+│
+├── .auth/                       # Playwright session cookies for login-walled job sites
+│   └── linkedin.com.json        # Applicant-specific; never committed; expires periodically
 │
 ├── applications/                # One folder per application
 │   └── YYYY-MM-DD-company-role/
-│       ├── job-description.md   # Full JD + extracted key info
-│       ├── notes.md             # Analysis, interview prep, debrief
-│       ├── Sherman_Wood_[Role]_[Company].md    # Resume (markdown source)
-│       └── Sherman_Wood_[Role]_[Company].pdf   # Resume (final)
+│       ├── job-description.md         # Processed JD + extracted key info
+│       ├── jd-<company>-<role>.md     # Original JD full text (for reference)
+│       ├── notes.md                   # Analysis, interview prep, debrief
+│       ├── [FirstName_LastName]_[Role].md    # Resume (markdown source)
+│       └── [FirstName_LastName]_[Role].pdf   # Resume (final)
 │
-├── templates/                   # Shared assets
-│   └── resume.css               # PDF generation stylesheet
-│
-├── memory/                      # Memory files (git-tracked mirror)
-│   ├── MEMORY.md                # Master index
-│   ├── EXPERIENCE-REFERENCE.md  # Mirror of base-documents version
-│   ├── feedback_*.md            # Workflow and resume rules
-│   └── user_*.md / project_*.md # User context and project state
-│
-└── scripts/                     # Utility scripts
+└── memory/                      # Applicant-specific memory (not in process repo)
+    └── APPLICANT-MEMORY.md
 ```
 
 ---
 
-## The Five Profiles
+## Profiles
 
-Applications are generated from one of five career profiles. Each has a full strategy document and a pre-compiled content library (no per-application PDF extraction needed):
-
-| Profile | Target Roles |
-|---|---|
-| AI Governance & Risk Lead | AI risk, compliance, governance frameworks |
-| Analytics Lead (Player-Coach) | BI/analytics leadership with hands-on delivery |
-| Enterprise AI Platform Architect | AI platform implementation, technical pre-sales |
-| Implementation/Customer Success Architect | Post-sales, onboarding, customer engineering |
-| Pre-Sales Solutions Engineer | Technical SE, solutions consulting |
+Applications are generated from one of several career profiles defined in `$APPLICANT_DIR/profiles/`. Each profile has a full strategy document and a pre-compiled content library (no per-application PDF extraction needed). The number and type of profiles are applicant-specific.
 
 ---
 
 ## Key Files
 
-**`base-documents/EXPERIENCE-REFERENCE.md`**
+**`$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md`**
 Canonical source of verified experience facts. All resume generation draws from this. Never fabricate — if it's not here, ask before adding it.
 
-**`profiles/PROFILES-QUICK-REFERENCE.md`**
+**`$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`**
 One-page matching guide. Use this first when evaluating a new role.
 
-**`profiles/[profile]-CONTENT.md`**
-Pre-compiled resume bullets organized by profile. Eliminates per-application extraction from PDFs.
-
-**`application-tracker.md`**
+**`$APPLICANT_DIR/application-tracker.md`**
 Single source of truth for all application statuses, next actions, and follow-up dates.
 
+**`CLAUDE.md`**
+Auto-loaded by Claude Code at session start. Contains all workflow rules, resume standards, and process rules. Edit this (and `memory/MEMORY.md`) to change how the AI behaves.
+
 **`templates/resume.css`**
-Shared stylesheet for PDF generation via pandoc + weasyprint.
+Shared stylesheet for PDF generation via pandoc → Playwright. Use `one-page-override.css` for 1-page resumes.
 
 ---
 
-## Storage
+## File Storage and Sync
 
-All files are maintained in two locations — keep both in sync:
+`$APPLICANT_DIR` is set during `bash scripts/setup.sh` to a local directory or a cloud sync service's managed folder (Google Drive, OneDrive, iCloud, Dropbox, or Box). When a cloud service is chosen, the OS syncs files automatically — no manual step needed.
 
-- **Primary**: `/Users/shermanwood/Documents/Job-Search-2026/`
-- **Google Drive**: `/Users/shermanwood/Library/CloudStorage/GoogleDrive-sgwood63@gmail.com/My Drive/Job Search 2026/`
+---
 
-After generating any document, sync immediately:
+## Memory and Session Context
+
+**`CLAUDE.md`** is the primary session context — loaded automatically by Claude Code at the start of every session. It contains the complete workflow, rules, and resume standards.
+
+**`memory/`** contains supporting files (feedback rules, reference paths) that are indexed in `CLAUDE.md`. Edit these to update specific rules; then update `CLAUDE.md` if the change affects auto-loaded behavior.
+
+After editing any memory file, commit from the repo:
+
 ```bash
-cp [local-file] "[gdrive-path]/[same-relative-path]"
+git add memory/ CLAUDE.md
+git commit -m "Update memory: [what changed]"
 ```
 
 ---
 
-## Memory System
+## JD Fetching
 
-Persistent memory lives in `~/.claude/projects/.../memory/` and is mirrored in `memory/` for git tracking. Key files:
+`scripts/fetch-jd.py` fetches job description pages using Playwright. It is called automatically by Claude during the JD workflow. Works on macOS, Linux, and Windows.
 
-- `MEMORY.md` — auto-loaded at session start; indexes all other memory
-- `feedback_*.md` — accumulated rules about how to do the work
-- `user_*.md` — user context (location, preferences, coding profile)
-- `project_*.md` — project-level context (LatticeFlow departure, etc.)
+- **Public sites** (e.g. company careers pages): fetched with no setup needed
+- **Login-walled sites** (e.g. LinkedIn): require a one-time auth setup per domain
 
-After creating or updating any memory file, sync and commit:
+### First-time setup for a login-walled site
+
 ```bash
-cp ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/*.md memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+source "$APP_DIR/.env"
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
+```
+
+Opens your default browser to the URL → log in → press Enter. The script then:
+1. Scans Firefox profiles on disk for session cookies (no prompts, works on all platforms)
+2. If no Firefox cookies found → prompts for manual entry: open DevTools (F12), go to Application → Cookies, copy the session cookie name and value (e.g. `li_at` for LinkedIn)
+
+Auth is saved to `$APPLICANT_DIR/.auth/linkedin.com.json`.
+
+> **Note:** Chromium-family browsers (Chrome, Edge, Brave, Arc, Atlas, etc.) encrypt cookies using the OS keychain, which requires system-level access that triggers password prompts and is not reliably available to external tools. Use Firefox, or the manual DevTools entry fallback, instead.
+
+### If already logged in on Firefox
+
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --import linkedin.com
+```
+
+Scans Firefox profiles on disk without opening a browser. Falls back to manual cookie entry if no Firefox session found.
+
+**Cookie expiry:** Session cookies expire periodically. When a previously working domain returns exit code 2 (auth-expired), re-run `--setup` or `--import` to refresh. If prompted for manual entry, open DevTools in your browser (F12) → Application → Cookies → copy the session cookie name and value.
+
+**Save JD text:** Use `--md-out` to save the full page text as markdown alongside the processed `job-description.md`:
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
 ```
 
 ---
@@ -124,17 +200,32 @@ git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [w
 Resumes are authored in Markdown and converted to PDF:
 
 ```bash
-pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=../../templates/resume.css
+source "$APP_DIR/.env"
+
+# Standard 2-page resume
+pandoc "$RESUME_MD" -o "$RESUME_HTML" --css="$APP_DIR/templates/resume.css" --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
+
+# 1-page variant — add one-page-override.css to the pandoc command
+pandoc "$RESUME_MD" -o "$RESUME_HTML" \
+  --css="$APP_DIR/templates/resume.css" \
+  --css="$APP_DIR/templates/one-page-override.css" \
+  --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
 ```
 
-Target: 2 pages for enterprise/direct applications. Verify with `pdfinfo [file].pdf | grep Pages`.
+`$PLAYWRIGHT_PYTHON` is set by `scripts/setup.sh` and stored in `.env`. Always source `.env` before generating PDFs — never probe for the Python path at generation time.
 
 ---
 
 ## Principles
 
-- **Factual accuracy**: Every claim in a resume must be verifiable. Source: `EXPERIENCE-REFERENCE.md`.
+- **Factual accuracy**: Every claim must be verifiable. Source: `EXPERIENCE-REFERENCE.md`.
 - **Authentic voice**: All materials sound like the person, not like an LLM.
 - **Profile-based generation**: Resumes are generated from pre-compiled content libraries, not improvised per application.
-- **No cover letters**: Not used in this search.
+- **Short sessions**: One task per session. Long sessions degrade through repeated context compression.
 - **Organized tracking**: One tracker, updated immediately after every status change.
