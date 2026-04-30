@@ -80,7 +80,7 @@ def is_auth_wall(url: str, title: str, body: str) -> bool:
     )
 
 
-def fetch(url: str) -> None:
+def fetch(url: str, html_out: str | None = None) -> None:
     """Fetch a URL headlessly using saved auth. Exits with code 2 if auth needed."""
     domain = get_domain(url)
     saved = auth_file(domain)
@@ -105,8 +105,33 @@ def fetch(url: str) -> None:
             browser.close()
             sys.exit(1)
 
+        # Expand any collapsed content sections ("Show more", "See more", etc.)
+        expand_selectors = [
+            "button:has-text('Show more')",
+            "button:has-text('See more')",
+            "button:has-text('Show full description')",
+            "button:has-text('Show all')",
+            "[aria-label*='show more' i]",
+            ".show-more-less-html__button",
+            ".jobs-description__footer-button",
+        ]
+        for sel in expand_selectors:
+            try:
+                btns = page.locator(sel).all()
+                for btn in btns:
+                    if btn.is_visible():
+                        btn.click()
+                        page.wait_for_timeout(500)
+            except Exception:
+                pass
+        page.wait_for_timeout(500)  # Settle after all expansions
+
         title = page.title()
         final_url = page.url
+
+        if html_out:
+            Path(html_out).write_text(page.content(), encoding="utf-8")
+
         body = page.inner_text("body") or ""
         ctx.close()
         browser.close()
@@ -192,6 +217,12 @@ if __name__ == "__main__":
 
     elif args[0] == "--list":
         list_auth()
+
+    elif args[0] == "--html-out":
+        if len(args) < 3:
+            print("Usage: python3 scripts/fetch-jd.py --html-out <filepath> <url>", file=sys.stderr)
+            sys.exit(1)
+        fetch(args[2], html_out=args[1])
 
     else:
         fetch(args[0])
