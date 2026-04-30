@@ -62,10 +62,10 @@ Spawn a Haiku agent to:
 ### Step 2 — Create Application Folder (every JD, fit or no-fit)
 - Folder: `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
 - Save `job-description.md` with full JD text and extracted key info
-- Save the original JD content to a separate file named `[Company]_[Role_Title]-original.[ext]` (spaces → underscores, special characters removed):
-  - **URL source**: `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --mhtml-out "$FOLDER/[Company]_[Role_Title]-original.mhtml" "<url>"` — saves the full page as MHTML (opens in any browser, preserves formatting, includes all assets)
-  - **PDF source**: copy the original PDF file to `$FOLDER/[Company]_[Role_Title]-original.pdf`
-  - **Pasted text**: save the user's verbatim paste to `$FOLDER/[Company]_[Role_Title]-original.txt`
+- Save the original JD content to a separate file named `jd-<company>-<role-title>.[ext]` (lowercase, spaces → hyphens, special characters removed):
+  - **URL source**: `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-<company>-<role-title>.md" "<url>"` — saves the full page text as markdown
+  - **PDF source**: copy the original PDF file to `$FOLDER/jd-<company>-<role-title>.pdf`
+  - **Pasted text**: save the user's verbatim paste to `$FOLDER/jd-<company>-<role-title>.md`
 - In `notes.md`, record the full source URL (if URL-sourced) and the filename of the saved original in the JD Analysis section
 
 ### If NO FIT (stay in Haiku)
