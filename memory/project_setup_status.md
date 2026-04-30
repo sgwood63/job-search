@@ -1,6 +1,6 @@
 ---
 name: Applicant Setup Status
-description: Current state of Sherman Wood's job search system setup — what's complete, what's next
+description: Current state of the applicant's job search system setup — what's complete, what's next
 type: project
 originSessionId: 3a6ee31f-fe0c-4b19-941c-b0167fc78c58
 ---

@@ -19,7 +19,7 @@ When generating resumes, always complete a full assessment of the resume vs the 
 
 Do NOT include percentage-based metrics (e.g. "improved speed by 30%", "reduced time by 20%", "200% user growth") in resume bullets.
 
-**Why:** Sherman has explicitly asked for these to be removed across multiple sessions. Hard percentage metrics are not desired in resume copy.
+**Why:** The applicant has explicitly asked for these to be removed across multiple sessions. Hard percentage metrics are not desired in resume copy.
 
 **How to apply:** Use qualitative outcome language instead — "substantially improved", "significantly reduced", "materially shortened", "scaled to support significant growth". Counts and named outputs are fine (50+ engagements, 400+ customers, 156 GitHub stars) — it's the X% form specifically that must be avoided. Scan every bullet before generating the PDF.
 
@@ -40,14 +40,14 @@ pdfinfo "$RESUME_PDF" | grep Pages
 
 ## Title Format
 
-Do NOT include a frontmatter `title:` block. The resume should open directly with `# Sherman Wood` — no YAML front matter, no "Sherman Wood — Resume" line above it.
+Do NOT include a frontmatter `title:` block. The resume should open directly with the applicant's name as a top-level heading — no YAML front matter, no "[Name] — Resume" line above it.
 
 **Why:** The frontmatter title renders as a duplicate heading — the name appears twice on the page.
 
 ## File Naming Convention
 
-Resume `.md` and `.pdf` files must be named: `Sherman_Wood_<JD_role_title>` with spaces replaced by underscores and special characters (parentheses, pipes) removed or replaced with underscores.
+Resume `.md` and `.pdf` files must be named: `[FirstName_LastName]_<JD_role_title>` with spaces replaced by underscores and special characters (parentheses, pipes) removed or replaced with underscores. Derive the name from `$APPLICANT_DIR/applicant.md`.
 
-Example: role "GRC Solutions Engineer" → `Sherman_Wood_GRC_Solutions_Engineer.md` / `.pdf`
+Example: role "GRC Solutions Engineer" → `[FirstName_LastName]_GRC_Solutions_Engineer.md` / `.pdf`
 
 **Why:** Generic `resume.md` / `resume.pdf` filenames don't identify which role the file is for.

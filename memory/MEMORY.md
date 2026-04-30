@@ -112,18 +112,19 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
-- See `feedback_domain_connection.md` — always identify and surface Sherman's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
+- See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 
 ## Memory Sync Rule
-`Job-Search-2026/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
+`$APP_DIR/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
 ```bash
-# 1. Edit files in /Users/shermanwood/Documents/Job-Search-2026/memory/
+source "$APP_DIR/.env"
+# 1. Edit files in $APP_DIR/memory/
 # 2. Commit from the repo:
-git -C /Users/shermanwood/Documents/Job-Search-2026 add memory/
-git -C /Users/shermanwood/Documents/Job-Search-2026 commit -m "Update memory: [what changed]"
+git -C "$APP_DIR" add memory/
+git -C "$APP_DIR" commit -m "Update memory: [what changed]"
 # 3. Sync to live memory:
-cp /Users/shermanwood/Documents/Job-Search-2026/memory/*.md \
-   ~/.claude/projects/-Users-shermanwood-Documents-Job-Search-2026/memory/
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
+cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately (not git-tracked in this repo).
 
