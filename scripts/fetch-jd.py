@@ -6,11 +6,11 @@ Fetches job description pages that require login. Auth state is saved per
 domain so subsequent fetches are headless (no browser window needed).
 
 USAGE
-    python3 scripts/fetch-jd.py <url>                  Fetch URL text (headless)
-    python3 scripts/fetch-jd.py --mhtml-out <file> <url>  Save full page as MHTML
-    python3 scripts/fetch-jd.py --setup <url>           Interactive login + save auth
-    python3 scripts/fetch-jd.py --clear <domain>        Clear saved auth for domain
-    python3 scripts/fetch-jd.py --list                  List domains with saved auth
+    python3 scripts/fetch-jd.py <url>                 Fetch URL, print text to stdout
+    python3 scripts/fetch-jd.py --md-out <file> <url> Save full page text as markdown
+    python3 scripts/fetch-jd.py --setup <url>         Interactive login + save auth
+    python3 scripts/fetch-jd.py --clear <domain>      Clear saved auth for domain
+    python3 scripts/fetch-jd.py --list                List domains with saved auth
 
 AUTH FLOW
     First time for a site:
@@ -81,7 +81,7 @@ def is_auth_wall(url: str, title: str, body: str) -> bool:
     )
 
 
-def fetch(url: str, mhtml_out: str | None = None) -> None:
+def fetch(url: str, md_out: str | None = None) -> None:
     """Fetch a URL headlessly using saved auth. Exits with code 2 if auth needed."""
     domain = get_domain(url)
     saved = auth_file(domain)
@@ -110,11 +110,8 @@ def fetch(url: str, mhtml_out: str | None = None) -> None:
         final_url = page.url
         body = page.inner_text("body") or ""
 
-        if mhtml_out:
-            cdp = ctx.new_cdp_session(page)
-            snapshot = cdp.send("Page.captureSnapshot", {"format": "mhtml"})
-            cdp.detach()
-            Path(mhtml_out).write_text(snapshot["data"], encoding="utf-8")
+        if md_out:
+            Path(md_out).write_text(f"# {title}\n\nSource: {final_url}\n\n{body}", encoding="utf-8")
 
         ctx.close()
         browser.close()
@@ -202,11 +199,11 @@ if __name__ == "__main__":
     elif args[0] == "--list":
         list_auth()
 
-    elif args[0] == "--mhtml-out":
+    elif args[0] == "--md-out":
         if len(args) < 3:
-            print("Usage: python3 scripts/fetch-jd.py --mhtml-out <filepath> <url>", file=sys.stderr)
+            print("Usage: python3 scripts/fetch-jd.py --md-out <filepath> <url>", file=sys.stderr)
             sys.exit(1)
-        fetch(args[2], mhtml_out=args[1])
+        fetch(args[2], md_out=args[1])
 
     else:
         fetch(args[0])
