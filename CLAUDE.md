@@ -216,7 +216,7 @@ source "$APP_DIR/.env"
 git -C "$APP_DIR" add memory/
 git -C "$APP_DIR" commit -m "Update memory: [what changed]"
 # 3. Sync to live memory (derive .claude project path from $APP_DIR):
-CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
 cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 

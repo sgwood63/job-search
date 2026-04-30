@@ -123,7 +123,7 @@ source "$APP_DIR/.env"
 git -C "$APP_DIR" add memory/
 git -C "$APP_DIR" commit -m "Update memory: [what changed]"
 # 3. Sync to live memory:
-CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g; s|^-||')/memory/"
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
 cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately (not git-tracked in this repo).
