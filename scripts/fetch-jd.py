@@ -80,7 +80,7 @@ def is_auth_wall(url: str, title: str, body: str) -> bool:
     )
 
 
-def fetch(url: str, html_out: str | None = None) -> None:
+def fetch(url: str, pdf_out: str | None = None) -> None:
     """Fetch a URL headlessly using saved auth. Exits with code 2 if auth needed."""
     domain = get_domain(url)
     saved = auth_file(domain)
@@ -129,8 +129,8 @@ def fetch(url: str, html_out: str | None = None) -> None:
         title = page.title()
         final_url = page.url
 
-        if html_out:
-            Path(html_out).write_text(page.content(), encoding="utf-8")
+        if pdf_out:
+            page.pdf(path=pdf_out, format="A4", print_background=True)
 
         body = page.inner_text("body") or ""
         ctx.close()
@@ -158,7 +158,8 @@ def setup(url: str) -> None:
     print(f"[setup] 3. Come back here and press Enter.", file=sys.stderr)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        # Use system Chrome so Google OAuth isn't blocked (bundled Chromium is rejected)
+        browser = p.chromium.launch(headless=False, channel="chrome")
         ctx = browser.new_context()
         page = ctx.new_page()
         page.goto(url)
@@ -218,11 +219,11 @@ if __name__ == "__main__":
     elif args[0] == "--list":
         list_auth()
 
-    elif args[0] == "--html-out":
+    elif args[0] == "--pdf-out":
         if len(args) < 3:
-            print("Usage: python3 scripts/fetch-jd.py --html-out <filepath> <url>", file=sys.stderr)
+            print("Usage: python3 scripts/fetch-jd.py --pdf-out <filepath> <url>", file=sys.stderr)
             sys.exit(1)
-        fetch(args[2], html_out=args[1])
+        fetch(args[2], pdf_out=args[1])
 
     else:
         fetch(args[0])
