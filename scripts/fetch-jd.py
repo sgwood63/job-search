@@ -105,26 +105,32 @@ def fetch(url: str, pdf_out: str | None = None) -> None:
             browser.close()
             sys.exit(1)
 
-        # Expand any collapsed content sections ("Show more", "See more", etc.)
-        expand_selectors = [
-            "button:has-text('Show more')",
-            "button:has-text('See more')",
-            "button:has-text('Show full description')",
-            "button:has-text('Show all')",
-            "[aria-label*='show more' i]",
-            ".show-more-less-html__button",
-            ".jobs-description__footer-button",
-        ]
-        for sel in expand_selectors:
-            try:
-                btns = page.locator(sel).all()
-                for btn in btns:
-                    if btn.is_visible():
-                        btn.click()
-                        page.wait_for_timeout(500)
-            except Exception:
-                pass
-        page.wait_for_timeout(500)  # Settle after all expansions
+        # Scroll to trigger lazy-loaded content before expanding
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
+        page.wait_for_timeout(800)
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        page.wait_for_timeout(800)
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(500)
+
+        # Expand all collapsed sections via JS (bypasses scroll-position visibility checks)
+        page.evaluate("""
+            () => {
+                const selectors = [
+                    '.show-more-less-html__button',
+                    '.jobs-description__footer-button',
+                    'button[aria-expanded="false"]',
+                    'button[aria-label*="more" i]',
+                    'button[aria-label*="see more" i]',
+                ];
+                for (const sel of selectors) {
+                    document.querySelectorAll(sel).forEach(el => {
+                        try { el.click(); } catch (e) {}
+                    });
+                }
+            }
+        """)
+        page.wait_for_timeout(1000)  # Settle after all expansions
 
         title = page.title()
         final_url = page.url
