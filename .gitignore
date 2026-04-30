@@ -2,7 +2,7 @@
 applications/
 
 # Application tracker — contains personal application history
-application-tracker.md
+/application-tracker.md
 
 # Base documents — personal resume PDFs and LinkedIn exports
 base-documents/*.pdf
@@ -12,9 +12,20 @@ base-documents/Jobs*
 base-documents/AI\ Architect*
 base-documents/linkedin-job-listing-page.html
 
+# Environment — contains local paths, never commit
+.env
+.env-backup
+
+# Authenticated browser sessions (per-user, never commit)
+.auth/
+
+# Auto-memory duplicate (canonical copy lives in memory/)
+/MEMORY.md
+
 # macOS
 .DS_Store
 **/.DS_Store
 
 # Scratchpad
 scripts/scratchpad
+Job-Search-2026.code-workspace
