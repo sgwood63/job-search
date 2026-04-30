@@ -86,15 +86,9 @@ def fetch(url: str, md_out: str | None = None) -> None:
     domain = get_domain(url)
     saved = auth_file(domain)
 
-    if not saved.exists():
-        print(f"[auth-required] No saved auth for {domain}.", file=sys.stderr)
-        print(f"Run this in your terminal to authenticate:", file=sys.stderr)
-        print(f"  python3 scripts/fetch-jd.py --setup '{url}'", file=sys.stderr)
-        sys.exit(2)
-
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        ctx = browser.new_context(storage_state=str(saved))
+        ctx = browser.new_context(storage_state=str(saved) if saved.exists() else None)
         page = ctx.new_page()
 
         try:
