@@ -22,7 +22,7 @@ Each step is supported by AI assistance using short, task-scoped sessions. Conte
 | Anthropic API key | Required for automated workflows. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
 | Claude Haiku | Used for JD screening (fast, low-cost). Requires API access. |
 | Claude Sonnet | Used for resume and document generation (quality). Requires API access. |
-| pandoc + weasyprint + poppler | PDF generation. Installed by `scripts/setup.sh`. |
+| pandoc + Playwright + poppler | PDF generation. Installed/detected by `scripts/setup.sh`. |
 
 This system is built around Claude Code's session model: `CLAUDE.md` is auto-loaded at the start of every session, giving the AI its full context without relying on conversation history.
 
@@ -127,7 +127,7 @@ Single source of truth for all application statuses, next actions, and follow-up
 Auto-loaded by Claude Code at session start. Contains all workflow rules, resume standards, and process rules. Edit this (and `memory/MEMORY.md`) to change how the AI behaves.
 
 **`templates/resume.css`**
-Shared stylesheet for PDF generation via pandoc + weasyprint. Use `one-page-override.css` for 1-page resumes.
+Shared stylesheet for PDF generation via pandoc → Playwright. Use `one-page-override.css` for 1-page resumes.
 
 ---
 
@@ -157,16 +157,25 @@ git commit -m "Update memory: [what changed]"
 Resumes are authored in Markdown and converted to PDF:
 
 ```bash
+source "$APP_DIR/.env"
+
 # Standard 2-page resume
-pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint --css=../../templates/resume.css
+pandoc "$RESUME_MD" -o "$RESUME_HTML" --css="$APP_DIR/templates/resume.css" --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
 
-# 1-page variant
-pandoc [resume].md -o [resume].pdf --pdf-engine=weasyprint \
-  --css=../../templates/resume.css --css=../../templates/one-page-override.css
-
-# Verify page count
-pdfinfo [resume].pdf | grep Pages
+# 1-page variant — add one-page-override.css to the pandoc command
+pandoc "$RESUME_MD" -o "$RESUME_HTML" \
+  --css="$APP_DIR/templates/resume.css" \
+  --css="$APP_DIR/templates/one-page-override.css" \
+  --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$RESUME_HTML" "$RESUME_PDF"
+rm "$RESUME_HTML"
+pdfinfo "$RESUME_PDF" | grep Pages
 ```
+
+`$PLAYWRIGHT_PYTHON` is set by `scripts/setup.sh` and stored in `.env`. Always source `.env` before generating PDFs — never probe for the Python path at generation time.
 
 ---
 

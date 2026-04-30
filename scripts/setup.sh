@@ -218,10 +218,9 @@ run_deps() {
     local missing=()
     command -v pandoc  &>/dev/null || missing+=("pandoc (brew install pandoc)")
     command -v pdfinfo &>/dev/null || missing+=("poppler (brew install poppler)")
-    python3 -c "import weasyprint" &>/dev/null 2>&1 || missing+=("weasyprint (pip install weasyprint)")
 
     if [[ ${#missing[@]} -eq 0 ]]; then
-        echo "$(green "✓") All dependencies installed (pandoc, poppler, weasyprint)"
+        echo "$(green "✓") All dependencies installed (pandoc, poppler)"
     else
         echo "Missing dependencies:"
         for dep in "${missing[@]}"; do echo "  • $dep"; done
@@ -229,7 +228,6 @@ run_deps() {
         if confirm "Install missing dependencies now?"; then
             command -v pandoc  &>/dev/null || brew install pandoc
             command -v pdfinfo &>/dev/null || brew install poppler
-            python3 -c "import weasyprint" &>/dev/null 2>&1 || pip3 install weasyprint
             echo "$(green "✓") Dependencies installed"
         else
             echo "$(yellow "⚠") Skipped. PDF generation will not work until these are installed."
