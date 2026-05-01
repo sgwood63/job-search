@@ -32,8 +32,9 @@ When the user says "start setup", "set up applicant", "run applicant setup", or 
 3. Execute **Phase A** (document upload): tell the user exactly what to upload and where, wait for confirmation
 4. Execute **Phase B** (interview): work through each topic, ask questions, take notes — do not rush or batch
 5. Execute **Phase C** (generate documents): produce all files using only what was gathered; present each for review before moving on
-6. Execute **Phase D** (profile validation): find example JDs, store them, run fit checks, generate one sample resume per profile
-7. Use **Sonnet** throughout — this is generative work, not screening
+6. Execute **Phase D** (career advice): score each profile on fit/demand/differentiation, suggest target roles, identify skill gaps, name the quick-win profile — save to `$APPLICANT_DIR/career-advice.md`, then discuss with the applicant
+7. Execute **Phase E** (profile validation): find example JDs, store them, run fit checks, generate one sample resume per profile
+8. Use **Sonnet** throughout — this is generative work, not screening
 
 Pause at the end of each phase and confirm with the user before proceeding to the next.
 
