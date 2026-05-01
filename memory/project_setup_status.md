@@ -4,11 +4,11 @@ description: Current state of the applicant's job search system setup — what's
 type: project
 originSessionId: 3a6ee31f-fe0c-4b19-941c-b0167fc78c58
 ---
-Phases A, B, and C of applicant setup are complete as of 2026-04-28.
+Phases A, B, C, and D of applicant setup are complete as of 2026-04-28.
 
-**Why:** Full onboarding interview conducted; all Phase C documents generated and saved to $APPLICANT_DIR (Google Drive synced).
+**Why:** Full onboarding interview and career advice session conducted; all Phase C and D documents generated and saved to $APPLICANT_DIR (Google Drive synced).
 
-**How to apply:** Phase D is next — find example JDs, validate profiles, generate sample resumes. Start a new session and read applicant-interview-2026-04-28.md for full context.
+**How to apply:** Phase E (Profile Validation) is next — find 2–3 example JDs per profile, run fit checks, generate one sample resume per profile to stress-test the content library.
 
 ## What's done
 
@@ -24,6 +24,9 @@ Phases A, B, and C of applicant setup are complete as of 2026-04-28.
   - profiles/ai-governance-se.md + ai-governance-se-CONTENT.md
   - profiles/post-sales-se.md + post-sales-se-CONTENT.md
   - profiles/PROFILES-QUICK-REFERENCE.md
+- Phase D: Career advice complete:
+  - career-advice.md generated (profile fit scores, target roles, skill gaps, quick-win profile)
+  - Profiles reviewed; ai-strategy-consultant dropped; presales-se designated primary
 
 ## Active profiles
 
@@ -43,10 +46,9 @@ All marked [UNVERIFIED] in role-achievements.md and EXPERIENCE-REFERENCE.md:
 - Pyramid: 200% user growth — over what timeframe?
 - Solace: 3-month tenure — why did it end? Have clean explanation ready.
 
-## Phase D — next session
+## Phase E — next session
 
-1. Find example JDs for each profile (LinkedIn, Greenhouse, Lever, Built In)
-2. Store JD content in profile files under "Example JDs" section
-3. Run fit check against applicant.md for each example JD
-4. Generate one sample resume per profile
-5. Iterate on profiles/CONTENT files as gaps surface
+1. Find 2–3 example JDs per profile (LinkedIn, Greenhouse, Lever, Built In)
+2. Run standard fit check against applicant.md for each (note these are examples, not live applications)
+3. Generate one sample resume for a well-fitting JD per profile
+4. Iterate on profiles/CONTENT files as gaps surface
