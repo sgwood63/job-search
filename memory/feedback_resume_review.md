@@ -15,13 +15,17 @@ When generating resumes, always complete a full assessment of the resume vs the 
 4. Then generate the PDF and verify page count
 5. Only present to user after this full cycle is complete
 
-## No Percentage Metrics in Resume Bullets
+## Percentage Metrics in Resume Bullets
 
-Do NOT include percentage-based metrics (e.g. "improved speed by 30%", "reduced time by 20%", "200% user growth") in resume bullets.
+Do NOT use unverified or estimated percentage metrics in resume bullets (e.g. "improved speed by 30%", "reduced time by 20%", "200% user growth" where the figure is approximate or unmeasured).
 
-**Why:** The applicant has explicitly asked for these to be removed across multiple sessions. Hard percentage metrics are not desired in resume copy.
+**Why:** The applicant has explicitly asked for estimated percentages to be removed. Approximate X% claims undermine credibility if challenged; verified figures are acceptable.
 
-**How to apply:** Use qualitative outcome language instead — "substantially improved", "significantly reduced", "materially shortened", "scaled to support significant growth". Counts and named outputs are fine (50+ engagements, 400+ customers, 156 GitHub stars) — it's the X% form specifically that must be avoided. Scan every bullet before generating the PDF.
+**How to apply:**
+- **Verified, sourced percentages are allowed** — if the number comes from a real measurement or a document, use it.
+- **Unverified/estimated X% form must be avoided** — replace with qualitative language: "substantially improved", "significantly reduced", "materially shortened", "scaled to support significant growth".
+- **Counts and named outputs are always fine** — 50+ engagements, 400+ customers, 156 GitHub stars, etc.
+- Scan every bullet before generating the PDF and flag any X% claim that lacks a source.
 
 ## PDF Generation — Always Use Playwright Script
 

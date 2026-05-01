@@ -140,7 +140,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separ
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-04-28
+**Last Updated**: 2026-05-01
 
 ---
 
