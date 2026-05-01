@@ -40,7 +40,7 @@ Full strategy document for one target role type. Contains:
 - Framing guidance for experience and accomplishments
 - What to emphasize, compress, or omit
 - Keywords and signals for this audience
-- Example JDs (added during Phase D)
+- Example JDs (added during Phase E)
 
 ### `[profile-name]-CONTENT.md`
 Pre-compiled resume content library for one profile. Contains:

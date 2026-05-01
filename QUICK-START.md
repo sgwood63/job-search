@@ -137,7 +137,7 @@ Process memory lives in two places:
 
 | Location | Purpose |
 |---|---|
-| `CLAUDE.md` | Auto-loaded at session start — complete workflow and rules |
+| `CLAUDE.md` | Auto-loaded at session start — critical rules and workflow triggers; detail in workflow.md and memory/ |
 | `memory/MEMORY.md` + `memory/feedback_*.md` | Detailed rules referenced from CLAUDE.md; git-tracked |
 | `$APPLICANT_DIR/memory/` | Applicant-specific context (not in process repo) |
 
