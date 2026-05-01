@@ -45,7 +45,7 @@ When the user provides a job description (URL, document, or paste), execute imme
 
 **No unverified percentage metrics.** Verified, sourced percentages are allowed. Unverified/estimated X% claims must use qualitative language instead ("substantially improved", "significantly reduced"). Counts and named outputs are always fine (50+ engagements, 400+ customers).
 
-**Domain connection.** For every application: identify the target company's business domain and surface the applicant's connections in `notes.md` (Fit Assessment → Domain Connection subsection) and in resume bullets. Check all three sources: (1) professional roles; (2) personal/life experience (cover letter only, not bullets); (3) use-case connections — adjacent industry or process exposure that maps to what the company's product does. See `memory/feedback_domain_connection.md`.
+**Domain connection.** For every application: identify the target company's business domain and surface the applicant's connections in `notes.md` (Fit Assessment → Domain Connection subsection) and in resume bullets. Check all four sources: (1) professional roles; (2) personal/life experience (cover letter only, not bullets); (3) specific artifacts built — demos, reference implementations, POCs in the domain; (4) use-case connections — adjacent industry or process exposure that maps to what the company's product does. See `memory/feedback_domain_connection.md`.
 
 **Review before PDF.** Write `.md` → assess vs. JD → edit → generate PDF → verify page count. Never skip. See `workflow.md` for PDF command.
 

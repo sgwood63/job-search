@@ -107,7 +107,8 @@ Mark any uncertain claims `[UNVERIFIED]`. This is the canonical source of truth 
 Canonical achievement set organized by role (most-recent first), scored against all active profiles. Generated during Phase B using the following process:
 
 1. Extract all achievements from uploaded resumes and LinkedIn (de-duplicate across resume versions)
-2. For each role, display a table with columns: `# | Achievement | Power | P1 | P2 | P3 | P? | Notes`
+2. For each role, display a table with columns: `# | Achievement | Power | P1 | P2 | … | Pn | Notes`
+   (one column per active profile — add or remove columns to match the applicant's profile set)
    - **Power** (1–5): specificity + metrics + named entity + clear outcome
    - **Profile relevance** (1–5): 5 = must include | 3 = situational | 1 = omit
    - **Notes**: scoring rationale and what would improve the achievement

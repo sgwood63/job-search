@@ -47,7 +47,7 @@ Applicant data is kept out of git to protect PII and keep the process repo clean
 
 ```
 $APP_DIR/
-├── CLAUDE.md                    # Auto-loaded session context (rules + workflow)
+├── CLAUDE.md                    # Auto-loaded session context — critical rules, triggers; workflow detail in workflow.md
 ├── README.md                    # This file
 ├── QUICK-START.md               # Setup guide
 ├── workflow.md                  # Detailed process documentation
@@ -133,7 +133,7 @@ One-page matching guide. Use this first when evaluating a new role.
 Single source of truth for all application statuses, next actions, and follow-up dates.
 
 **`CLAUDE.md`**
-Auto-loaded by Claude Code at session start. Contains all workflow rules, resume standards, and process rules. Edit this (and `memory/MEMORY.md`) to change how the AI behaves.
+Auto-loaded by Claude Code at session start. Contains critical rules, workflow triggers, and references to workflow.md and memory/ for detailed steps and standards. Edit this (and `memory/MEMORY.md`) to change how the AI behaves.
 
 **`templates/resume.css`**
 Shared stylesheet for PDF generation via pandoc → Playwright. Use `one-page-override.css` for 1-page resumes.
@@ -148,7 +148,7 @@ Shared stylesheet for PDF generation via pandoc → Playwright. Use `one-page-ov
 
 ## Memory and Session Context
 
-**`CLAUDE.md`** is the primary session context — loaded automatically by Claude Code at the start of every session. It contains the complete workflow, rules, and resume standards.
+**`CLAUDE.md`** is the primary session context — loaded automatically by Claude Code at the start of every session. It contains critical rules and workflow triggers; full pipeline detail lives in `workflow.md` and `memory/`.
 
 **`memory/`** contains supporting files (feedback rules, reference paths) that are indexed in `CLAUDE.md`. Edit these to update specific rules; then update `CLAUDE.md` if the change affects auto-loaded behavior.
 
