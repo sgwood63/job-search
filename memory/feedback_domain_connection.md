@@ -24,22 +24,22 @@ For each application, identify the target company's business domain and surface 
 - Personal/life experience: cover letter, interview prep notes — NOT as a resume bullet
 - Always capture in notes.md under Fit Assessment with a "Domain connection" subsection
 
-**Decagon example (professional connections):**
-- Decagon builds AI customer service agents
-- Connections: (1) Encover/Concentrix — ran CS call center IT/analytics; (2) Irish Life — built call center systems and sales force automation; (3) LatticeFlow — built a Swiss Air customer service chatbot as workshop reference implementation
-- All three surfaced in resume bullets
+**Example — professional connections:**
+- Target company builds AI for a specific industry vertical
+- Check EXPERIENCE-REFERENCE.md for past roles in that vertical or adjacent operations (ran IT/analytics in that sector, built reference implementations during consulting, etc.)
+- Surface matching experience as role bullets in the resume
 
-**EliseAI example (personal/life experience):**
-- EliseAI builds AI leasing and resident communication automation for property managers
-- Connection: bought/sold multiple Bay Area properties; currently manages a multi-family rental; understands leasing workflows, tenant communication overhead, and operational pain points from the operator side
-- Used in cover letter framing, not as a resume bullet
+**Example — personal/life experience:**
+- Target company builds a product for a consumer or operator context the applicant has lived
+- Source: EXPERIENCE-REFERENCE.md "Personal Domain Context" section
+- Use in cover letter framing only — not as a resume bullet
 
-**Skedulo example (use-case connection):**
-- Skedulo builds field workforce management software targeting field workers across multiple industries
-- Connection: experience across enterprise operations, field service, and workflow automation in adjacent industries maps to the full extent of field service management problems Skedulo solves
-- Surface in notes.md Domain Connection; evaluate whether role bullets or cover letter warrants explicit callout
+**Example — use-case connection:**
+- Target company solves a workflow or operational problem in a particular industry
+- Check EXPERIENCE-REFERENCE.md for adjacent-industry or cross-functional process experience
+- Surface in notes.md Domain Connection; evaluate whether a resume bullet or cover letter mention is warranted
 
-**Goodleap example (use-case connection):**
-- Goodleap is green energy fintech covering all internal processes (lending, operations, dealer network)
-- Connection: fintech infrastructure, process automation, and enterprise systems experience covers the operational domain Goodleap addresses, even without direct green energy industry background
-- Surface in notes.md Domain Connection; evaluate relevance of specific process/fintech bullets
+**Example — artifact connection:**
+- Target company builds a specific product category
+- Check EXPERIENCE-REFERENCE.md for demos, POCs, reference implementations, or internal tools built in that category
+- If found: surface as a concrete artifact bullet, not just a capabilities label
