@@ -249,6 +249,10 @@ For any maintenance update, consult this registry to determine which files are a
 - Read by: Human reference
 - Update: Append an entry after every maintenance session
 
+### Cross-Profile Propagation Rule
+
+**When tools, capabilities, or portfolio artifacts are added in a maintenance session:** Step through all profiles' `*-CONTENT.md` files to assess relevance before closing the session. Check whether the new capability or artifact materially strengthens any profile's positioning, existing bullets, or fills a documented gap. If relevant, add to the appropriate `*-CONTENT.md` with source and scoring notes. Record which profiles were reviewed and which received new content in the `applicant-maintenance.md` session entry.
+
 ### Logging Rules
 
 **Every maintenance session:** Append an entry to `$APPLICANT_DIR/applicant-maintenance.md` with: date, session type, summary of what changed, and files updated.
