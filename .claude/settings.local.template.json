@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//${APP_DIR_PARENT}/**)",
+      "Read(//opt/homebrew/lib/node_modules/**)",
+      "Read(//Applications/**)",
+      "WebSearch",
+      "WebFetch(domain:job-boards.greenhouse.io)",
+      "WebFetch(domain:www.indeed.com)",
+      "WebFetch(domain:jobs.ashbyhq.com)",
+      "WebFetch(domain:www.builtinsf.com)",
+      "WebFetch(domain:www.glassdoor.com)",
+      "WebFetch(domain:www.remoterocketship.com)",
+      "WebFetch(domain:www.linkedin.com)",
+      "WebFetch(domain:linkedin.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(mkdir -p:*)",
+      "Bash(chmod:*)",
+      "Bash(wc:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(pandoc:*)",
+      "Bash(python3:*)",
+      "Bash(/opt/homebrew/anaconda3/bin/python3:*)",
+      "Bash(pdfinfo:*)",
+      "Bash(pdftotext:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(brew install:*)",
+      "Bash(brew list:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(npm install:*)",
+      "Bash(bash scripts/check-md-hygiene.sh:*)",
+      "Bash(bash ${APP_DIR}/scripts/*)",
+      "Skill(update-config:*)"
+    ]
+  }
+}

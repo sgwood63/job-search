@@ -266,6 +266,32 @@ detect_playwright_python() {
     fi
 }
 
+generate_settings_local() {
+    local settings_local="$REPO_ROOT/.claude/settings.local.json"
+    local template="$REPO_ROOT/.claude/settings.local.template.json"
+
+    if [[ -f "$settings_local" ]]; then
+        echo "  $(yellow "–") exists: $settings_local (not overwritten)"
+        return
+    fi
+
+    if [[ ! -f "$template" ]]; then
+        echo "  $(yellow "⚠") Template not found: $template — skipping settings.local.json generation"
+        return
+    fi
+
+    # Derive APP_DIR_PARENT (directory containing the repo) for the Read permission
+    local app_dir_parent
+    app_dir_parent="$(dirname "$REPO_ROOT")"
+
+    APP_DIR_PARENT="$app_dir_parent" \
+    APP_DIR="$REPO_ROOT" \
+    APPLICANT_DIR="$APPLICANT_DIR" \
+        envsubst < "$template" > "$settings_local"
+
+    echo "  $(green "✓") created: $settings_local"
+}
+
 write_env() {
     cat > "$ENV_FILE" << ENVEOF
 # Job Search 2026 — Environment Configuration
@@ -330,6 +356,7 @@ if [[ -n "$EXISTING_APPLICANT_DIR" && -d "$EXISTING_APPLICANT_DIR" ]]; then
         run_deps
         detect_playwright_python
         write_env
+        generate_settings_local
         run_verification
 
         echo ""
@@ -451,6 +478,11 @@ scaffold_file "$APPLICANT_DIR/base-documents/EXPERIENCE-REFERENCE.md"         "$
 scaffold_file "$APPLICANT_DIR/base-documents/resume-content-guidance.md"      "$TEMPLATES_DIR/base-documents/resume-content-guidance.md"
 scaffold_file "$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md"           "$TEMPLATES_DIR/profiles/PROFILES-QUICK-REFERENCE.md"
 scaffold_file "$APPLICANT_DIR/memory/APPLICANT-MEMORY.md"                     "$TEMPLATES_DIR/memory/APPLICANT-MEMORY.md"
+
+# ── Generate settings.local.json ────────────────────────────────────────────
+
+print_section "Claude Code Settings"
+generate_settings_local
 
 # ── Verification ────────────────────────────────────────────────────────────
 

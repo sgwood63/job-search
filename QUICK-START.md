@@ -55,6 +55,8 @@ The session ends with profile validation against example JDs and a sample resume
 
 `CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
 
+At the start of any working session, type `/context` to load applicant state, pipeline status, and memory rules in one step. See [USER-GUIDE.md](USER-GUIDE.md) for all available commands.
+
 ---
 
 ## Phase 2: Applying to a Role
@@ -79,9 +81,7 @@ Claude generates the resume, self-reviews it against the JD, applies improvement
 
 **Step 3 — Submit and track**
 
-After submitting:
-- Update `notes.md` with submission date and follow-up date
-- Update `application-tracker.md` status to Applied
+Before submitting, run `/audit [folder-name]` to verify the application folder is complete. After submitting, run `/apply "Company" "Role" "date"` — it updates both `application-tracker.md` and `notes.md` in one step.
 
 ---
 
@@ -94,10 +94,7 @@ After submitting:
 
 ### Interview prep
 
-Ask Claude to generate prep notes in `notes.md`:
-- Likely questions based on role and JD
-- Key talking points per question
-- Specifics to bring up (projects, metrics, examples)
+Run `/interview [company] [stage?]` to load context and get a targeted brief for the specific interview stage. Claude reads the JD, notes, and profile strategy, then gives you talking points, questions to ask, and signals to watch for.
 
 ### Debrief
 
@@ -115,8 +112,8 @@ After each interview, add to `notes.md`:
 - Update the application's `notes.md`
 
 **Weekly (15 min)**:
-- Review tracker for pending follow-ups
-- Any applications past follow-up date? Send a note.
+- Run `/status` for a pipeline snapshot — it flags past-due follow-ups automatically
+- Send follow-up notes for any overdue applications
 
 **When you learn something new about your experience, or want to update preferences or target roles**:
 - Tell Claude — describe the update and it will consult the File Registry in `applicant-setup.md` Phase F, update the right files, and log the change to `$APPLICANT_DIR/applicant-maintenance.md`

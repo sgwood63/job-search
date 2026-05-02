@@ -82,6 +82,19 @@ See `memory/` feedback files (indexed in MEMORY.md) for: bullet formula, role or
 
 **Unknown company:** For unnamed JDs (recruiter postings, confidential), research the end company before generating documents. See `memory/feedback_unknown_company_research.md`.
 
+## Available Commands
+
+Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](USER-GUIDE.md) for full usage.
+
+| Command | Purpose |
+|---------|---------|
+| `/context` | Load full session state at session start (applicant, pipeline, memory) |
+| `/status` | Generate current pipeline snapshot with past-due follow-ups |
+| `/audit [folder]` | Validate application folder completeness before submitting |
+| `/apply "Co" "Role" "date"` | Record submission atomically in tracker + notes.md |
+| `/interview [company] [stage]` | Load interview prep context for a specific application |
+| `/memory [update\|add\|read]` | Navigate and sync the memory system |
+
 ## Session Strategy
 
 Short, task-scoped sessions (one application, one interview prep, one memory update). Long sessions degrade through context compression.
