@@ -115,6 +115,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See [project_profiles_directory.md](project_profiles_directory.md) — `profiles/` contains EXPERIENCE-REFERENCE.md and role-achievements.md; `base-documents/` is setup-only
 
 ## Workflow Rules
+- See `feedback_application_status_update.md` — when user confirms they applied, update both tracker AND notes.md (status field + process reminder section)
 - See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
