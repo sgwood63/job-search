@@ -18,13 +18,14 @@ This document describes how to onboard a new applicant into the job search syste
 
 ## Overview
 
-The setup happens in five phases, run as a single Claude chat session:
+The setup happens in five phases, run as a single Claude chat session, plus an ongoing maintenance phase after setup is complete:
 
 1. **Upload documents** — gather and place source materials in `$APPLICANT_DIR/base-documents/`
 2. **Interview the applicant** — draw out demographics and preferences
 3. **Generate initial documents** — produce all the files Claude needs to run job applications: experience breakdown, target job profiles, achievements with scores
 4. **Provide career advice** — analyze fit and positioning, suggest target roles, identify skill gaps and quick wins
 5. **Validate with example JDs** — confirm profiles are right before the live search starts
+6. **Maintain profiles** (Phase F, ongoing) — update profile files, achievements, preferences, and career direction as the search progresses
 
 ---
 
