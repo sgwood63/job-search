@@ -34,17 +34,17 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 6. In notes.md JD Analysis section: record the full source URL and the original filename saved
 
 ### If NO FIT (stay in Haiku)
-5. Create brief notes.md with reasoning
-6. Update tracker (Rejected/Closed section)
-7. Stop
+7. Create brief notes.md with reasoning
+8. Update tracker (Rejected/Closed section)
+9. Stop
 
 ### If FIT (switch to Sonnet for quality)
-5. Read profile-specific content library from `$APPLICANT_DIR/profiles/`
-6. Read full matched profile for strategy/positioning
-7. Generate tailored resume using content library (ALL factual, pre-verified)
-8. Create detailed notes.md (JD analysis, interview prep)
-9. Update tracker (Active Applications)
-10. Present for user review
+7. Read profile-specific content library from `$APPLICANT_DIR/profiles/`
+8. Read full matched profile for strategy/positioning
+9. Generate tailored resume using content library (ALL factual, pre-verified)
+10. Create detailed notes.md (JD analysis, interview prep)
+11. Update tracker (Active Applications)
+12. Present for user review
 
 ## Resume Generation Workflow
 - See `feedback_resume_review.md` — always assess resume vs JD before PDF; no percentage metrics in bullets; correct file naming
@@ -114,6 +114,11 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 ## Profiles Directory — Source of Truth
 - See [project_profiles_directory.md](project_profiles_directory.md) — `profiles/` contains EXPERIENCE-REFERENCE.md and role-achievements.md; `base-documents/` is setup-only
 
+## Profile Maintenance (DO NOT ASK, JUST DO)
+- See `applicant-setup.md` Phase F — trigger phrases, File Registry, Cross-Profile Propagation Rule, and logging instructions
+- After every maintenance session: append entry to `$APPLICANT_DIR/applicant-maintenance.md`
+- Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
+
 ## Workflow Rules
 - See `feedback_application_status_update.md` — when user confirms they applied, update both tracker AND notes.md (status field + process reminder section)
 - See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
@@ -121,6 +126,8 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
 - See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 - See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
+- See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
+- See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 
 ## Memory Sync Rule
 `$APP_DIR/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
@@ -142,7 +149,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separ
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-05-01
+**Last Updated**: 2026-05-02
 
 ---
 
