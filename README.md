@@ -87,6 +87,8 @@ $APP_DIR/
 $APPLICANT_DIR/
 ├── applicant.md                 # Contact info, job criteria, location preferences
 ├── application-tracker.md       # Master tracker (all applications)
+├── career-advice.md             # Career analysis from Phase D (fit scores, target roles, gaps)
+├── applicant-maintenance.md     # Log of profile updates made during the search (Phase F)
 │
 ├── profiles/                    # Career profiles
 │   ├── PROFILES-QUICK-REFERENCE.md   # Fast matching guide
@@ -110,7 +112,8 @@ $APPLICANT_DIR/
 │       └── [FirstName_LastName]_[Role].pdf   # Resume (final)
 │
 └── memory/                      # Applicant-specific memory (not in process repo)
-    └── APPLICANT-MEMORY.md
+    ├── applicant-setup-status.md    # Current search state — updated at session end
+    └── APPLICANT-MEMORY.md          # Extended applicant context
 ```
 
 ---
@@ -150,13 +153,16 @@ Shared stylesheet for PDF generation via pandoc → Playwright. Use `one-page-ov
 
 **`CLAUDE.md`** is the primary session context — loaded automatically by Claude Code at the start of every session. It contains critical rules and workflow triggers; full pipeline detail lives in `workflow.md` and `memory/`.
 
-**`memory/`** contains supporting files (feedback rules, reference paths) that are indexed in `CLAUDE.md`. Edit these to update specific rules; then update `CLAUDE.md` if the change affects auto-loaded behavior.
+**`memory/`** contains supporting files (feedback rules, reference paths) indexed in `MEMORY.md`. Edit these to update specific rules; add a pointer to `CLAUDE.md` only if the rule needs to be visible in the always-loaded context.
 
-After editing any memory file, commit from the repo:
+After editing any memory file, run the Memory Sync Rule from `CLAUDE.md` — commit from the repo, then copy to `~/.claude/` so the live session picks up the changes:
 
 ```bash
-git add memory/ CLAUDE.md
-git commit -m "Update memory: [what changed]"
+source "$APP_DIR/.env"
+git -C "$APP_DIR" add memory/
+git -C "$APP_DIR" commit -m "Update memory: [what changed]"
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
+cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 ```
 
 ---
