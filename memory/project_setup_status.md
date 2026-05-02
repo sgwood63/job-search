@@ -4,11 +4,11 @@ description: Current state of the applicant's job search system setup — what's
 type: project
 originSessionId: 3a6ee31f-fe0c-4b19-941c-b0167fc78c58
 ---
-Phases A, B, C, and D of applicant setup are complete as of 2026-04-28.
+Phases A–D complete. Phase E (Profile Validation) was validated in practice through live applications starting 2026-04-28. Phase F (Profile Maintenance) is now active with file registry and cross-profile propagation rule documented in applicant-setup.md.
 
-**Why:** Full onboarding interview and career advice session conducted; all Phase C and D documents generated and saved to $APPLICANT_DIR (Google Drive synced).
+**Why:** Full onboarding interview and career advice session conducted; all Phase C and D documents generated. Live applications (EliseAI, Anecdotes, Amplitude, GoodLeap, eGain, Decagon) validated the content library in production — Phase E sample-resume exercise was superseded by real applications. Phase F workflow committed to repo 2026-05-02.
 
-**How to apply:** Phase E (Profile Validation) is next — find 2–3 example JDs per profile, run fit checks, generate one sample resume per profile to stress-test the content library.
+**How to apply:** System is in active use. Use Phase F rules for all profile updates. Unverified items in role-achievements.md still need resolution (see below).
 
 ## What's done
 
@@ -46,9 +46,12 @@ All marked [UNVERIFIED] in role-achievements.md and EXPERIENCE-REFERENCE.md:
 - Pyramid: 200% user growth — over what timeframe?
 - Solace: 3-month tenure — why did it end? Have clean explanation ready.
 
-## Phase E — next session
+## Phase F — active
 
-1. Find 2–3 example JDs per profile (LinkedIn, Greenhouse, Lever, Built In)
-2. Run standard fit check against applicant.md for each (note these are examples, not live applications)
-3. Generate one sample resume for a well-fitting JD per profile
-4. Iterate on profiles/CONTENT files as gaps surface
+Profile maintenance workflow is live. See applicant-setup.md Phase F for:
+- Trigger phrases and classification matrix
+- File Registry (what to update for each change type)
+- Cross-Profile Propagation Rule
+- Logging instructions (append to $APPLICANT_DIR/applicant-maintenance.md)
+
+**Last Updated:** 2026-05-02
