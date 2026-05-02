@@ -56,10 +56,12 @@ Pre-compiled resume content library for one profile. Contains:
 
 **Role order is strict reverse chronological.** Always verify against `EXPERIENCE-REFERENCE.md` before generating a resume. Never display roles out of order.
 
-**Update sequence matters.** When adding a new achievement or metric:
-1. Add it to `role-achievements.md` first
-2. Propagate to `EXPERIENCE-REFERENCE.md`
-3. Update the relevant `[profile]-CONTENT.md` files
+**Update sequence matters.** When adding a new achievement or metric, the canonical propagation order is:
+1. `role-achievements.md` first
+2. `EXPERIENCE-REFERENCE.md`
+3. Relevant `[profile]-CONTENT.md` files
+
+In practice, describe the change to Claude — Phase F (Profile Maintenance) in `applicant-setup.md` handles propagation automatically using the File Registry and Cross-Profile Propagation Rule.
 
 ---
 

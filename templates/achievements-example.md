@@ -45,10 +45,10 @@ Context: Use when emphasizing product sense or business outcomes
 
 ## Template Tips
 
-1. **Use the PAR format**: Problem, Action, Result
-2. **Include metrics**: Percentages, numbers, scale
+1. **Use the bullet formula**: Action → Technical Domain → Context → Outcome
+2. **Include verified metrics**: Counts and named outputs (50+ customers, 3 regions) are always fine; X% claims only if the figure is sourced and verifiable — otherwise use qualitative language ("substantially improved", "significantly reduced")
 3. **Be specific**: Real examples beat generic statements
-4. **Adapt the framing**: Same achievement can be told different ways
+4. **Adapt the framing**: Same achievement can be told different ways for different profiles
 5. **Keep it honest**: Only claim what you actually did
 
 ## Building This File
