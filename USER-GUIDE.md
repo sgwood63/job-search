@@ -10,6 +10,7 @@ This guide covers the slash commands available in Claude Code sessions for this 
 
 | Command | Usage | When to use |
 |---------|-------|-------------|
+| `/setup` | `/setup` or `/setup [A-E]` | New applicant onboarding — detects state, resumes where setup left off |
 | `/context` | `/context` | Session start — loads all applicant state |
 | `/status` | `/status` | Weekly review — current pipeline snapshot |
 | `/audit` | `/audit [folder-name]` | Before submitting — validates application folder |
@@ -32,6 +33,38 @@ Weekly check-in   → /status
 ---
 
 ## Command Details
+
+### `/setup [phase?]`
+
+Runs the applicant onboarding workflow (phases A–E from `applicant-setup.md`). Automatically detects how far setup has progressed and resumes from where it left off — no need to remember where you stopped.
+
+**State detection:**
+
+Before starting, the command checks which output files exist in `$APPLICANT_DIR` to determine the last completed phase:
+
+| Phase | What it produces |
+|-------|-----------------|
+| A | Source documents in `base-documents/` |
+| B | `applicant.md` (preferences, criteria, deal-breakers) |
+| C | Core profile library: `profiles/EXPERIENCE-REFERENCE.md`, profile strategy and content files |
+| D | `career-advice.md` (profile fit scores, target roles, skill gaps, compensation ranges) |
+| E | `profiles/role-achievements.md` populated + sample resumes in `applications/` |
+
+**What it reports:**
+- Which phase was last completed (or "fresh start")
+- Which phase it will begin from
+- An option to override (e.g., `/setup C` to force-start at Phase C)
+
+**Usage:**
+```
+/setup              → detects state, reports, confirms, then resumes
+/setup C            → skip detection, start at Phase C
+/setup A            → restart from scratch
+```
+
+Pauses after each phase for your confirmation before continuing. Uses Sonnet throughout.
+
+---
 
 ### `/context`
 

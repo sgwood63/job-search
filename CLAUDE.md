@@ -88,6 +88,7 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 
 | Command | Purpose |
 |---------|---------|
+| `/setup [phase?]` | Run applicant onboarding (phases A–E); detects current state and resumes |
 | `/context` | Load full session state at session start (applicant, pipeline, memory) |
 | `/status` | Generate current pipeline snapshot with past-due follow-ups |
 | `/audit [folder]` | Validate application folder completeness before submitting |
