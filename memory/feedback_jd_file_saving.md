@@ -1,0 +1,27 @@
+---
+name: feedback_jd_file_saving
+description: Rules for saving JD files — verbatim raw text in jd-*.md, structured summary in job-description.md; both required for every application
+type: feedback
+---
+
+For every JD processed, two files must be created in the application folder:
+
+1. **`jd-<company>-<role>.md`** — verbatim raw text from the source (never a summary or extraction):
+   - URL source → full page text via `fetch-jd.py --md-out <filepath> <url>`
+   - PDF source → copy of original PDF file (use .pdf extension)
+   - Pasted text → verbatim paste as-is
+
+2. **`job-description.md`** — structured extraction with key info:
+   - Company, title, location, compensation, travel
+   - Role overview (summarized)
+   - Required and preferred qualifications
+   - Source URL and reference to original JD file name
+
+**Why:** The applicant explicitly asked for raw JD text to be saved. Summaries are not a substitute — the verbatim source is needed for reference, future re-analysis, and audit. The structured job-description.md serves navigation; the raw jd-*.md preserves fidelity.
+
+**How to apply:**
+- Both files must be created before moving to resume generation or notes
+- `jd-*.md` must contain the verbatim source text — not an extraction, not a reformatted version
+- `fetch-jd.py --md-out` syntax: `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out <filepath> <url>`
+- If fetch fails (exit 1), ask the user to paste the raw text rather than skipping the step
+- If fetch returns exit 2 (auth required), run `--setup <url>` to refresh auth
