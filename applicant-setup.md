@@ -122,7 +122,7 @@ This file replaces per-application resume extraction. All resume generation draw
 Format rules per profile: 1-page vs. 2-page, section structure, what to include/exclude, tone.
 
 ### Session summary document
-Save a summary of the interview chat to `$APPLICANT_DIR/base-documents/applicant-feedback.md`. This becomes a reference for future sessions and can be extended with follow-up chats.
+Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md` with: date, session type, summary of what was discussed and decided, and files updated. This is the canonical session log.
 
 ---
 
@@ -180,7 +180,7 @@ Have the applicant review the career-advice.md output. Collect feedback:
 - Do the skill gap assessments match the applicant's own sense of their weaknesses?
 - Does the quick-win recommendation align with what the applicant actually wants?
 
-Update `$APPLICANT_DIR/profiles` content if the discussion surfaces framing improvements or new profile priorities. Append a summary of the conversation to `$APPLICANT_DIR/base-documents/applicant-feedback.md`.
+Update `$APPLICANT_DIR/profiles` content if the discussion surfaces framing improvements or new profile priorities. Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md` summarising what changed and which files were updated.
 
 ---
 
@@ -194,14 +194,74 @@ Once profiles and career advice are reviewed:
 
 ---
 
-## After Setup
+## Phase F — Profile Maintenance
 
-The applicant can review and update any of these files at any time manually or via interaction with Claude. Common reasons to update:
+After setup is complete, applicant-level updates are ongoing. Trigger phrases (Claude executes immediately — do not ask):
 
-- **`applicant.md`** — preferences shift, new deal-breakers emerge, compensation target changes
-- **`$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`** — completing a project, remembering a detail, adding a metric
-- **`$APPLICANT_DIR/profiles/`** — new role type to target, framing improvement after an interview
-- **`$APPLICANT_DIR/profiles/role-achievements.md`** — capturing a new accomplishment
-- **`$APPLICANT_DIR/base-documents/applicant-feedback.md`** — session notes and applicant responses from setup interviews; extend with follow-up conversations
+- "update my preferences" / "change my criteria" / "new deal-breaker"
+- "I have a new achievement" / "I finished a project" / "I verified a metric" / "resolved an unverified item"
+- "update my experience" / "I have a new role" / "I remembered something about [role]"
+- "update my career direction" / "I want to focus on [X]" / "add a new target role"
+- "I want to update my profile"
 
-When updating process rules (how Claude behaves), edit `CLAUDE.md` or `memory/` in the process repo and commit.
+### File Registry
+
+For any maintenance update, consult this registry to determine which files are affected — reason from what changed against what each file contains and who reads it. Do not use a fixed lookup table.
+
+**`applicant.md`**
+- Contains: Contact info, job search criteria, preferences, deal-breakers, work style, domain expertise, notes
+- Read by: Haiku screening agent on every JD
+- Update when: Contact details change; preferences, deal-breakers, or work style shift; domain expertise updated; career direction affects how JDs should be screened
+
+**`profiles/PROFILES-QUICK-REFERENCE.md`**
+- Contains: One-row profile summary per profile; scoring rules; hard stops
+- Read by: Haiku screening agent for profile selection and fit scoring
+- Update when: Profile added or removed; scoring rules change; new JD signals identified; hard stops change
+
+**`profiles/[profile].md`** (one per profile)
+- Contains: Positioning strategy, framing guidance, what to emphasize/compress/omit, target companies, keywords
+- Read by: Sonnet during resume generation
+- Update when: Positioning or framing changes (e.g., new delivery emphasis); profile added or deprecated; emphasis priorities shift
+
+**`profiles/[profile]-CONTENT.md`** (one per profile)
+- Contains: Pre-compiled resume bullets by role — factual, sourced content only
+- Read by: Sonnet during resume generation (primary bullet source)
+- Update when: A role fact changes; a new verified achievement is added; an [UNVERIFIED] claim is resolved; a new role is added
+- Do NOT update for framing changes — framing lives in the strategy file, not here
+
+**`profiles/EXPERIENCE-REFERENCE.md`**
+- Contains: Verified fact sheet for every role: exact title, company, dates, contributions, technologies, verified metrics
+- Read by: Sonnet during resume generation (no-fabrication source of truth)
+- Update when: New role added; fact corrected; metric verified or resolved from [UNVERIFIED]; tenure explanation confirmed
+
+**`profiles/role-achievements.md`**
+- Contains: Full achievement set scored per profile (Power + profile relevance)
+- Read by: Sonnet during resume generation for bullet selection
+- Update when: New achievement added; score updated; achievement text refined with verified facts
+
+**`career-advice.md`**
+- Contains: Profile fit scores, suggested target roles, skill gaps, seniority assessment, comp ranges, quick win recommendation, feedback log
+- Read by: Human (applicant) — not read by the automated workflow
+- Update when: Career direction changes affect the strategy recommendations; Feedback Incorporated section only (new target track, rejected recommendation, resolved skill gap)
+
+**`applicant-maintenance.md`**
+- Contains: Chronological session log of all setup and maintenance updates
+- Read by: Human reference
+- Update: Append an entry after every maintenance session
+
+### Logging Rules
+
+**Every maintenance session:** Append an entry to `$APPLICANT_DIR/applicant-maintenance.md` with: date, session type, summary of what changed, and files updated.
+
+**`career-advice.md` Feedback Incorporated:** Update only when the change directly impacts the advice — e.g., a new target role track added, a skill gap resolved, a recommendation rejected. Do not use as a general change log.
+
+**`APPLICANT-MEMORY.md`:** Do not log maintenance changes to the index. Maintenance content lives in the files themselves and in `applicant-maintenance.md`.
+
+### Files Never Updated During Maintenance
+
+- `*-CONTENT.md` — unless an experience or achievement fact changed; these are pre-compiled from verified sources, not framing documents
+- `base-documents/` — setup-only input materials; read-only after Phase E
+
+### Process Rules
+
+When updating how Claude behaves (workflow rules, prompts, memory), edit `CLAUDE.md` or `memory/` in `$APP_DIR` and commit.
