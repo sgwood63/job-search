@@ -17,18 +17,29 @@ For each application, identify the target company's business domain and surface 
 1. Professional roles (most common — look in EXPERIENCE-REFERENCE.md)
 2. Personal / life experience — property ownership, industry use, consumer experience (stored in EXPERIENCE-REFERENCE.md under "Personal Domain Context")
 3. Specific artifacts built — demos, reference implementations, POCs in the domain
+4. Use-case connections — adjacent industry or business-process exposure that maps to what the company's product does or the workflows it automates, even without direct professional history in that sector
 
 **Where to surface it:**
 - Professional connections: resume bullets (role-appropriate placement)
 - Personal/life experience: cover letter, interview prep notes — NOT as a resume bullet
 - Always capture in notes.md under Fit Assessment with a "Domain connection" subsection
 
-**Decagon example (professional connections):**
-- Decagon builds AI customer service agents
-- Connections: (1) Encover/Concentrix — ran CS call center IT/analytics; (2) Irish Life — built call center systems and sales force automation; (3) LatticeFlow — built a Swiss Air customer service chatbot as workshop reference implementation
-- All three surfaced in resume bullets
+**Example — professional connections:**
+- Target company builds AI for a specific industry vertical
+- Check EXPERIENCE-REFERENCE.md for past roles in that vertical or adjacent operations (ran IT/analytics in that sector, built reference implementations during consulting, etc.)
+- Surface matching experience as role bullets in the resume
 
-**EliseAI example (personal/life experience):**
-- EliseAI builds AI leasing and resident communication automation for property managers
-- Connection: bought/sold multiple Bay Area properties; currently manages a multi-family rental; understands leasing workflows, tenant communication overhead, and operational pain points from the operator side
-- Used in cover letter framing, not as a resume bullet
+**Example — personal/life experience:**
+- Target company builds a product for a consumer or operator context the applicant has lived
+- Source: EXPERIENCE-REFERENCE.md "Personal Domain Context" section
+- Use in cover letter framing only — not as a resume bullet
+
+**Example — use-case connection:**
+- Target company solves a workflow or operational problem in a particular industry
+- Check EXPERIENCE-REFERENCE.md for adjacent-industry or cross-functional process experience
+- Surface in notes.md Domain Connection; evaluate whether a resume bullet or cover letter mention is warranted
+
+**Example — artifact connection:**
+- Target company builds a specific product category
+- Check EXPERIENCE-REFERENCE.md for demos, POCs, reference implementations, or internal tools built in that category
+- If found: surface as a concrete artifact bullet, not just a capabilities label

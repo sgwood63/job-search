@@ -6,7 +6,7 @@ type: feedback
 
 When the user references a company that is not already part of the current conversation context, always check `application-tracker.md` first to see if we have worked on it before.
 
-**Why:** Avoids incorrect assumptions about which role/application is relevant, especially when we have multiple touchpoints with the same company (e.g., HockeyStack had Solutions Consultant + Forward Deployed Consultant).
+**Why:** Avoids incorrect assumptions about which role/application is relevant — the same company may appear with multiple positions or across different time periods.
 
 **How to apply:**
 1. Read `application-tracker.md` to find all entries for that company
