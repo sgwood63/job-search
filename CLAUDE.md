@@ -39,6 +39,16 @@ When the user provides a job description (URL, document, or paste), execute imme
 
 **Fit:** Switch to Sonnet. Read matched profile files. Generate resume, create detailed `notes.md`, update tracker (Active section).
 
+## Profile Maintenance — DO NOT ASK, JUST DO
+
+When the user provides new experience, achievements, preference changes, or career direction updates, execute immediately. See `applicant-setup.md` Phase F for the full classification matrix, file rules, and logging instructions.
+
+**Key rules:**
+- Consult the File Registry in `applicant-setup.md` Phase F — reason from what changed against each file's role to determine what needs updating
+- Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md`
+- Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
+- Do not update `APPLICANT-MEMORY.md` for maintenance changes
+
 ## Critical Rules
 
 **No fabrication.** Source only from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Never invent companies, titles, achievements, metrics, projects, skills, or certifications. If uncertain, ask.
