@@ -39,3 +39,12 @@ Never fabricate — if a claim is not here, add it here first.
 
 <!-- Add a section for each role, most-recent-first. -->
 <!-- Mark anything uncertain as: [UNVERIFIED — confirm before use] -->
+
+---
+
+## Personal Domain Context
+
+Personal and life experience relevant to understanding specific business domains. Not for resume bullets — used for cover letter framing, interview prep, and domain connection analysis.
+
+- [Domain area]: [brief description of personal connection — ownership, consumer experience, operational exposure, etc.]
+

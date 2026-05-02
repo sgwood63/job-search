@@ -13,6 +13,13 @@ Formatting and structure rules applicable to any applicant. Applicant-specific c
 - Embed keywords naturally — do not stuff
 - Specific tools go in role bullets, not capabilities
 
+## Metrics Rule
+
+- **Verified, sourced metrics are allowed** — if the number comes from a real measurement or document, use it
+- **Unverified / estimated X% claims must be replaced** with qualitative language: "substantially improved", "significantly reduced", "materially shortened"
+- **Counts and named outputs are always fine**: 50+ engagements, 400+ customers, 156 GitHub stars
+- Scan every bullet before PDF generation and flag any X% claim that lacks a traceable source
+
 ---
 
 ## Section Structure
