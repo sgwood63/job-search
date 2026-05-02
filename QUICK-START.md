@@ -118,16 +118,14 @@ After each interview, add to `notes.md`:
 - Review tracker for pending follow-ups
 - Any applications past follow-up date? Send a note.
 
-**When you learn something new about your experience**:
-- Update `$APPLICANT_DIR/profiles/role-achievements.md` first
-- Then propagate to `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
-- Then update the relevant `$APPLICANT_DIR/profiles/[profile]-CONTENT.md`
-- If it's a process rule: update `memory/` in the process repo and commit
+**When you learn something new about your experience, or want to update preferences or target roles**:
+- Tell Claude — describe the update and it will consult the File Registry in `applicant-setup.md` Phase F, update the right files, and log the change to `$APPLICANT_DIR/applicant-maintenance.md`
+- Do not update profile files manually: changes often propagate across `EXPERIENCE-REFERENCE.md`, `role-achievements.md`, and all active `[profile]-CONTENT.md` files; Phase F handles this automatically
 
 **When you want to change how Claude behaves**:
-- Edit `CLAUDE.md` for auto-loaded rules
-- Edit `memory/feedback_*.md` for specific rules indexed by CLAUDE.md
-- Commit both
+- Edit `memory/feedback_*.md` for specific rules (preferred — keeps `CLAUDE.md` lean)
+- Edit `CLAUDE.md` directly only if the rule needs to appear in the always-loaded context (keep it under 200 lines)
+- Run the Memory Sync Rule from `CLAUDE.md` to commit and sync to the live session
 
 ---
 
@@ -143,4 +141,4 @@ Process memory lives in two places:
 
 To update a rule:
 1. Edit the relevant file in `memory/` (or `CLAUDE.md` directly)
-2. Commit: `git add memory/ CLAUDE.md && git commit -m "Update memory: [what changed]"`
+2. Run the Memory Sync Rule from `CLAUDE.md` — commit from the repo, then sync to `~/.claude/` so the live session picks up the change
