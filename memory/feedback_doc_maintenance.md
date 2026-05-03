@@ -31,22 +31,21 @@ Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, 
 |---|---|
 | CLAUDE.md (workflow rules, trigger phrases, session rules) | README.md, QUICK-START.md |
 | CLAUDE.md (Available Commands table) | USER-GUIDE.md |
-| workflow.md | README.md (pipeline section), QUICK-START.md (Phase 2) |
+| workflow.md | README.md (What This System Does section), QUICK-START.md (Phase 2) |
 | applicant-setup.md (phases A–E) | QUICK-START.md (Phase 1 Step 2), USER-GUIDE.md (Getting Set Up section) |
 | applicant-setup.md (Phase F) | USER-GUIDE.md (Updating Your Profile section) |
-| .claude/commands/*.md (new, renamed, or changed command) | USER-GUIDE.md (Command Details section), CLAUDE.md (Available Commands table) |
-| scripts/setup.sh | QUICK-START.md (Phase 1 Step 1), README.md (Process Repo section), scripts/README.md |
-| scripts/fetch-jd.py | README.md (JD Fetching), DEVELOPER-README.md (JD Fetching), scripts/README.md, QUICK-START.md |
-| scripts/generate-pdf.py | README.md (PDF Generation), DEVELOPER-README.md (PDF Generation), scripts/README.md |
-| scripts/check-md-hygiene.sh | DEVELOPER-README.md (Markdown Hygiene), scripts/README.md, README.md |
+| scripts/setup.sh | QUICK-START.md (Phase 1 Step 1), README.md (Requirements table), scripts/README.md |
+| scripts/fetch-jd.py | DEVELOPER-README.md (JD Fetching), scripts/README.md, QUICK-START.md |
+| scripts/generate-pdf.py | DEVELOPER-README.md (PDF Generation), scripts/README.md |
+| scripts/check-md-hygiene.sh | DEVELOPER-README.md (Markdown Hygiene), scripts/README.md |
 | scripts/install-hooks.sh | scripts/README.md |
-| scripts/sync-memory.sh | DEVELOPER-README.md (Memory System, Customizing Workflow Rules), README.md (Memory section) |
+| scripts/sync-memory.sh | DEVELOPER-README.md (Memory System, Customizing Workflow Rules) |
 | .claude/settings.json (statusLine or hooks) | DEVELOPER-README.md (Settings Reference, Hook System), README.md, QUICK-START.md — only if the change affects user-visible workflow |
 | .claude/commands/*.md (new, renamed, or changed command) | USER-GUIDE.md (Command Quick Reference), DEVELOPER-README.md (Slash Command Architecture), CLAUDE.md (Available Commands table) |
-| templates/ (CSS files) | DEVELOPER-README.md (PDF Generation), README.md (PDF Generation section) |
+| templates/ (CSS files) | DEVELOPER-README.md (PDF Generation) |
 | templates/scaffold/ (stub files) | DEVELOPER-README.md (Applicant Repo file tree) |
 | memory/MEMORY.md (new or removed index entry) | CLAUDE.md (Workflow Rules pointer list) |
-| DEVELOPER-README.md (structural changes) | README.md (Getting Started section), CLAUDE.md (Available Commands footnote) |
+| DEVELOPER-README.md (structural changes) | README.md (Getting Started section), CLAUDE.md (Available Commands section) |
 
 ## Document character — audience and content rules
 
