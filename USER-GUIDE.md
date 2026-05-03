@@ -1,250 +1,336 @@
-# User Guide — Slash Commands
+# Job Search Assistant — User Guide
 
-This guide covers the slash commands available in Claude Code sessions for this job search system. Commands automate multi-step workflows so you don't have to orchestrate them manually.
+## Contents
 
-**How to invoke:** Type `/command-name` (with any arguments) in a Claude Code session.
-
----
-
-## Quick Reference
-
-| Command | Usage | When to use |
-|---------|-------|-------------|
-| `/setup` | `/setup` or `/setup [A-E]` | New applicant onboarding — detects state, resumes where setup left off |
-| `/context` | `/context` | Session start — loads all applicant state |
-| `/status` | `/status` | Weekly review — current pipeline snapshot |
-| `/audit` | `/audit [folder-name]` | Before submitting — validates application folder |
-| `/apply` | `/apply "Company" "Role" "date" [url]` | After submitting — records in tracker + notes.md |
-| `/interview` | `/interview [company] [stage?]` | Before an interview — loads prep context |
-| `/memory` | `/memory` or `/memory update` | End of session — navigate and sync memory |
-
----
-
-## Session Workflow
-
-```
-Start session     → /context
-Work on task      → (JD screening, resume, interview prep)
-Submit app        → /audit → /apply
-End session       → /memory update
-Weekly check-in   → /status
-```
+- [What This System Does](#what-this-system-does)
+- [Getting Set Up](#getting-set-up)
+  - [Prerequisites](#prerequisites)
+  - [Step 1 — Run the setup script](#step-1--run-the-setup-script)
+  - [Step 2 — Start the applicant setup conversation](#step-2--start-the-applicant-setup-conversation)
+- [Working With a Job Posting](#working-with-a-job-posting)
+  - [Step 1: Get a resume draft](#step-1-get-a-resume-draft)
+  - [Step 2: Review and refine the draft](#step-2-review-and-refine-the-draft)
+  - [Step 3: Check it's ready to submit](#step-3-check-its-ready-to-submit)
+  - [Step 4: Record the submission](#step-4-record-the-submission)
+  - [Step 5: Follow up](#step-5-follow-up)
+- [Generating Application Content](#generating-application-content)
+- [Preparing for an Interview](#preparing-for-an-interview)
+- [Updating Your Profile (Any Time)](#updating-your-profile-any-time)
+- [Making Manual Edits](#making-manual-edits)
+- [Checking Your Pipeline](#checking-your-pipeline)
+- [Starting a Conversation](#starting-a-conversation)
+- [Command Quick Reference](#command-quick-reference)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Command Details
+## What This System Does
 
-### `/setup [phase?]`
+One setup: you describe your background, experience, and goals once. After that, the system does the heavy lifting for every application.
 
-Runs the applicant onboarding workflow (phases A–E from `applicant-setup.md`). Automatically detects how far setup has progressed and resumes from where it left off — no need to remember where you stopped.
+- **Profile and career advice** — the setup process analyzes your background, gives career direction advice, and generates target role profiles so every application draws from pre-vetted, accurately-voiced content.
+- **JD evaluation and scoring** — when you provide a job description, the system screens it for fit, scores it against your criteria, and gives you a reason before doing any resume work.
+- **Tailored resumes, cover letters, and application content** — resumes are generated from your verified content library; cover letters and portal question answers are produced in the same voice, from the same facts.
+- **Full-cycle tracking** — application status, interview prep, post-call notes, and debrief feedback all live in one place; corrections and new experience automatically carry forward into future applications.
 
-**State detection:**
-
-Before starting, the command checks which output files exist in `$APPLICANT_DIR` to determine the last completed phase:
-
-| Phase | What it produces |
-|-------|-----------------|
-| A | Source documents in `base-documents/` |
-| B | `applicant.md` (preferences, criteria, deal-breakers) |
-| C | Core profile library: `profiles/EXPERIENCE-REFERENCE.md`, profile strategy and content files |
-| D | `career-advice.md` (profile fit scores, target roles, skill gaps, compensation ranges) |
-| E | `profiles/role-achievements.md` populated + sample resumes in `applications/` |
-
-**What it reports:**
-- Which phase was last completed (or "fresh start")
-- Which phase it will begin from
-- An option to override (e.g., `/setup C` to force-start at Phase C)
-
-**Usage:**
-```
-/setup              → detects state, reports, confirms, then resumes
-/setup C            → skip detection, start at Phase C
-/setup A            → restart from scratch
-```
-
-Pauses after each phase for your confirmation before continuing. Uses Sonnet throughout.
+**How to start:** Open Claude Code, navigate to this folder, and start typing. Context loads automatically at the beginning of every conversation.
 
 ---
 
-### `/context`
+## Getting Set Up
 
-Loads the full session state in one step — replaces manually reading 5+ files at session start.
+This section covers the one-time setup process. If the system is already running and you have profiles, skip ahead to **Working With a Job Posting**.
 
-**What it reads:**
-- `.env` — resolves `$APP_DIR` and `$APPLICANT_DIR`
-- `applicant.md` — criteria, compensation, deal-breakers
-- `application-tracker.md` — pipeline state; flags past-due follow-ups and priority applications
-- `APPLICANT-MEMORY.md` — applicant-specific rules
-- `MEMORY.md` — process rules index
+### Prerequisites
 
-**Output:** A 10-line briefing: active pipeline count, any past-due follow-ups, most urgent next action, confirmation that paths resolved correctly.
+- **Claude Code** — [desktop app](https://claude.ai/code) or `npm install -g @anthropic-ai/claude-code`
+- **Anthropic API key** or Claude Code OAuth login (set during setup)
 
-**Use at:** The start of every session before working on any application.
+### Step 1 — Run the setup script
+
+From the repo folder:
+
+```bash
+bash scripts/setup.sh
+```
+
+This is a one-time step. The script installs PDF tools (pandoc, Playwright), detects any cloud sync service you have installed (Google Drive, OneDrive, iCloud, Dropbox, Box), and creates your applicant directory there. Safe to re-run if you need to refresh configuration.
+
+### Step 2 — Start the applicant setup conversation
+
+Open Claude Code in the repo folder and say: **"Start the applicant setup process"** (or run `/setup`).
+
+Claude leads you through five phases:
+
+| Phase | What happens |
+|---|---|
+| A — Documents | You provide your source materials: LinkedIn URL or resume PDF, existing cover letters, any job postings you're already interested in |
+| B — Interview | Claude asks about your location preferences, must-haves, deal-breakers, compensation floor, travel limits, and what you want from your next role |
+| C — Profile generation | Claude builds your experience fact sheet, one profile per target role type, and an achievement library — you review and can edit anything |
+| D — Career advice | Claude scores each profile (experience match, market demand, differentiation), suggests target roles, identifies skill gaps, and tells you which profile is most likely to land interviews fastest |
+| E — Validation | Claude finds example JDs for each profile, runs them through the screening process, and generates a sample resume to confirm the content is ready |
+
+**What you get at the end:** A verified fact sheet of your roles, a pre-built content library per profile, and career direction advice — everything the system needs to screen JDs and generate resumes for your entire search.
+
+**How long it takes:** 1–2 sessions (60–90 minutes total).
+
+**If you stop mid-setup:** `/setup B` resumes from Phase B; `/setup C` from Phase C; and so on.
 
 ---
 
-### `/status`
+## Working With a Job Posting
 
-Generates a current pipeline snapshot. Replaces the stale "Stats & Insights" section that used to be maintained manually in the tracker.
+This is the core workflow. Each step can happen at any time — you don't need to complete them all in one conversation.
 
-**Output includes:**
-- Application count by status (Applied, Screening, Phone Interview, etc.)
-- Past-due follow-ups with the overdue action
-- All Priority ⭐️⭐️⭐️ applications with current status
-- Applications added in the last 14 days
-- Response rate for the last 30 days
+### Step 1: Get a resume draft
 
-**Use at:** Weekly review, or any time you want a quick summary of where things stand.
+Provide the job posting in any form:
+- Paste the URL: `"Here's a posting I found: https://..."`
+- Paste the text: just paste it in
+- Upload the PDF: attach the file
 
----
+The assistant screens the role for fit against your criteria. If it's not a match, it tells you why and stops. If it is a match, it generates a tailored resume and gives you a summary of why it fits. The screening includes an explicit fit assessment — location, travel, role type, compensation range — so you can make an informed call on borderline roles before any resume work begins.
 
-### `/audit [folder-name]`
-
-Validates an application folder for completeness before you record a submission. This is a prerequisite for `/apply`.
-
-**What it checks:**
-
-*Required (FAIL if missing):*
-- `job-description.md` with a non-empty JD Analysis section
-- `notes.md` with: Table of Contents, JD Analysis, Fit Assessment, Resume Strategy, Company Research
-- A `.md` resume file (`Name_Role.md`)
-- A matching `.pdf` resume file
-
-*Quality (WARN if missing):*
-- `notes.md` has a Process section
-- `notes.md` has at least one Interview Prep section
-- Company Research section is not empty
-- PDF page count verified
-
-*Tracker check:*
-- Company appears in Active Applications table
-- Status is not already "Applied"
-
-**Output:** PASS or FAIL with specific items called out. On PASS, prints the exact tracker row to use for `/apply`.
-
-**Usage:**
-```
-/audit 2026-05-02-middesk-solutions-architect
-```
-If you omit the folder name, it lists all application folders and asks which to audit.
+**Example:**
+> "I found this on LinkedIn — can you take a look?" [paste URL]
 
 ---
 
-### `/apply "Company" "Role" "date" [portal-url]`
+### Step 2: Review and refine the draft
 
-Records a submission atomically — updates both `application-tracker.md` and the application's `notes.md` in one step. Runs `/audit` automatically first and stops if it fails.
+Once you have a draft, work through it however you need to. You can do this across multiple conversations — the draft is saved. This is where most of the real work happens.
 
-**What it updates:**
+**Add a personal experience that's relevant:**
+> "My 3 years at Southern Cross Bank on their core banking migration is relevant here — add it."
 
-*Tracker:*
-- Status → `Applied [date]`
-- Next Action → `Follow up [date + 14 days]`
+The assistant adds it to your experience record and updates the resume.
 
-*notes.md:*
-- Adds a `## Submission Log` section (after the header, before the TOC) with: date submitted, portal URL, resume filename used
+**Add or update an achievement:**
+> "The Westbrook Financial project at ArcLight AI was specifically about compliance under the regional AI regulations — add that detail."
 
-**Usage:**
-```
-/apply "Middesk" "Solutions Architect" "2026-05-02"
-/apply "Middesk" "Solutions Architect" "2026-05-02" "https://boards.greenhouse.io/middesk/jobs/123"
-```
+**Correct something that's wrong:**
+> "The resume says I did hands-on messaging platform sales at StreamBridge — that's not right, I was in a governance role. Remove that."
 
-If the company matches multiple tracker entries, it asks which one before proceeding.
+Corrections are saved to your profile so they don't reappear in future resumes.
 
----
+**Guide the structure:**
+> "For this role, lead with my founding-architect work at DataStream — that's the differentiator."
+> "This should be a 1-page resume — it's for a warm referral."
 
-### `/interview [company] [stage?]`
-
-Loads interview preparation context for a specific application in one step.
-
-**What it reads:**
-- `job-description.md` — role details and requirements
-- `notes.md` — full file, especially Interview Prep and Process sections
-- The matched profile's strategy file
-
-**Output:**
-- Stage summary (what type of interview this is)
-- Key talking points for this specific stage
-- Questions to ask the interviewer
-- What NOT to bring up
-- Signals to watch for based on the JD and company research
-
-**Usage:**
-```
-/interview Middesk
-/interview Middesk "technical screen"
-```
-
-If stage is not specified, uses the next upcoming stage from the Process section in `notes.md`.
+**If you've already submitted** a version of this resume and now want to revise it for a similar role, say so. The assistant creates a new version rather than overwriting the one you sent.
 
 ---
 
-### `/memory [subcommand]`
+### Step 3: Check it's ready to submit
 
-Navigates and updates the memory system.
+Before submitting on the company portal, run:
 
-**Subcommands:**
-
-`/memory` — Lists all memory files with one-line summaries and types (feedback / project / reference).
-
-`/memory read [name]` — Reads a specific file. Partial name match works:
 ```
-/memory read domain        → reads feedback_domain_connection.md
-/memory read session end   → reads feedback_session_end.md
+/audit [company-name]
 ```
 
-`/memory update` — End-of-session sync. Asks what changed, updates the right files, commits to git, and syncs to `~/.claude/` so the live session picks up the changes.
+This confirms everything is in order. If anything is missing, it tells you exactly what to fix.
 
-`/memory add [topic]` — Creates a new memory file with correct frontmatter, adds it to the index, and syncs.
+**Example:**
+```
+/audit acme-ai-solutions-engineer
+```
 
-**Use at:** The end of any session where you want to preserve something for future sessions.
+If you leave out the folder name, it lists your application folders and asks which one to check.
 
 ---
 
-## Common Scenarios
+### Step 4: Record the submission
 
-### "I found a job — process it"
-Just paste the URL or JD text. The automated workflow in `CLAUDE.md` handles everything: fetch, screen (Haiku), folder creation, resume generation (Sonnet), tracker update.
+After you submit on the company's portal:
 
-### "I'm about to submit an application"
 ```
-/audit 2026-05-02-company-role
-```
-Review the PASS/FAIL output. Fix any failures, then:
-```
-/apply "Company" "Role" "2026-05-02" "https://portal-url"
+/apply "Company" "Role" "YYYY-MM-DD"
 ```
 
-### "I have a phone screen tomorrow"
-```
-/interview Company "recruiter screen"
-```
-Claude loads the job details, profile strategy, and your notes, then gives you a targeted brief.
+This logs the submission and sets a follow-up reminder for two weeks out. You can add the portal URL as a fourth argument.
 
-### "Starting a new session"
+**Examples:**
 ```
-/context
+/apply "Acme AI" "Solutions Engineer" "2026-04-15"
+/apply "Acme AI" "Solutions Engineer" "2026-04-15" "https://jobs.acme.ai/apply/123"
 ```
-Gets you oriented in under 30 seconds without manually reading multiple files.
 
-### "Weekly review"
+If the company has multiple active positions, the assistant will ask which one you're recording.
+
+---
+
+### Step 5: Follow up
+
+Run `/status` to see which companies are past due for a follow-up. Contact them yourself (email or LinkedIn), then tell the assistant the outcome:
+
+> "Acme AI came back — they want a phone screen next Thursday."
+
+Your log updates automatically.
+
+---
+
+## Generating Application Content
+
+Once you have a resume draft, ask for other materials at any point — they are generated from the same verified profile content and saved alongside the resume.
+
+### Cover letter
+
+> "Write a cover letter for this role."
+
+The letter is generated in your voice and positioned to the specific company and role. It is saved as a PDF using the same pipeline as the resume. To refine:
+
+> "The opening is too generic — make it specific to their AI governance platform work."
+> "Keep it to one page."
+
+### Application portal questions
+
+Many portals ask open-ended questions before you submit. Paste the question:
+
+> "The application asks: 'Describe a time you drove adoption of a new technology across a large organization.' Draft an answer."
+
+Answers draw from EXPERIENCE-REFERENCE.md — factually grounded, not invented. Edit or tighten just as you would a resume bullet.
+
+### Practical exercises
+
+Some roles include a written exercise, case study, or take-home before an interview:
+
+> "They sent a pre-work exercise — here it is. Help me plan my response."
+
+The assistant helps you structure and argue your answer. It will not fabricate facts — it helps you present what you know effectively.
+
+### Capturing what happened
+
+Everything gets recorded in the application's `notes.md` automatically: the cover letter version used, questions answered, exercise approach. If you submitted something you drafted yourself, tell the assistant:
+
+> "I ended up writing my own answer to the 'why us' question — here's what I sent."
+
+It saves it so your record stays complete.
+
+---
+
+## Preparing for an Interview
+
+Before any call or screen:
+
+```
+/interview [company]
+/interview Flowmatic "technical screen"
+```
+
+You'll get: talking points tailored to this specific role and company, questions to ask, what not to bring up, and positioning strategy based on your profile.
+
+If you don't specify the stage, the assistant uses the next upcoming stage from your application notes.
+
+**Bringing in new context:**
+
+> "I have my CloudMapper panel tomorrow. The recruiter mentioned they're dealing with a 200-system legacy integration problem — factor that in."
+
+The assistant updates the brief with that context.
+
+**Debriefing after an interview:**
+
+> "Flowmatic passed on me — they wanted someone with hands-on orchestration internals experience, not SE motion."
+
+This updates how the assistant positions you in future applications for similar roles.
+
+**Tracking notes after a call:**
+
+After any call, tell the assistant what happened — who you spoke with, what they emphasized, what they said about timeline:
+
+> "I just finished the HM call with Flowmatic. She was focused on cross-functional buy-in, not technical depth. Timeline is two weeks to next round."
+
+The assistant updates `notes.md` with a structured record. The next `/interview` prep automatically builds on it.
+
+**How debrief feeds future applications:**
+
+What you learn from rejections or late-stage losses updates how the assistant positions you going forward — without you needing to remember to carry it forward. This becomes a filter on similar roles and adjusts positioning language in future resumes for that role type.
+
+---
+
+## Updating Your Profile (Any Time)
+
+Whenever something about you changes, just say it — no command needed:
+
+- `"I prefer not to take roles requiring more than 25% travel."`
+- `"I just wrapped up an AI governance project for a regional financial institution — it involved regulatory compliance under their local AI regulations."`
+- `"I'm open to hybrid roles in the SF Bay Area now."`
+
+Updates happen immediately and carry forward to every future application. They work in three directions:
+
+- **Corrections** — when you correct something ("that bullet is wrong — I was in a governance role, not sales"), the correction saves to your profile and doesn't recur in future applications for similar roles.
+- **Additions** — new experience or refined descriptions go into EXPERIENCE-REFERENCE.md and the relevant content libraries immediately, available to every future resume.
+- **Preferences** — changes to what you want ("I'm open to hybrid in SF now") update `applicant.md` and apply to all future JD screening automatically.
+
+The initial setup process also gives career direction advice and generates your target role profiles — you can revisit and update that positioning at any time as you learn what the market responds to.
+
+---
+
+## Making Manual Edits
+
+If you edit your notes or experience files directly in a text editor, tell the assistant what changed:
+
+> "I separated the DataStream product I built in 2007 from the later consulting work at the same company — they're two different things."
+
+The assistant checks whether the change affects any active applications, updates your records, and flags anything that needs to be regenerated.
+
+---
+
+## Checking Your Pipeline
+
 ```
 /status
 ```
-Gives you a clean pipeline snapshot. Act on any past-due follow-ups it surfaces.
 
-### "I learned something that should affect future sessions"
-```
-/memory update
-```
-Describe what changed, and Claude updates the right memory file, commits it, and syncs it.
+A full snapshot: active applications by status, overdue follow-ups, priority companies, recent activity. Good for a weekly "where do things stand" check.
 
 ---
 
-## Notes on Commands
+## Starting a Conversation
 
-**Commands are in `$APP_DIR/.claude/commands/`** — git-tracked, no PII, available on any machine that clones the repo.
+Context loads automatically at the start of every conversation. You'll see a brief summary of your active pipeline, any overdue follow-ups, and the most urgent next action. No command needed — just start talking.
 
-**MCP servers** are not yet configured. If you need structured file search or database queries in the future, see the Phase 2 section of the architecture plan for the `settings.local.template.json` pattern.
+To reload context mid-conversation (for example, after a status change):
 
-**Modifying a command:** Edit the `.md` file in `.claude/commands/`. Changes take effect immediately in the next Claude Code session (no restart needed for file changes).
+```
+/context
+```
+
+---
+
+## Command Quick Reference
+
+| Command | What it does | When to use |
+|---------|-------------|-------------|
+| `/context` | Loads your full job search state | Automatic when you start a conversation; use manually to refresh |
+| `/status` | Pipeline snapshot with overdue follow-ups | Weekly check-in |
+| `/audit [folder]` | Confirms an application is complete and ready to submit | Before submitting |
+| `/apply "Co" "Role" "date"` | Records a submission and sets a follow-up reminder | Right after you submit |
+| `/interview [company] [stage]` | Interview brief: talking points, questions, positioning | Night before any call |
+| `/memory` | List or read saved process rules | When you want to see what's been remembered |
+| `/setup [phase]` | First-time onboarding (phases A–E) | Once, at the very beginning |
+
+---
+
+## Troubleshooting
+
+**"It can't fetch the job posting"**
+Paste the text or upload the PDF directly. Some sites (LinkedIn, etc.) require a one-time login setup — if the assistant mentions this, it will give you the exact command to run.
+
+**The audit failed**
+Read the output — it lists exactly what's missing. The most common issues are:
+- Resume PDF hasn't been generated yet
+- Application notes are missing a section (usually company research or interview prep)
+- The company hasn't been added to your active applications list yet
+
+**"I submitted but forgot to run /apply"**
+Run it now with the actual submission date. If there are multiple roles at the same company, the assistant will ask which one.
+
+**"A resume correction I made keeps coming back"**
+The correction may not have been saved to your profile. Tell the assistant: *"Update my profile so this correction sticks — [describe the change]."*
+
+**"I want to restart the initial setup"**
+```
+/setup A
+```
+Forces a fresh start from Phase A. Your existing application files are not affected — only the onboarding state resets.

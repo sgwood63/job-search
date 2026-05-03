@@ -1,6 +1,16 @@
 # Quick Start — Setting Up a New Job Search
 
-This guide covers how to bootstrap this system from scratch. If the system is already running, skip to **Daily Use**.
+## Contents
+
+- [Phase 1: Foundation](#phase-1-foundation-one-time-setup-30-minutes)
+  - [Step 1: Run the setup script](#step-1-run-the-setup-script)
+  - [Step 2: Run the applicant setup process](#step-2-run-the-applicant-setup-process)
+- [Phase 2: Applying to a Role](#phase-2-applying-to-a-role)
+- [Phase 3: Interview Process](#phase-3-interview-process)
+
+---
+
+This guide covers how to bootstrap this system from scratch. If the system is already running, see [USER-GUIDE.md](USER-GUIDE.md) for day-to-day usage.
 
 **Before you begin:**
 
@@ -42,100 +52,22 @@ source .env
 
 ### Step 2: Run the applicant setup process
 
-Open a new Claude Code session and follow [applicant-setup.md](applicant-setup.md). This guided process replaces manual file-filling — Claude interviews the applicant, extracts content from uploaded documents, and generates all required files:
+Open a new Claude Code session and run `/setup` (or say "Start the applicant setup process"). Claude interviews you, builds your experience and profile files, gives career direction advice, and validates with sample JDs. The session ends with a sample resume per profile. Takes 1–2 sessions.
 
-- `applicant.md` — contact info, location preferences, role criteria
-- `profiles/EXPERIENCE-REFERENCE.md` — verified facts for every role
-- `profiles/[name].md` + `profiles/[name]-CONTENT.md` — one pair per target role type
-- `profiles/PROFILES-QUICK-REFERENCE.md` — fast JD-matching index
-
-The session ends with profile validation against example JDs and a sample resume for each profile.
-
-### Step 3: Configure session context
-
-`CLAUDE.md` reads all paths from `.env` at session start — no manual path edits needed. Review `CLAUDE.md` only if you want to change workflow rules or resume generation standards.
-
-At the start of any working session, type `/context` to load applicant state, pipeline status, and memory rules in one step. See [USER-GUIDE.md](USER-GUIDE.md) for all available commands.
+See [USER-GUIDE.md → Getting Set Up](USER-GUIDE.md) for what each phase covers and what to bring.
 
 ---
 
 ## Phase 2: Applying to a Role
 
-### When you find a job to apply for:
+Provide the job description (URL, PDF, or paste). Claude screens for fit, matches to the best profile, and generates a tailored resume if it's a match. Review the draft, request a cover letter or portal question answers if needed, then run `/audit [folder]` before submitting and `/apply "Company" "Role" "date"` after.
 
-**Step 1 — Provide the JD**
-
-Give Claude Code the job description (URL, PDF, or paste). It will automatically:
-- Screen for location/travel fit against `$APPLICANT_DIR/applicant.md`
-- Match to the best profile from `$APPLICANT_DIR/profiles/`
-- Create `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
-- Generate resume and notes if fit; log with reason if no fit
-- Update the tracker
-
-**Step 2 — Review the resume**
-
-Claude generates the resume, self-reviews it against the JD, applies improvements, then generates the PDF. Review:
-- Does every bullet have a factual basis in EXPERIENCE-REFERENCE.md?
-- Does it read like the applicant, not like a generated document?
-- Does it answer: fit, credibility, environment match?
-
-**Step 3 — Submit and track**
-
-Before submitting, run `/audit [folder-name]` to verify the application folder is complete. After submitting, run `/apply "Company" "Role" "date"` — it updates both `application-tracker.md` and `notes.md` in one step.
+See [USER-GUIDE.md → Working With a Job Posting](USER-GUIDE.md) for the full workflow with examples.
 
 ---
 
 ## Phase 3: Interview Process
 
-### After each call, update `notes.md`:
-- Who you spoke with and their role
-- What they said about the process and timeline
-- Any signals about what matters to them
+After each call, tell Claude who you spoke with and what was said — it updates your notes. Run `/interview [company]` before any call for a targeted prep brief. After the interview, debrief with Claude — gaps and positioning signals carry forward automatically.
 
-### Interview prep
-
-Run `/interview [company] [stage?]` to load context and get a targeted brief for the specific interview stage. Claude reads the JD, notes, and profile strategy, then gives you talking points, questions to ask, and signals to watch for.
-
-### Debrief
-
-After each interview, add to `notes.md`:
-- What went well / what to improve
-- What they emphasized — use for next round prep
-- Any new process information
-
----
-
-## Daily / Weekly Habits
-
-**When something changes** (offer, rejection, interview scheduled):
-- Update `application-tracker.md` immediately
-- Update the application's `notes.md`
-
-**Weekly (15 min)**:
-- Run `/status` for a pipeline snapshot — it flags past-due follow-ups automatically
-- Send follow-up notes for any overdue applications
-
-**When you learn something new about your experience, or want to update preferences or target roles**:
-- Tell Claude — describe the update and it will consult the File Registry in `applicant-setup.md` Phase F, update the right files, and log the change to `$APPLICANT_DIR/applicant-maintenance.md`
-- Do not update profile files manually: changes often propagate across `EXPERIENCE-REFERENCE.md`, `role-achievements.md`, and all active `[profile]-CONTENT.md` files; Phase F handles this automatically
-
-**When you want to change how Claude behaves**:
-- Edit `memory/feedback_*.md` for specific rules (preferred — keeps `CLAUDE.md` lean)
-- Edit `CLAUDE.md` directly only if the rule needs to appear in the always-loaded context (keep it under 200 lines)
-- Run the Memory Sync Rule from `CLAUDE.md` to commit and sync to the live session
-
----
-
-## Memory and Process Rules
-
-Process memory lives in two places:
-
-| Location | Purpose |
-|---|---|
-| `CLAUDE.md` | Auto-loaded at session start — critical rules and workflow triggers; detail in workflow.md and memory/ |
-| `memory/MEMORY.md` + `memory/feedback_*.md` | Detailed rules referenced from CLAUDE.md; git-tracked |
-| `$APPLICANT_DIR/memory/` | Applicant-specific context (not in process repo) |
-
-To update a rule:
-1. Edit the relevant file in `memory/` (or `CLAUDE.md` directly)
-2. Run the Memory Sync Rule from `CLAUDE.md` — commit from the repo, then sync to `~/.claude/` so the live session picks up the change
+See [USER-GUIDE.md → Preparing for an Interview](USER-GUIDE.md) for details.
