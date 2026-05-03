@@ -52,15 +52,32 @@ Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, 
 
 When updating a doc, match the register of the surrounding content. Each doc has a defined audience and hard rules about what belongs.
 
-| Doc | Audience | Include | Never include |
-|-----|----------|---------|---------------|
-| `USER-GUIDE.md` | End user — non-technical | What a feature does for the user, when to use it, how to invoke it, plain-English examples with fictitious names | File paths, internal file names (notes.md, tracker, memory/), "session"/"sync"/"memory" jargon, implementation mechanics, what files are updated |
-| `DEVELOPER-README.md` | Developer / maintainer | Architecture, file trees, DEV_MODE operation, hooks, scripts, settings, command file locations, full technical detail | End-user workflow narrative — link to USER-GUIDE instead |
-| `README.md` | First-time reader / overview | High-level pipeline, requirements, two-repo structure (brief), links to the other docs | Deep technical detail (belongs in DEVELOPER-README), step-by-step how-to (belongs in QUICK-START or USER-GUIDE) |
-| `QUICK-START.md` | New user setting up for the first time | Step-by-step bootstrap instructions, setup commands, what each phase produces | Internal architecture detail (belongs in DEVELOPER-README), day-to-day workflow detail (belongs in USER-GUIDE) |
-| `scripts/README.md` | Developer / maintainer | Per-script command reference, flags, exit codes, exact shell invocations | End-user narrative — scripts are called automatically; this doc is for direct invocation and troubleshooting |
+| Doc | Audience | Include | Never include | Notes |
+|-----|----------|---------|---------------|-------|
+| `USER-GUIDE.md` | End user — non-technical | What a feature does for the user, when to use it, how to invoke it, plain-English examples with fictitious names | File paths, internal file names (notes.md, tracker, memory/), "session"/"sync"/"memory" jargon, implementation mechanics, what files are updated | Has `## Contents` TOC — update when headings change |
+| `DEVELOPER-README.md` | Developer / maintainer | Architecture, file trees, DEV_MODE operation, hooks, scripts, settings, command file locations, full technical detail | End-user workflow narrative — link to USER-GUIDE instead | Has `## Contents` TOC — update when headings change |
+| `README.md` | First-time reader / overview | High-level pipeline, requirements, two-repo structure (brief), links to the other docs | Deep technical detail (belongs in DEVELOPER-README), step-by-step how-to (belongs in QUICK-START or USER-GUIDE) | Has `## Contents` TOC — update when headings change |
+| `QUICK-START.md` | New user setting up for the first time | Step-by-step bootstrap instructions, setup commands, what each phase produces | Internal architecture detail (belongs in DEVELOPER-README), day-to-day workflow detail (belongs in USER-GUIDE) | Has `## Contents` TOC — update when headings change |
+| `scripts/README.md` | Developer / maintainer | Per-script command reference, flags, exit codes, exact shell invocations | End-user narrative — scripts are called automatically; this doc is for direct invocation and troubleshooting | No TOC needed |
 
 **Rule:** If a change to a source file requires adding new information to USER-GUIDE.md, describe the user-visible effect only — not the mechanism. If the same change also touches DEVELOPER-README.md, that entry can include the full technical detail.
+
+---
+
+## TOC Maintenance
+
+Every doc file that has a `## Contents` section must have it updated whenever a heading in that file is added, removed, or renamed.
+
+**Trigger:** Any edit to README.md, USER-GUIDE.md, QUICK-START.md, or DEVELOPER-README.md that adds, removes, or renames a heading.
+
+**Rule:** After the heading change, update the `## Contents` block at the top of the same file:
+- Added heading → add the corresponding entry in the correct position
+- Removed heading → remove its entry
+- Renamed heading → update the link text and anchor to match
+
+**Anchor format (GFM):** lowercase; spaces → hyphens; strip colons, parentheses, em dashes (`—`), apostrophes, tildes; keep underscores and hyphens; do not collapse multiple adjacent hyphens.
+
+Do NOT update the TOC for edits that don't change headings (adding prose, updating code blocks, fixing a table row, etc.).
 
 ---
 
