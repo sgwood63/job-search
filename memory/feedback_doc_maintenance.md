@@ -23,7 +23,7 @@ Apply this rule after editing any of the following:
 - `$APP_DIR/templates/` (any file)
 - `$APP_DIR/memory/MEMORY.md` (structural changes only — new sections, removed entries)
 
-Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, USER-GUIDE.md, scripts/README.md) or to `$APPLICANT_DIR` files.
+Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, USER-GUIDE.md, DEVELOPER-README.md, scripts/README.md) or to `$APPLICANT_DIR` files.
 
 ## Lookup table — source file → which docs to check
 
@@ -36,15 +36,17 @@ Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, 
 | applicant-setup.md (Phase F) | QUICK-START.md ("When you learn something new" area) |
 | .claude/commands/*.md (new, renamed, or changed command) | USER-GUIDE.md (Command Details section), CLAUDE.md (Available Commands table) |
 | scripts/setup.sh | QUICK-START.md (Phase 1 Step 1), README.md (Process Repo section), scripts/README.md |
-| scripts/fetch-jd.py | README.md (JD Fetching), scripts/README.md, QUICK-START.md |
-| scripts/generate-pdf.py | README.md (PDF Generation), scripts/README.md |
-| scripts/check-md-hygiene.sh | scripts/README.md, README.md |
+| scripts/fetch-jd.py | README.md (JD Fetching), DEVELOPER-README.md (JD Fetching), scripts/README.md, QUICK-START.md |
+| scripts/generate-pdf.py | README.md (PDF Generation), DEVELOPER-README.md (PDF Generation), scripts/README.md |
+| scripts/check-md-hygiene.sh | DEVELOPER-README.md (Markdown Hygiene), scripts/README.md, README.md |
 | scripts/install-hooks.sh | scripts/README.md |
-| scripts/sync-memory.sh | README.md (Memory section), QUICK-START.md (Memory section) |
-| .claude/settings.json (statusLine or hooks) | README.md, QUICK-START.md — only if the change affects user-visible workflow |
-| templates/ (CSS files) | README.md (PDF Generation section) |
-| templates/scaffold/ (stub files) | README.md (Applicant Repo file tree) |
+| scripts/sync-memory.sh | DEVELOPER-README.md (Memory System), README.md (Memory section), QUICK-START.md (Memory section) |
+| .claude/settings.json (statusLine or hooks) | DEVELOPER-README.md (Settings Reference, Hook System), README.md, QUICK-START.md — only if the change affects user-visible workflow |
+| .claude/commands/*.md (new, renamed, or changed command) | USER-GUIDE.md (Command Quick Reference), DEVELOPER-README.md (Slash Command Architecture), CLAUDE.md (Available Commands table) |
+| templates/ (CSS files) | DEVELOPER-README.md (PDF Generation), README.md (PDF Generation section) |
+| templates/scaffold/ (stub files) | DEVELOPER-README.md (Applicant Repo file tree) |
 | memory/MEMORY.md (new or removed index entry) | CLAUDE.md (Workflow Rules pointer list) |
+| DEVELOPER-README.md (structural changes) | README.md (Getting Started section), CLAUDE.md (Available Commands footnote) |
 
 ## How to apply
 
