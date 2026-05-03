@@ -135,6 +135,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
 - See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
+- See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
 
 ## Memory Sync Rule
 `$APP_DIR/memory/` is the source of truth. After every Claude response, `scripts/sync-memory.sh` runs automatically via a Stop hook: commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed during sessions.
