@@ -111,7 +111,7 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/context` | Load full session state at session start (applicant, pipeline, memory) |
 | `/status` | Generate current pipeline snapshot with past-due follow-ups |
 | `/audit [folder]` | Validate application folder completeness before submitting |
-| `/apply "Co" "Role" "date"` | Record submission atomically in tracker + notes.md |
+| `/apply "Co" "Role" "date" [url?]` | Record submission atomically in tracker + notes.md |
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
 

@@ -54,7 +54,7 @@ From the repo folder:
 bash scripts/setup.sh
 ```
 
-This is a one-time step. The script installs PDF tools (pandoc, Playwright), detects any cloud sync service you have installed (Google Drive, OneDrive, iCloud, Dropbox, Box), and creates your applicant directory there. Safe to re-run if you need to refresh configuration.
+This is a one-time step. The script installs PDF tools (pandoc, poppler), detects your Playwright Python installation, and detects any cloud sync service you have installed (Google Drive, OneDrive, iCloud, Dropbox, Box), and creates your applicant directory there. Safe to re-run if you need to refresh configuration.
 
 ### Step 2 — Start the applicant setup conversation
 
@@ -305,7 +305,7 @@ To reload context mid-conversation (for example, after a status change):
 | `/context` | Loads your full job search state | Automatic when you start a conversation; use manually to refresh |
 | `/status` | Pipeline snapshot with overdue follow-ups | Weekly check-in |
 | `/audit [folder]` | Confirms an application is complete and ready to submit | Before submitting |
-| `/apply "Co" "Role" "date"` | Records a submission and sets a follow-up reminder | Right after you submit |
+| `/apply "Co" "Role" "date" [url?]` | Records a submission and sets a follow-up reminder | Right after you submit |
 | `/interview [company] [stage]` | Interview brief: talking points, questions, positioning | Night before any call |
 | `/memory` | List or read saved process rules | When you want to see what's been remembered |
 | `/setup [phase]` | First-time onboarding (phases A–E) | Once, at the very beginning |
