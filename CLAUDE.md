@@ -66,7 +66,9 @@ After editing any `$APP_DIR` source file (CLAUDE.md, workflow.md, applicant-setu
 When the hook blocks a write, **always inform the user and pause** — they may not know their request triggered an APP_DIR edit. Tell them:
 - Which file was blocked and what change was about to be made
 - That DEV_MODE is off: `DEV_MODE=false` in `.env`
-- How to resume: "Set `DEV_MODE=true` in `.env`, then reply 'continue' and I'll complete the update."
+- How to resume: they should set `DEV_MODE=true` in `.env` manually, then reply "continue"
+
+**Never set or unset DEV_MODE yourself.** The user must toggle it manually — this is an intentional safety boundary. Offer three paths: (a) enable DEV_MODE and reply "continue", (b) skip this step, (c) cancel. Wait for their choice.
 
 When the user replies "continue" (or equivalent), **retry the blocked operation immediately** without re-explaining context. Once all APP_DIR edits for the task are done, remind the user to set `DEV_MODE=false` again.
 
