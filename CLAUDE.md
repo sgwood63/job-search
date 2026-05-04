@@ -44,9 +44,10 @@ When the user provides a job description (URL, document, or paste), execute imme
 When the user provides new experience, achievements, preference changes, or career direction updates, execute immediately. See `applicant-setup.md` Phase F for the full classification matrix, file rules, and logging instructions.
 
 **Key rules:**
-- Consult the File Registry in `applicant-setup.md` Phase F — reason from what changed against each file's role to determine what needs updating
+- For adding a new achievement or creating a new profile: run the explicit checklists in `memory/feedback_profile_maintenance.md` — do not substitute registry reasoning for these two operations
+- For all other maintenance: consult the File Registry in `applicant-setup.md` Phase F — reason from what changed against each file's role to determine what needs updating
 - Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md`
-- Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
+- Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice; when a new profile is created, always update career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations)
 - Do not update `APPLICANT-MEMORY.md` for maintenance changes
 
 ## Documentation Maintenance — DO NOT ASK, JUST DO

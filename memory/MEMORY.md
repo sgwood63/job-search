@@ -136,6 +136,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 - See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
+- See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
 - See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
 - See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
 
