@@ -254,6 +254,16 @@ For any maintenance update, consult this registry to determine which files are a
 
 **When tools, capabilities, or portfolio artifacts are added in a maintenance session:** Step through all profiles' `*-CONTENT.md` files to assess relevance before closing the session. Check whether the new capability or artifact materially strengthens any profile's positioning, existing bullets, or fills a documented gap. If relevant, add to the appropriate `*-CONTENT.md` with source and scoring notes. Record which profiles were reviewed and which received new content in the `applicant-maintenance.md` session entry.
 
+### Operation Checklists
+
+The File Registry and Cross-Profile Propagation Rule cover the general case. Two specific operations require explicit step-by-step checklists because they consistently produce missed updates when reasoned from the registry alone. See `memory/feedback_profile_maintenance.md` for the full checklists.
+
+**Operation A — New Achievement Added** (4 steps: role-achievements.md → EXPERIENCE-REFERENCE.md → cross-profile CONTENT propagation for all active profiles → applicant-maintenance.md log). Do not update career-advice.md §1 Profile Fit Scores for an achievement addition.
+
+**Operation B — New Profile Created** (6 steps: create strategy file → create CONTENT file → add profile column to role-achievements.md for all existing achievements → update PROFILES-QUICK-REFERENCE.md → add profile row and scoring rationale to career-advice.md §1 and §5 → applicant-maintenance.md log). career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations) are always updated when a profile is created — this is not optional.
+
+Before closing a session that performed either operation, output a confirmation line naming which steps were completed. If a step was not applicable, state why.
+
 ### Logging Rules
 
 **Every maintenance session:** Append an entry to `$APPLICANT_DIR/applicant-maintenance.md` with: date, session type, summary of what changed, and files updated.

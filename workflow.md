@@ -57,6 +57,8 @@ Save the following:
 - Update `$APPLICANT_DIR/application-tracker.md` (Active Applications)
 - Present for user review
 
+**After the user submits:** Run `/audit [folder-name]` to verify completeness, then `/apply "Company" "Role" "date"` to record the submission in both the tracker and notes.md atomically.
+
 ---
 
 ## notes.md Structure

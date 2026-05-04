@@ -13,3 +13,4 @@ When the user references a company that is not already part of the current conve
 2. If there is exactly one entry, proceed with that context
 3. If there are multiple entries (different roles or dates), confirm with the user which position is relevant — and include "new position" as an option
 4. If there is no entry, treat it as a new company/JD to screen
+

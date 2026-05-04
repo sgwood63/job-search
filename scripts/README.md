@@ -77,6 +77,19 @@ Install once with `bash scripts/install-hooks.sh`. Runs automatically on every `
 
 ---
 
+## check-dev-mode.sh
+
+PreToolUse hook that blocks Claude's Write and Edit tools from modifying files in `$APP_DIR` when `DEV_MODE=false`.
+
+Registered in `.claude/settings.json` under `PreToolUse` for the `Write` and `Edit` tool matchers. Reads `DEV_MODE` from `.env` on every call — no session restart needed when toggling.
+
+**To enable APP_DIR editing:**
+1. In `.env`, set `DEV_MODE="true"`
+2. Ask Claude to proceed (reply "continue" if it paused waiting)
+3. When done, set `DEV_MODE="false"` again
+
+---
+
 ## install-hooks.sh
 
 Installs git hooks into `.git/hooks/`. Run once after cloning:

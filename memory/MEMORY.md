@@ -108,8 +108,15 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 2. Do they have credible experience?
 3. Can they succeed in our environment?
 
+## Session Start (DO WITHOUT BEING ASKED)
+At the start of every session, automatically run the `/context` workflow before responding: read `.env`, `applicant.md`, `application-tracker.md`, `APPLICANT-MEMORY.md`, and `MEMORY.md`, then output a 10-line session briefing ending with "Context loaded. Ready." Skip if the user's first message makes clear context is already loaded.
+
+## Applicant Memory — Update in Real-Time (DO WITHOUT BEING ASKED)
+When the user states a clear preference, fact, constraint, or rule about themselves, immediately update the relevant file in `$APPLICANT_DIR/memory/`. No sync step needed — `$APPLICANT_DIR` is plain local storage.
+
 ## Session End (DO WITHOUT BEING ASKED)
 - See `feedback_session_end.md` — always update `$APPLICANT_DIR/memory/applicant-setup-status.md` and ensure `.claude/settings.json` statusLine is current before ending any session
+- `$APP_DIR/memory/` sync is now automatic (Stop hook runs `scripts/sync-memory.sh` after every response) — no manual git step needed
 
 ## Profiles Directory — Source of Truth
 - See [project_profiles_directory.md](project_profiles_directory.md) — `profiles/` contains EXPERIENCE-REFERENCE.md and role-achievements.md; `base-documents/` is setup-only
@@ -127,21 +134,21 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 - See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
 - See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
+- See `feedback_resume_review.md` — review resume vs JD before PDF; no unverified percentage metrics (verified fine); cover letters not recommended by default (generally not read)
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
+- See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
+- See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
+- See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
+- See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
 
 ## Memory Sync Rule
-`$APP_DIR/memory/` is the source of truth. Always edit files there, commit from the repo, then sync TO `~/.claude/` so the live memory picks up changes:
+`$APP_DIR/memory/` is the source of truth. After every Claude response, `scripts/sync-memory.sh` runs automatically via a Stop hook: commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed during sessions.
+
+To sync manually (e.g., after editing outside a session):
 ```bash
-source "$APP_DIR/.env"
-# 1. Edit files in $APP_DIR/memory/
-# 2. Commit from the repo:
-git -C "$APP_DIR" add memory/
-git -C "$APP_DIR" commit -m "Update memory: [what changed]"
-# 3. Sync to live memory:
-CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
-cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
+bash "$APP_DIR/scripts/sync-memory.sh"
 ```
-Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separately (not git-tracked in this repo).
+Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in real-time during sessions — no sync step needed.
 
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
@@ -149,7 +156,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is managed separ
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-05-02
+**Last Updated**: 2026-05-03
 
 ---
 

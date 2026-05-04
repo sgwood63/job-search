@@ -1,6 +1,6 @@
 ---
 name: feedback_resume_review
-description: Resume generation rules — review before PDF, no percentage metrics, Playwright PDF generation, no title duplication, correct file naming
+description: Resume generation rules — review before PDF, no unverified percentage metrics (verified ones are fine), Playwright PDF generation, no title duplication, correct file naming, cover letters not recommended by default
 type: feedback
 originSessionId: 92dfb0eb-bd42-476d-ae34-d5414d71d670
 ---
@@ -47,6 +47,18 @@ pdfinfo "$RESUME_PDF" | grep Pages
 Do NOT include a frontmatter `title:` block. The resume should open directly with the applicant's name as a top-level heading — no YAML front matter, no "[Name] — Resume" line above it.
 
 **Why:** The frontmatter title renders as a duplicate heading — the name appears twice on the page.
+
+## Cover Letters
+
+Do NOT recommend cover letters by default. They are generally not read or considered by hiring teams.
+
+**Why:** Applicant's experience is that cover letters are not a meaningful factor in most hiring processes. Recommending them wastes time and creates false expectations.
+
+**How to apply:**
+- Do not suggest drafting a cover letter as a next step after resume generation
+- Do not flag the absence of a cover letter as a gap
+- Exception: if there is a specific, known reason the cover letter will be read (e.g., applicant explicitly requests one, the role or company explicitly requires it, or there is a strong signal the hiring manager reviews them) — then offer it, but note it's situational
+- Role type may matter: cover letters may carry more weight for senior executive, board-level, or relationship-driven roles — use judgment but don't assume
 
 ## File Naming Convention
 
