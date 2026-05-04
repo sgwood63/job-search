@@ -134,6 +134,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 - See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
 - See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
+- See `feedback_resume_review.md` — review resume vs JD before PDF; no unverified percentage metrics (verified fine); cover letters not recommended by default (generally not read)
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 - See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
 - See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
