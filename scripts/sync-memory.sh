@@ -8,6 +8,13 @@ APP_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$APP_DIR"
 
+CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
+
+# Always sync to ~/.claude/ — even when there's nothing new to commit (e.g. after manual commits)
+if [[ -d "$CLAUDE_MEM" ]]; then
+  cp memory/*.md "$CLAUDE_MEM" 2>/dev/null || true
+fi
+
 # Exit silently if nothing to commit
 if git diff --quiet memory/ && ! git ls-files --others --exclude-standard memory/ | grep -q .; then
   exit 0
@@ -53,5 +60,4 @@ fi
 
 git commit -m "$MSG"
 
-CLAUDE_MEM="$HOME/.claude/projects/$(echo "$APP_DIR" | sed 's|/|-|g')/memory/"
-cp memory/*.md "$CLAUDE_MEM"
+cp memory/*.md "$CLAUDE_MEM" 2>/dev/null || true

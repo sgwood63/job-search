@@ -37,7 +37,7 @@ When the user provides a job description (URL, document, or paste), execute imme
 
 **No fit:** Brief `notes.md`, tracker update (Rejected section), stop.
 
-**Fit:** Switch to Sonnet. Read matched profile files. Generate resume, create detailed `notes.md`, update tracker (Active section).
+**Fit:** Switch to Sonnet. Read matched profile files from `$APPLICANT_DIR/profiles/` (the working source of truth; `base-documents/` is setup-only — do not read it). Generate resume, create detailed `notes.md`, update tracker (Active section).
 
 ## Profile Maintenance — DO NOT ASK, JUST DO
 
@@ -73,6 +73,8 @@ When the hook blocks a write, **always inform the user and pause** — they may 
 
 When the user replies "continue" (or equivalent), **retry the blocked operation immediately** without re-explaining context. Once all APP_DIR edits for the task are done, remind the user to set `DEV_MODE=false` again.
 
+**Communication level.** During multi-step workflows (JD processing, resume generation, profile maintenance), report at the impact level when a logical step completes — not at the file level. Do not narrate individual Write or Edit calls. Report: "JD screened — fit confirmed, folder created." or "Resume draft complete — 2-page, 7/9 JD requirements covered." Name a file only if a specific write fails.
+
 **No fabrication.** Source only from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Never invent companies, titles, achievements, metrics, projects, skills, or certifications. If uncertain, ask.
 
 **No unverified percentage metrics.** Verified, sourced percentages are allowed. Unverified/estimated X% claims must use qualitative language instead ("substantially improved", "significantly reduced"). Counts and named outputs are always fine (50+ engagements, 400+ customers).
@@ -89,20 +91,6 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 See `workflow.md` for: notes.md structure, PDF command, file naming, section labels, earlier career rules, evaluation report format.
 See `memory/` feedback files (indexed in MEMORY.md) for: bullet formula, role ordering, education/certs, signal density, no-duplication rules.
-
-## Profiles Directory
-
-`$APPLICANT_DIR/profiles/` is the working source of truth. `base-documents/` is setup-only — do not read it during normal workflow. See `templates/PROFILES-README.md` for authoring guidance.
-
-## File Storage
-
-`$APPLICANT_DIR` is set during setup to a local directory or a cloud sync service's managed local folder. The OS syncs automatically — no separate step needed.
-
-## Workflow Rules
-
-**Company lookup:** Check `$APPLICANT_DIR/application-tracker.md` before acting on any company mention. Multiple entries → confirm which is relevant (include "new position" as an option). See `memory/feedback_company_lookup.md`.
-
-**Unknown company:** For unnamed JDs (recruiter postings, confidential), research the end company before generating documents. See `memory/feedback_unknown_company_research.md`.
 
 ## Available Commands
 
@@ -130,7 +118,11 @@ At the start of every session, automatically run the `/context` workflow before 
 3. Read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items
 4. Read `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 5. Read `$APP_DIR/memory/MEMORY.md`
-6. Output a session briefing (10 lines max): active pipeline count, past-due follow-ups, most urgent next action, confirm `$APPLICANT_DIR` resolved, state DEV_MODE status (e.g. "DEV_MODE=false — APP_DIR is read-only"). End with: "Context loaded. Ready."
+6. Output a session briefing (10 lines max): active pipeline count, past-due follow-ups, most urgent next action, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
+
+**DEV_MODE=false (default):** State: "DEV_MODE=false — APP_DIR is read-only." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules.
+
+**DEV_MODE=true (dev session):** State: "⚠️ DEV_MODE=true — APP_DIR is WRITABLE." Proceed with all APP_DIR writes without pausing or re-explaining the gate. After each logical set of changes, output one impact summary: what changed and what it fixes or enables. Remind the user to set `DEV_MODE=false` when the dev session is complete.
 
 Exception: skip if the user's first message makes clear context is already loaded (e.g., "continuing from before", mid-task handoff).
 
@@ -144,20 +136,3 @@ When the user states a clear new preference, fact, constraint, or rule about the
 
 Note: `$APP_DIR/memory/` sync (git commit + copy to `~/.claude/`) is now handled automatically by a Stop hook after every response — no manual step needed.
 
-## Cost Optimization
-
-- **Haiku** for JD screening (12× cheaper than Sonnet)
-- **Sonnet** for document generation only
-- Reuse resume content within a session; do not re-extract from PDFs
-
-## Memory Sync Rule
-
-`$APP_DIR/memory/` is the source of truth. After every response, `scripts/sync-memory.sh` runs automatically via a Stop hook: it commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed.
-
-To sync manually (e.g., after editing outside a session):
-
-```bash
-bash "$APP_DIR/scripts/sync-memory.sh"
-```
-
-Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in real-time during sessions — no sync step needed.

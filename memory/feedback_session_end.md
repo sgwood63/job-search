@@ -13,3 +13,14 @@ At the end of every session, always do two things without being asked:
 **Why:** The user explicitly asked for both of these to be done routinely. These are the two session-end hygiene tasks that carry context forward without relying on conversation history.
 
 **How to apply:** Before ending any session (when wrapping up work or when the user signals the session is complete), check both of these and update them. Do not wait to be asked.
+
+**StatusLine format:**
+```
+"Job Search 2026 | [N] active | [Status hint] | [next action]"
+```
+Examples:
+- `"Job Search 2026 | 4 active | 2 interviews pending | Drop a JD to screen"`
+- `"Job Search 2026 | 2 active | Setup complete | Drop a JD to screen"`
+- `"Job Search 2026 | 0 active | Profile refresh in progress | Drop a JD to screen"`
+
+Update the `command` field in `.claude/settings.json` `statusLine` to reflect the current state using this format. The command runs as a shell `printf` so keep it a single-line string with no embedded newlines.

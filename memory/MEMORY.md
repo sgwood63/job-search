@@ -47,7 +47,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 12. Present for user review
 
 ## Resume Generation Workflow
-- See `feedback_resume_review.md` — always assess resume vs JD before PDF; no percentage metrics in bullets; correct file naming
+- See `feedback_resume_generation.md` — always assess resume vs JD before PDF; role ordering; Education/Certs; no unverified percentage metrics; PDF via Playwright; file naming; cover letters
 
 ## Critical Rules: Document Generation
 
@@ -127,19 +127,17 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
 
 ## Workflow Rules
-- See `feedback_application_status_update.md` — when user confirms they applied, update both tracker AND notes.md (status field + process reminder section)
-- See `feedback_company_lookup.md` — when user mentions a company, check tracker first; if multiple positions exist, confirm which is relevant (including "new position" option)
+- See `feedback_application_tracking.md` — check tracker before acting on any company mention; update both tracker AND notes.md when application is submitted
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
-- See `feedback_role_ordering.md` — roles must always appear in strict reverse chronological order; never skip a role that falls between two included roles
 - See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
 - See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
-- See `feedback_resume_education_certs.md` — every resume must include Education and Certifications sections at the bottom, copied verbatim from EXPERIENCE-REFERENCE.md
-- See `feedback_resume_review.md` — review resume vs JD before PDF; no unverified percentage metrics (verified fine); cover letters not recommended by default (generally not read)
+- See `feedback_resume_generation.md` — all resume generation rules: review before PDF, role ordering, Education/Certs, no unverified percentages, PDF command, cover letters, file naming
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 - See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
 - See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
 - See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
 - See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
+- See `feedback_model_selection.md` — when to use Opus vs Sonnet; no auto-routing in Claude Code; opusplan alias for planning sessions
 
 ## Memory Sync Rule
 `$APP_DIR/memory/` is the source of truth. After every Claude response, `scripts/sync-memory.sh` runs automatically via a Stop hook: commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed during sessions.
@@ -156,7 +154,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in re
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-05-03
+**Last Updated**: 2026-05-05
 
 ---
 

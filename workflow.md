@@ -101,8 +101,13 @@ Spaces → underscores, special characters removed. Example: "GRC Solutions Engi
 ### Generation Steps
 
 1. Write the resume `.md` file
-2. Assess it against the JD — score each requirement, flag gaps, identify improvements
-3. Apply edits to the `.md` file
+2. **Verification gate** — run a coverage check against job-description.md:
+   - Extract every stated requirement (Required and Preferred separately)
+   - Score each Required item: **MET** (a specific bullet addresses it), **PARTIAL** (mentioned but not specific), or **GAP** (not addressed)
+   - **Exit condition:** all Required items are MET or PARTIAL
+   - If GAPsexist on Required items: apply targeted edits and re-score — maximum 2 cycles
+   - If a Required item remains a GAP after 2 cycles: flag it explicitly rather than continuing to loop
+3. Output the coverage table alongside the resume draft — it is the deliverable, not a post-hoc report
 4. Generate PDF and verify page count
 5. Only present to user after this full cycle
 
@@ -143,11 +148,10 @@ Headers like "AI Solution Architect - Presales Experience" in `-CONTENT.md` file
 
 ### After Generating
 
-Produce a **detailed evaluation report**:
-- Score each JD requirement vs. resume coverage (met / partially met / gap)
-- Flag any coverage gaps
-- Assess overall effectiveness and competitive positioning
-- Note any differentiators surfaced or missed
+The coverage table produced during step 2 is the primary evaluation artifact. Also summarize:
+- Overall effectiveness and competitive positioning vs. the JD
+- Any differentiators surfaced or missed
+- Any explicit gaps (Required items that remained GAP after 2 cycles) and recommended mitigation
 
 ---
 

@@ -44,7 +44,7 @@ Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, 
 | .claude/commands/*.md (new, renamed, or changed command) | USER-GUIDE.md (Command Quick Reference), DEVELOPER-README.md (Slash Command Architecture), CLAUDE.md (Available Commands table) |
 | templates/ (CSS files) | DEVELOPER-README.md (PDF Generation) |
 | templates/scaffold/ (stub files) | DEVELOPER-README.md (Applicant Repo file tree) |
-| memory/MEMORY.md (new or removed index entry) | CLAUDE.md (Workflow Rules pointer list) |
+| memory/MEMORY.md (new or removed index entry) | No human-facing doc references memory file names — no doc update needed |
 | DEVELOPER-README.md (structural changes) | README.md (Getting Started section), CLAUDE.md (Available Commands section) |
 
 ## Document character — audience and content rules

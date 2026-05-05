@@ -15,6 +15,12 @@
         "hooks": [{ "type": "command", "command": "bash scripts/check-dev-mode.sh" }]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [{ "type": "command", "command": "bash scripts/summarize-write.sh" }]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
