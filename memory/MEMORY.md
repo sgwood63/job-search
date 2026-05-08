@@ -132,7 +132,8 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Uses one OR-query per profile from `## Search Queries` table in `PROFILES-QUICK-REFERENCE.md`
 - Deduplicates against `$APPLICANT_DIR/profiles/<profile>/search-results/seen-jobs.json`
 - Saves fit jobs as application stubs (folder + JD files + notes stub) — does NOT auto-generate resumes
-- Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`
+- Saves per-run summary (all screened jobs — fit + no-fit with scores and reasons) to `$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`
+- Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`; CSV columns: `date,time,profile,pages_fetched,total_results,new_after_dedup,screened,fit_count,query,summary_file`
 - Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
 - Requires `SEARCHAPI_KEY` in `.env`
 
