@@ -24,18 +24,21 @@ pages_fetched = 0
 total_results = 0
 new_after_dedup = 0
 screened = 0
-screened_jobs = []   # all screened jobs — appended each sub-query and each page, fit and no-fit
+screened_jobs = []   # all screened jobs — populated after Phase 3-SCREEN, fit and no-fit
+all_new_jobs = []    # accumulates new_jobs across ALL pages and sub-queries for batch screening
 ```
 
-**Step 3 — Sub-query loop** (iterate over each entry in `sub_queries`; stop early if fit_count >= SEARCH_TARGET_FITS)
+**Step 3 — Two-phase execution: fetch all pages, then screen once**
 
-For each `current_query` in `sub_queries`:
+### Phase 3-FETCH — fetch all pages for all sub-queries
+
+Iterate over each entry in `sub_queries`. For each `current_query`:
 
   3a. Set `page_token = null` for this sub-query.
 
-  3b. **Pagination loop** (repeat until fit_count >= SEARCH_TARGET_FITS OR no more pages for this sub-query):
+  3b. **Pagination loop** (repeat until no more pages for this sub-query):
 
-  3b-i. Run the search script, passing the current sub-query via `--query`:
+  3b-i. Run the search script:
   ```bash
   "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<current_query>" [--page-token <token>]
   ```
@@ -47,20 +50,33 @@ For each `current_query` in `sub_queries`:
   - `new_after_dedup += total_new`
   - `screened += len(new_jobs)`
 
-  3b-iii. If `new_jobs` is empty AND `next_page_token` is null: break inner loop (this sub-query exhausted).
+  3b-iii. Extend `all_new_jobs` with `new_jobs` from this page.
 
-  3b-iv. **Haiku screening** — spawn one Haiku agent with all `new_jobs` from this page (up to SEARCH_BATCH_SIZE). Pass each agent:
-  - Job data: title, company, location, description, apply_link, posted_at
-  - `$APPLICANT_DIR/applicant.md` (hard-stop criteria: location, comp, travel, sectors)
-  - The Hard Stops and Location Check sections from `PROFILES-QUICK-REFERENCE.md`
-  - Instruction: for each job, return `fit` (true/false), `profile_score` (1–10), `profile_match` (profile slug), and `no_fit_reason` (if false)
+  3b-iv. Set `page_token = next_page_token` from script output. If null: break inner loop (sub-query exhausted).
 
-  After Haiku returns, append every result to `screened_jobs`:
-  ```
-  { company, title, location, profile_score, fit, no_fit_reason (if fit=false), folder: null }
-  ```
+Always run all sub-queries in full — no early exit across sub-queries.
 
-  3b-v. For each **fit** job (profile_score >= 7):
+### Phase 3-SCREEN — one Haiku call for all accumulated jobs
+
+If `all_new_jobs` is empty: output "No new jobs to screen." and proceed to Step 4.
+
+Before spawning Haiku, extract from the source files:
+- From `$APPLICANT_DIR/applicant.md`: the "Location" section, "Deal-breakers (Hard No)" section, and the compensation/target salary line only — do not pass the full file
+- From `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`: the `## Hard Stops` section and `## Location Check` section only — do not pass the full file
+
+Spawn **ONE** Haiku agent with:
+- All jobs from `all_new_jobs`. For each job's `description`: pass the first 3,000 characters and the last 3,000 characters (if the description is under 6,000 characters, pass it in full). This ensures the opening role/company content and the trailing comp/location/travel sections are both visible. Other fields: title, company, location, apply_link, posted_at.
+- The extracted criteria sections above (~500 bytes total)
+- Instruction: for each job, return `fit` (true/false), `profile_score` (1–10), `profile_match` (profile slug), and `no_fit_reason` (if false). Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return fit=true only if score >= 7 and no Hard Stop applies.
+
+After Haiku returns, populate `screened_jobs` from all results:
+```
+{ company, title, location, profile_score, fit, no_fit_reason (if fit=false), folder: null }
+```
+
+### Phase 3-SAVE — create application stubs for fit jobs
+
+For each **fit** job (profile_score >= 7) in Haiku results:
   - Derive folder slug: `YYYY-MM-DD-<company-slug>-<role-slug>` (today's date; slugify: lowercase, spaces → hyphens, strip special chars)
   - Create `$APPLICANT_DIR/applications/<folder>/`
   - Write `job-description.md`:
@@ -86,7 +102,7 @@ For each `current_query` in `sub_queries`:
     ## Fit Reasoning
     <Haiku's fit reasoning>
     ```
-  - Write `jd-<company>-<role>.md`: verbatim description text from search result (the `description` field)
+  - Write `jd-<company>-<role>.md`: verbatim description text from search result (the `description` field — full text, not truncated)
   - Write `search-result.json`: the `raw` field from the job object (full SearchAPI job object)
   - Write `notes.md`:
     ```markdown
@@ -117,10 +133,6 @@ For each `current_query` in `sub_queries`:
   - Output one line: `+ <Company> — <Role> → applications/<folder>/`
   - Increment `fit_count`
 
-  3b-vi. Set `page_token = next_page_token` from script output. If null and fit_count < target: break inner loop (move to next sub-query).
-
-  If fit_count >= SEARCH_TARGET_FITS after any page: break both loops.
-
 **Step 4 — Write summary file and log to CSV**
 
 Capture `run_timestamp` once: `YYYY-MM-DD-HHMMSS` (e.g. `2026-05-08-100703`).
@@ -141,7 +153,7 @@ Derive `summary_filename = <run_timestamp>-<profile>-summary.md`.
 **Fit:** <fit_count>
 
 ## Sub-queries
-<numbered list of all sub_queries for this profile, marking which were run vs. skipped if fit_count hit target early>
+<numbered list of all sub_queries for this profile — all are always run>
 
 ## Fit Jobs (score >= 7)
 
@@ -178,7 +190,7 @@ Ingestion complete — <profile>
   Summary: $APPLICANT_DIR/search/<summary_filename>
   Log: $APPLICANT_DIR/search/search-log.csv
 ```
-If fit_count < SEARCH_TARGET_FITS and all sub-queries were exhausted: add note "Results exhausted — fewer than target fits found."
+If fit_count < SEARCH_TARGET_FITS: add note "Results exhausted — fewer than target fits found."
 
 ---
 
