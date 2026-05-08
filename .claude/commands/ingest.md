@@ -25,7 +25,8 @@ total_results = 0
 new_after_dedup = 0
 screened = 0
 screened_jobs = []   # all screened jobs — populated after Phase 3-SCREEN, fit and no-fit
-all_new_jobs = []    # accumulates new_jobs across ALL pages and sub-queries for batch screening
+run_timestamp = <capture now as YYYYMMDD-HHMMSS>
+batch_file = "$APPLICANT_DIR/search/tmp-<profile>-<run_timestamp>.json"   # written during fetch, deleted after save
 ```
 
 **Step 3 — Two-phase execution: fetch all pages, then screen once**
@@ -40,7 +41,7 @@ Iterate over each entry in `sub_queries`. For each `current_query`:
 
   3b-i. Run the search script:
   ```bash
-  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<current_query>" [--page-token <token>]
+  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<current_query>" --batch-out "$batch_file" [--page-token <token>]
   ```
   Parse stdout as JSON. On exit code 1, report the error and stop.
 
@@ -48,24 +49,22 @@ Iterate over each entry in `sub_queries`. For each `current_query`:
   - `pages_fetched += 1`
   - `total_results += total_fetched`
   - `new_after_dedup += total_new`
-  - `screened += len(new_jobs)`
+  - `screened += total_new`
 
-  3b-iii. Extend `all_new_jobs` with `new_jobs` from this page.
-
-  3b-iv. Set `page_token = next_page_token` from script output. If null: break inner loop (sub-query exhausted).
+  3b-iii. Set `page_token = next_page_token` from script output. If null: break inner loop (sub-query exhausted).
 
 Always run all sub-queries in full — no early exit across sub-queries.
 
 ### Phase 3-SCREEN — one Haiku call for all accumulated jobs
 
-If `all_new_jobs` is empty: output "No new jobs to screen." and proceed to Step 4.
+If `screened` is 0 (batch file is empty or was never written): output "No new jobs to screen." and proceed to Step 4.
 
 Before spawning Haiku, extract from the source files:
 - From `$APPLICANT_DIR/applicant.md`: the "Location" section, "Deal-breakers (Hard No)" section, and the compensation/target salary line only — do not pass the full file
 - From `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`: the `## Hard Stops` section and `## Location Check` section only — do not pass the full file
 
 Spawn **ONE** Haiku agent with:
-- All jobs from `all_new_jobs`. For each job's `description`: pass the first 3,000 characters and the last 3,000 characters (if the description is under 6,000 characters, pass it in full). This ensures the opening role/company content and the trailing comp/location/travel sections are both visible. Other fields: title, company, location, apply_link, posted_at.
+- Instruction to read the batch file at `$batch_file`. The file is newline-delimited JSON (one job object per line). For each job's `description`: use the first 3,000 characters and the last 3,000 characters (if under 6,000 characters, use it in full). Other fields to use: title, company, location, apply_link, posted_at.
 - The extracted criteria sections above (~500 bytes total)
 - Instruction: for each job, return `fit` (true/false), `profile_score` (1–10), `profile_match` (profile slug), and `no_fit_reason` (if false). Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return fit=true only if score >= 7 and no Hard Stop applies.
 
@@ -133,9 +132,14 @@ For each **fit** job (profile_score >= 7) in Haiku results:
   - Output one line: `+ <Company> — <Role> → applications/<folder>/`
   - Increment `fit_count`
 
+Delete the batch file now that screening and saving are complete:
+```bash
+rm -f "$batch_file"
+```
+
 **Step 4 — Write summary file and log to CSV**
 
-Capture `run_timestamp` once: `YYYY-MM-DD-HHMMSS` (e.g. `2026-05-08-100703`).
+`run_timestamp` was captured in Step 2; format it as `YYYY-MM-DD-HHMMSS` (e.g. `2026-05-08-100703`) for use in filenames.
 Derive `summary_filename = <run_timestamp>-<profile>-summary.md`.
 `search_query` for logging = all sub-queries joined with ` | ` (e.g. `"Solutions Engineer" OR ... | "Solutions Architect" OR ...`).
 

@@ -167,6 +167,7 @@ def main():
     parser.add_argument("--page-token", default=None, help="Pagination token from previous call")
     parser.add_argument("--query", default=None, help="Override search query (skips table lookup)")
     parser.add_argument("--dry-run", action="store_true", help="Print params, skip API call")
+    parser.add_argument("--batch-out", default=None, metavar="FILE", help="Append new jobs as NDJSON to FILE; omit new_jobs from stdout")
     args = parser.parse_args()
 
     applicant_dir = Path(get_env("APPLICANT_DIR"))
@@ -235,15 +236,28 @@ def main():
     # Respect batch_size — caller can paginate for more
     new_jobs = new_jobs[:batch_size]
 
-    result = {
-        "profile": args.profile,
-        "query": query,
-        "new_jobs": new_jobs,
-        "next_page_token": next_page_token,
-        "total_fetched": total_fetched,
-        "total_new": len(new_jobs),
-        "api_calls_made": 1,
-    }
+    if args.batch_out:
+        with open(args.batch_out, "a") as f:
+            for job in new_jobs:
+                f.write(json.dumps(job) + "\n")
+        result = {
+            "profile": args.profile,
+            "query": query,
+            "next_page_token": next_page_token,
+            "total_fetched": total_fetched,
+            "total_new": len(new_jobs),
+            "api_calls_made": 1,
+        }
+    else:
+        result = {
+            "profile": args.profile,
+            "query": query,
+            "new_jobs": new_jobs,
+            "next_page_token": next_page_token,
+            "total_fetched": total_fetched,
+            "total_new": len(new_jobs),
+            "api_calls_made": 1,
+        }
     print(json.dumps(result, indent=2))
 
 
