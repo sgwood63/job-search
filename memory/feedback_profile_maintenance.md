@@ -40,6 +40,7 @@ Trigger: User says "add a new target role," "I want a new profile," "create a pr
 - [ ] **B3. role-achievements.md** — Add the new profile column (e.g., P5) to the Profiles header, the Achievement Completeness table, and every achievement row with an explicit relevance score for the new profile. Do not leave any row without a score for the new column.
 - [ ] **B4. PROFILES-QUICK-REFERENCE.md** — Add a row for the new profile: profile name and slug, best-for description, key JD signals, avoid-when conditions. Update Matching Rules if the new profile has unique scoring considerations.
 - [ ] **B4.5. PROFILES-QUICK-REFERENCE.md search queries** — Add a row to the `## Search Queries` table for the new profile: one OR-query combining role/title terms across all naming conventions. Role and title terms only — no domain expertise appended. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms for broad market coverage. Format: `| <profile-slug> | \`"Term A" OR "Term B" OR "Term C"\` |`
+- [ ] **B4.6. Run Operation C** — For each query row added in B4.5, run the query verification checklist (Operation C) before closing the session.
 - [ ] **B5. career-advice.md** — This step is mandatory and not skippable:
   - Add a row to §1 Profile Fit Scores table with scores for all five dimensions (Experience Match, Market Demand, Differentiation, Competition Level, Overall)
   - Add a scoring rationale subsection below the table (same format as existing profiles)
@@ -52,3 +53,22 @@ Trigger: User says "add a new target role," "I want a new profile," "create a pr
 **applicant.md for new profiles:** Update only if the new profile reflects a material shift in job search direction or screening criteria that should affect how Haiku evaluates future JDs.
 
 **Session close gate:** Before ending, output: _"Maintenance checklist complete. Operation B: B1 ✓, B2 ✓, B3 ✓, B4 ✓, B5 ✓ [career-advice.md §1, §5, Feedback Incorporated updated], B6 ✓."_
+
+---
+
+## Operation C — Query Row Added or Modified
+
+Trigger: A new query row is added to any profile's `## Search Queries` table, or existing row terms are changed/refined.
+
+**Checklist — run in order:**
+
+- [ ] **C1. Targeted fetch** — Run `search-jobs.py <profile> --query "<new or modified terms>" --batch-out /tmp/query-test.ndjson`
+- [ ] **C2. Screen results** — Haiku screens each job against applicant criteria (same as normal ingest pipeline)
+- [ ] **C3. Evaluate signal quality:**
+  - 0 API results → terms don't match Google Jobs data; revise and re-run C1
+  - Results but 0 fits (or >80% no-fits that are infra/developer-tool roles) → query too broad or wrong category; narrow phrasing or add exclusion terms, then re-run
+  - Results with reasonable fits → query working as intended ✅
+- [ ] **C4. Process fits** — Create application stub folders and tracker entries for any fits found (same as normal ingest)
+- [ ] **C5. applicant-maintenance.md** — Append a brief entry: date, profile, query terms added/changed, verification outcome (fit count, no-fit count, any query adjustments made)
+
+**Session close gate:** Before ending, output: _"Operation C complete: [N] results, [N] fits, [N] no-fits. Query verdict: [working / revised to X / inconclusive]."_
