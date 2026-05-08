@@ -39,7 +39,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 9. Stop
 
 ### If FIT (switch to Sonnet for quality)
-7. Read profile-specific content library from `$APPLICANT_DIR/profiles/`
+7. Read profile-specific content library from `$APPLICANT_DIR/profiles/[profile]/`
 8. Read full matched profile for strategy/positioning
 9. Generate tailored resume using content library (ALL factual, pre-verified)
 10. Create detailed notes.md (JD analysis, interview prep)
@@ -53,7 +53,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 
 **NEVER fabricate or hallucinate**:
 - Do NOT invent companies, titles, achievements, metrics, projects, skills, certifications
-- ONLY use information from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
+- ONLY use information from `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 - If uncertain about a fact, ASK — never guess
 - All claims must be supportable with real evidence
 
@@ -125,6 +125,16 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `applicant-setup.md` Phase F — trigger phrases, File Registry, Cross-Profile Propagation Rule, and logging instructions
 - After every maintenance session: append entry to `$APPLICANT_DIR/applicant-maintenance.md`
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
+- When target roles or JD signal keywords change: update the `## Search Queries` table row in `PROFILES-QUICK-REFERENCE.md`; when a profile is removed, delete its row
+
+## Job Ingestion (/ingest command)
+- Run `/ingest <profile>` to search Google Jobs via SearchAPI for a given profile
+- Uses one OR-query per profile from `## Search Queries` table in `PROFILES-QUICK-REFERENCE.md`
+- Deduplicates against `$APPLICANT_DIR/profiles/<profile>/search-results/seen-jobs.json`
+- Saves fit jobs as application stubs (folder + JD files + notes stub) — does NOT auto-generate resumes
+- Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`
+- Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
+- Requires `SEARCHAPI_KEY` in `.env`
 
 ## Workflow Rules
 - See `feedback_application_tracking.md` — check tracker before acting on any company mention; update both tracker AND notes.md when application is submitted
@@ -152,7 +162,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in re
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
 - Switch to Sonnet only for document generation
-- Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` — no per-session extraction needed
+- Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` — no per-session extraction needed
 
 **Last Updated**: 2026-05-05
 
