@@ -125,7 +125,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `applicant-setup.md` Phase F — trigger phrases, File Registry, Cross-Profile Propagation Rule, and logging instructions
 - After every maintenance session: append entry to `$APPLICANT_DIR/applicant-maintenance.md`
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
-- When target roles or JD signal keywords change: update the `## Search Queries` table row in `PROFILES-QUICK-REFERENCE.md`; when a profile is removed, delete its row
+- When target roles or JD signal keywords change: update the `## Search Queries` table row in `PROFILES-QUICK-REFERENCE.md`; include adjacent titles (names other companies use for the same function); aim for 8–14 terms per query; when a profile is removed, delete its row
 
 ## Job Ingestion (/ingest command)
 - Run `/ingest <profile>` to search Google Jobs via SearchAPI for a given profile
