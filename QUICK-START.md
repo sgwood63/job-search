@@ -5,7 +5,7 @@
 - [Phase 1: Foundation](#phase-1-foundation-one-time-setup-30-minutes)
   - [Step 1: Run the setup script](#step-1-run-the-setup-script)
   - [Step 2: Run the applicant setup process](#step-2-run-the-applicant-setup-process)
-- [Phase 2: Applying to a Role](#phase-2-applying-to-a-role)
+- [Phase 2: Building the Pipeline](#phase-2-building-the-pipeline)
 - [Phase 3: Interview Process](#phase-3-interview-process)
 
 ---
@@ -58,11 +58,17 @@ See [USER-GUIDE.md → Getting Set Up](USER-GUIDE.md) for what each phase covers
 
 ---
 
-## Phase 2: Applying to a Role
+## Phase 2: Building the Pipeline
 
-Provide the job description (URL, PDF, or paste). Claude screens for fit, matches to the best profile, and generates a tailored resume if it's a match. Review the draft, request a cover letter or portal question answers if needed, then run `/audit [folder]` before submitting and `/apply "Company" "Role" "date"` after.
+There are two ways jobs enter your pipeline — use either or both:
 
-See [USER-GUIDE.md → Working With a Job Posting](USER-GUIDE.md) for the full workflow with examples.
+**Option A — Proactive discovery (recommended):** Run `/ingest [profile]` to search Google Jobs for a given profile. Claude screens results, saves fit jobs as folders with JD files and a notes stub, and adds them to your tracker. Run once per profile every few days. Requires `SEARCHAPI_KEY` in `.env` (see [USER-GUIDE.md → Finding Jobs Proactively](USER-GUIDE.md)).
+
+**Option B — Individual posting:** Provide a job description (URL, PDF, or paste). Claude screens for fit, matches to the best profile, and generates a tailored resume if it's a match.
+
+For either path, once a job is in your pipeline: review the JD stub, request a resume if proceeding, run `/audit [folder]` before submitting, and `/apply "Company" "Role" "date"` after.
+
+See [USER-GUIDE.md → Finding Jobs Proactively](USER-GUIDE.md) and [USER-GUIDE.md → Working With a Job Posting](USER-GUIDE.md) for full workflow details.
 
 ---
 

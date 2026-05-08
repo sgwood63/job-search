@@ -37,7 +37,7 @@ When the user provides a job description (URL, document, or paste), execute imme
 
 **No fit:** Brief `notes.md`, tracker update (Rejected section), stop.
 
-**Fit:** Switch to Sonnet. Read matched profile files from `$APPLICANT_DIR/profiles/` (the working source of truth; `base-documents/` is setup-only — do not read it). Generate resume, create detailed `notes.md`, update tracker (Active section).
+**Fit:** Switch to Sonnet. Read matched profile files from `$APPLICANT_DIR/profiles/[profile]/` (the working source of truth; `base-documents/` is setup-only — do not read it). Generate resume, create detailed `notes.md`, update tracker (Active section).
 
 ## Profile Maintenance — DO NOT ASK, JUST DO
 
@@ -49,6 +49,7 @@ When the user provides new experience, achievements, preference changes, or care
 - Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md`
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice; when a new profile is created, always update career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations)
 - Do not update `APPLICANT-MEMORY.md` for maintenance changes
+- When a profile's target roles or JD signal keywords change, also update the `## Search Queries` table row for that profile in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`. Queries use role/title terms only — no domain expertise appended. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms per query for broad market coverage. When a profile is removed, delete its row from the Search Queries table.
 
 ## Documentation Maintenance — DO NOT ASK, JUST DO
 
@@ -75,7 +76,7 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 **Communication level.** During multi-step workflows (JD processing, resume generation, profile maintenance), report at the impact level when a logical step completes — not at the file level. Do not narrate individual Write or Edit calls. Report: "JD screened — fit confirmed, folder created." or "Resume draft complete — 2-page, 7/9 JD requirements covered." Name a file only if a specific write fails.
 
-**No fabrication.** Source only from `$APPLICANT_DIR/profiles/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Never invent companies, titles, achievements, metrics, projects, skills, or certifications. If uncertain, ask.
+**No fabrication.** Source only from `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Never invent companies, titles, achievements, metrics, projects, skills, or certifications. If uncertain, ask.
 
 **No unverified percentage metrics.** Verified, sourced percentages are allowed. Unverified/estimated X% claims must use qualitative language instead ("substantially improved", "significantly reduced"). Counts and named outputs are always fine (50+ engagements, 400+ customers).
 
@@ -105,6 +106,7 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/apply "Co" "Role" "date" [url?]` | Record submission atomically in tracker + notes.md |
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
+| `/ingest [profile]` | Search Google Jobs via SearchAPI for a profile; save fit jobs for review; writes per-run summary with all fit + no-fit results |
 
 ## Session Strategy
 

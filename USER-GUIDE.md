@@ -78,6 +78,31 @@ Claude leads you through five phases:
 
 ---
 
+## Finding Jobs Proactively
+
+Instead of manually providing job postings one by one, you can run a search that fetches and screens a batch of Google Jobs listings for a given profile:
+
+```
+/ingest [profile]
+```
+
+This searches Google Jobs using the role-title queries defined for that profile (run as multiple sub-queries so Google returns more results per run), screens each result against your criteria, and saves fit jobs as application stubs in your applications folder. Each stub includes a job description summary, a verbatim JD file, and a `notes.md` with a fit assessment. Fit jobs are also added to your tracker with status "Found via search — pending review." After each run, a summary file is saved in your search directory listing every job screened — both matches and rejections — with scores and reasons, so you can review what was found and skipped.
+
+**Requires:** `SEARCHAPI_KEY` set in `.env`. Add your SearchAPI key to that file before running. If the key is missing, the command will tell you and stop.
+
+**When to run:** Every few days per profile. The command deduplicates against jobs already seen so re-running is safe.
+
+**After ingestion:** Review the stubs in your applications folder. For any job you want to pursue, open the folder and say "generate a resume for [company]" — this kicks off the standard resume workflow at Step 2 below.
+
+**Example:**
+```
+/ingest presales-se
+```
+
+If you leave out the profile name, the command lists available profiles and asks you to choose.
+
+---
+
 ## Working With a Job Posting
 
 This is the core workflow. Each step can happen at any time — you don't need to complete them all in one conversation.
@@ -304,6 +329,7 @@ To reload context mid-conversation (for example, after a status change):
 |---------|-------------|-------------|
 | `/context` | Loads your full job search state | Automatic when you start a conversation; use manually to refresh |
 | `/status` | Pipeline snapshot with overdue follow-ups | Weekly check-in |
+| `/ingest [profile]` | Search Google Jobs via SearchAPI; save fit jobs for review | Proactive job discovery, ~every 3 days per profile |
 | `/audit [folder]` | Confirms an application is complete and ready to submit | Before submitting |
 | `/apply "Co" "Role" "date" [url?]` | Records a submission and sets a follow-up reminder | Right after you submit |
 | `/interview [company] [stage]` | Interview brief: talking points, questions, positioning | Night before any call |

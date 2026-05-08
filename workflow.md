@@ -50,7 +50,7 @@ Save the following:
 
 ## If FIT (switch to Sonnet)
 
-- Read `$APPLICANT_DIR/profiles/[matched-profile].md` and `-CONTENT.md`
+- Read `$APPLICANT_DIR/profiles/[matched-profile]/[matched-profile].md` and `-CONTENT.md`
 - Read `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 - Generate tailored resume (see Resume Generation below)
 - Create detailed `notes.md` (see notes.md Structure below)
