@@ -30,7 +30,7 @@ Every resume must follow this section order:
 2. Title line (role-specific)
 3. Summary (3–4 sentences, tailored to role)
 4. `## Core Capabilities` — categorized, see Capabilities Format below
-5. `## RELEVANT EXPERIENCE` — never "Experience" or "Professional Experience"
+5. `## Experience` — CSS renders as "EXPERIENCE" in the PDF; never use `RELEVANT EXPERIENCE` (ATS non-standard)
 6. `### Earlier Career` — subsection within Relevant Experience for roles ended 12+ years ago
 7. `## Education`
 8. `## Certifications`

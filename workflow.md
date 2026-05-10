@@ -70,12 +70,15 @@ Every `notes.md` must include a **Table of Contents** immediately after the head
 1. Table of Contents
 2. JD Analysis *(full source URL + original JD filename)*
 3. Fit Assessment *(include a "Domain Connection" subsection — see CLAUDE.md Critical Rules)*
-4. Resume Strategy
-5. Company Research
-6. Notes from Recruiter Interview *(add when available)*
-7. Process *(hiring process steps)*
-8. Interview Prep sections — **in chronological interview order** (e.g., HM interview before technical screen before panel)
-9. Process Reminder *(recap of next steps)*
+4. Pre-Application Checklist *(if applicable — open flags before applying)*
+5. Resume Strategy
+6. Resume Evaluation Report *(JD requirement coverage table + Recruiter & ATS Appeal Analysis — see feedback_resume_generation.md)*
+7. Company Research
+8. Notes from Recruiter Interview *(add when available)*
+9. Process *(hiring process steps)*
+10. Interview Prep sections — **in chronological interview order** (e.g., HM interview before technical screen before panel)
+11. Process Reminder *(recap of next steps)*
+12. Application Log
 
 ### Interview Prep Section Rules
 - Each stage gets its own H2: `## Interview Prep N — [Stage Name]`
@@ -100,16 +103,23 @@ Spaces → underscores, special characters removed. Example: "GRC Solutions Engi
 
 ### Generation Steps
 
+**Phase 1 — Draft, evaluate, and present for review (stop here, wait for approval):**
+
 1. Write the resume `.md` file
 2. **Verification gate** — run a coverage check against job-description.md:
    - Extract every stated requirement (Required and Preferred separately)
    - Score each Required item: **MET** (a specific bullet addresses it), **PARTIAL** (mentioned but not specific), or **GAP** (not addressed)
    - **Exit condition:** all Required items are MET or PARTIAL
-   - If GAPsexist on Required items: apply targeted edits and re-score — maximum 2 cycles
+   - If GAPs exist on Required items: apply targeted edits and re-score — maximum 2 cycles
    - If a Required item remains a GAP after 2 cycles: flag it explicitly rather than continuing to loop
-3. Output the coverage table alongside the resume draft — it is the deliverable, not a post-hoc report
-4. Generate PDF and verify page count
-5. Only present to user after this full cycle
+3. Produce Recruiter & ATS Appeal Analysis — see `memory/feedback_resume_generation.md` for the four-subsection format (ATS performance, recruiter eye scan, structural factors, response likelihood estimate)
+4. Write the complete Resume Evaluation Report (coverage table + recruiter/ATS analysis) to the `## Resume Evaluation Report` section of `notes.md`
+5. Present the `.md` file and evaluation to the user for review — **stop here and wait for approval**
+
+**Phase 2 — Finalize (after user approves):**
+
+6. Apply any edits from user review
+7. Generate PDF and verify page count
 
 ### PDF Command
 
@@ -135,7 +145,7 @@ After Relevant Experience, always include in this order:
 
 ### Section Labels
 
-- Experience section: `## RELEVANT EXPERIENCE` (all caps) — never "Experience" or "Professional Experience"
+- Experience section: `## Experience` — CSS `text-transform: uppercase` renders it as "EXPERIENCE" in the PDF; never use `## RELEVANT EXPERIENCE` (ATS non-standard) or "Professional Experience"
 - Roles that ended more than 12 years ago: grouped under `### Earlier Career` (subsection of Relevant Experience, reverse chronological within it)
 
 ### Role Ordering
@@ -148,10 +158,12 @@ Headers like "AI Solution Architect - Presales Experience" in `-CONTENT.md` file
 
 ### After Generating
 
-The coverage table produced during step 2 is the primary evaluation artifact. Also summarize:
+The Resume Evaluation Report (written to `notes.md` in step 4) is the primary evaluation artifact. It must include:
+- Coverage table: every JD requirement scored MET / PARTIAL / GAP
 - Overall effectiveness and competitive positioning vs. the JD
 - Any differentiators surfaced or missed
 - Any explicit gaps (Required items that remained GAP after 2 cycles) and recommended mitigation
+- Recruiter & ATS Appeal Analysis — see `memory/feedback_resume_generation.md` for the full four-subsection spec
 
 ---
 
