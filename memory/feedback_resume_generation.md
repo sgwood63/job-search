@@ -4,18 +4,22 @@ description: All resume generation rules — review before PDF, role ordering, s
 type: feedback
 ---
 
-## Review Before PDF
+## Resume Generation — Two-Phase Flow
 
-Always complete a full assessment of the resume vs the JD requirements before generating the PDF.
+Always follow this two-phase sequence. Never generate the PDF before the user has reviewed and approved the draft.
 
-**Why:** First drafts often have gaps, tonal mismatches, or missed opportunities. Reviewing and editing before PDF saves iteration cycles.
+**Why:** The user wants to review the draft and evaluation before committing to a PDF. Generating PDF first removes the review opportunity and wastes iteration cycles if changes are needed.
 
-**How to apply:**
-1. Write the resume .md file
-2. Assess it against the JD — score coverage, flag gaps, identify improvements
-3. Apply the recommended edits to the .md file
-4. Generate the PDF and verify page count
-5. Only present to user after this full cycle is complete
+**Phase 1 — Draft, evaluate, and present for review:**
+1. Write the resume `.md` file
+2. Assess vs. JD — score coverage per workflow.md Verification Gate rules (MET / PARTIAL / GAP per requirement)
+3. Produce Recruiter & ATS Appeal Analysis (see section below)
+4. Write the full Resume Evaluation Report (coverage table + recruiter/ATS analysis) to the `## Resume Evaluation Report` section of `notes.md`
+5. Present the `.md` file and evaluation to the user for review — stop here and wait
+
+**Phase 2 — Finalize (after user approves):**
+6. Apply any edits from user review
+7. Generate PDF and verify page count
 
 ## Role Ordering and Structure
 
@@ -23,13 +27,13 @@ Always complete a full assessment of the resume vs the JD requirements before ge
 
 **Rule 2: Section heading is "Relevant Experience"** — must be `## RELEVANT EXPERIENCE`, not `## EXPERIENCE` or `## PROFESSIONAL EXPERIENCE`.
 
-**Rule 3: Earlier Career is a subsection** — all roles before 2010 must be grouped under `### Earlier Career` (or `## EARLIER CAREER`). These include: Founding Architect (2005–2010), GalenWorks (2003–2005), Consulting (1999–2003), Financial Services Technology (1985–1999). Within Earlier Career, maintain reverse chronological order.
+**Rule 3: Earlier Career is a subsection** — all roles that ended more than 12 years ago must be grouped under `### Earlier Career` (or `## EARLIER CAREER`). The cutoff floats: in 2026 that means roles ending before 2014. Current examples: Founding Architect (ended 2010), GalenWorks (ended 2005), Consulting (ended 2003), Financial Services Technology (ended 1999). Within Earlier Career, maintain reverse chronological order.
 
 **How to apply:**
 - Use `## RELEVANT EXPERIENCE` always
-- Add `### Earlier Career` before any pre-2010 role
-- Founding Architect always comes first within Earlier Career
-- Never place a pre-2010 role in the main section above a post-2010 role
+- Add `### Earlier Career` before any role that ended more than 12 years ago
+- Founding Architect always comes first within Earlier Career (most recent of the early roles)
+- Never place an early-career role in the main section above a recent role
 
 ## Education and Certifications
 
