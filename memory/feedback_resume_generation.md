@@ -25,15 +25,31 @@ Always follow this two-phase sequence. Never generate the PDF before the user ha
 
 **Rule 1: Strict reverse chronological order** — all included roles must appear most-recent-first. Skipping roles is acceptable; out-of-order is not.
 
-**Rule 2: Section heading is "Relevant Experience"** — must be `## RELEVANT EXPERIENCE`, not `## EXPERIENCE` or `## PROFESSIONAL EXPERIENCE`.
+**Rule 2: Section heading is "Experience"** — must be `## Experience`, not `## RELEVANT EXPERIENCE` (ATS non-standard) or `## PROFESSIONAL EXPERIENCE`. CSS `text-transform: uppercase` renders it as "EXPERIENCE" in the PDF — the visual output is correct regardless of what case is used in the markdown, but the underlying text must be "Experience" for ATS parsers that look for standard section names.
 
 **Rule 3: Earlier Career is a subsection** — all roles that ended more than 12 years ago must be grouped under `### Earlier Career` (or `## EARLIER CAREER`). The cutoff floats: in 2026 that means roles ending before 2014. Current examples: Founding Architect (ended 2010), GalenWorks (ended 2005), Consulting (ended 2003), Financial Services Technology (ended 1999). Within Earlier Career, maintain reverse chronological order.
 
 **How to apply:**
-- Use `## RELEVANT EXPERIENCE` always
+- Use `## Experience` always — never `## RELEVANT EXPERIENCE`
 - Add `### Earlier Career` before any role that ended more than 12 years ago
 - Founding Architect always comes first within Earlier Career (most recent of the early roles)
 - Never place an early-career role in the main section above a recent role
+
+## Capabilities Section Format
+
+Use `, ` (comma-space) as the delimiter between skills in the Capabilities section — not `·` (middle dot).
+
+**Why:** ATS parsers may treat an entire `·`-delimited line as a single token, failing to extract individual skills. Commas are universally recognized as list separators.
+
+**How to apply:** Content library files (`*-CONTENT.md`) use `·` as their source format — that is fine for source material. When writing the output resume, convert every ` · ` to `, ` in the Capabilities section. Do not change bullets inside role entries.
+
+## Phone Number Format
+
+Use `(415) 516-4894` — no `+1` country code prefix.
+
+**Why:** Observed in Ashby: name and email parse correctly but phone is blank when `+1 (415) 516-4894` is used. Dropping the country code prefix resolves this.
+
+**How to apply:** Contact line format: `City, State | email | (area) exchange-number | linkedin-url`
 
 ## Education and Certifications
 
@@ -88,7 +104,7 @@ After the JD requirement scoring, produce a second analysis block covering real-
 
 **How to apply:** After the JD evaluation table, produce a section with four subsections:
 
-1. **ATS Performance** — keyword coverage, format risks (non-standard headers, delimiter-heavy capability lines, date parsing). Flag if the hiring stack is likely ATS-heavy (large enterprise) vs. light (seed-stage startup). Note that `RELEVANT EXPERIENCE` is a non-standard header some parsers miss.
+1. **ATS Performance** — keyword coverage, format risks (delimiter-heavy capability lines, date parsing). Flag if the hiring stack is likely ATS-heavy (large enterprise) vs. light (seed-stage startup).
 
 2. **Recruiter Eye Scan (6 seconds)** — what the recruiter actually sees first: positioning line, company name brand recognition, summary scannability, career span visibility from date math. Be specific about which company names have recognition and which don't. Flag if the summary is a dense paragraph block (hard to skim) vs. scannable.
 

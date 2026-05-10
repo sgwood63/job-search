@@ -82,7 +82,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 - Early career (20+ years): **1 bullet or title only**
 
 *Section labels*:
-- Experience section must be labeled **`## RELEVANT EXPERIENCE`** (all caps) — never "Experience" or "Professional Experience"
+- Experience section must be labeled **`## Experience`** — CSS renders it as "EXPERIENCE" in the PDF; never use `RELEVANT EXPERIENCE` (ATS non-standard) or "Professional Experience"
 - Roles that ended more than 12 years ago must be compressed into a single **"Earlier Career"** section, not individual role sections
 
 *No duplication*:
