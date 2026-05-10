@@ -1,6 +1,6 @@
 ---
 name: Resume generation rules
-description: All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming
+description: All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming, recruiter/ATS appeal analysis
 type: feedback
 ---
 
@@ -75,6 +75,24 @@ Example: "GRC Solutions Engineer" → `[FirstName_LastName]_GRC_Solutions_Engine
 Do NOT include a frontmatter `title:` block. The resume must open directly with the applicant's name as a top-level heading — no YAML front matter above it.
 
 **Why:** The frontmatter title renders as a duplicate heading — the name appears twice on the page.
+
+## Recruiter & ATS Appeal Analysis (Required After Every Resume)
+
+After the JD requirement scoring, produce a second analysis block covering real-world response likelihood. This is separate from "does the resume cover the requirements" — it answers "will this resume actually get read and acted on."
+
+**Why:** JD coverage scoring tells you what's in the resume. It doesn't tell you what a recruiter sees in 6 seconds, whether ATS will parse it correctly, or whether structural factors (company name recognition, career span visibility, format density) will sink it before anyone reads the content. The user found this analysis specifically useful and wants it every time.
+
+**How to apply:** After the JD evaluation table, produce a section with four subsections:
+
+1. **ATS Performance** — keyword coverage, format risks (non-standard headers, delimiter-heavy capability lines, date parsing). Flag if the hiring stack is likely ATS-heavy (large enterprise) vs. light (seed-stage startup). Note that `RELEVANT EXPERIENCE` is a non-standard header some parsers miss.
+
+2. **Recruiter Eye Scan (6 seconds)** — what the recruiter actually sees first: positioning line, company name brand recognition, summary scannability, career span visibility from date math. Be specific about which company names have recognition and which don't. Flag if the summary is a dense paragraph block (hard to skim) vs. scannable.
+
+3. **Structural factors** — anything that affects response odds regardless of content quality: company size/stage fit with career profile, age signal visibility from date ranges, simultaneous contracts reading as fractional, lack of F500 brand names in recent roles, absence of quantified outcomes. Be honest — these are real factors.
+
+4. **Response likelihood estimate** — a honest probability range (e.g. "15–25%") with specific factors for and against. Not optimistic cheerleading. End with the single most impactful thing that would improve odds (warm intro, specific reframe, cutting a section, etc.).
+
+**Tone:** Honest and direct. The applicant explicitly values candor over reassurance.
 
 ## Cover Letters
 
