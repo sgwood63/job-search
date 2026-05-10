@@ -18,11 +18,11 @@ When the user references a company that is not already part of the current conve
 
 ## Application Status Update — Two-File Rule
 
-When the user confirms they submitted an application, update **both**:
+**Any status change** (submission, withdrawal, rejection, closing, deciding not to pursue) must update **both**:
 
-1. `$APPLICANT_DIR/application-tracker.md` — change Status to `Applied YYYY-MM-DD`, Next Action to `Awaiting response`
-2. `$APPLICANT_DIR/applications/<folder>/notes.md` — update the header Status field and the Process Reminder section (remove "apply" action, set applied date and awaiting response)
+1. `$APPLICANT_DIR/application-tracker.md` — update the row (status, next action, or move to Closed section)
+2. `$APPLICANT_DIR/applications/<folder>/notes.md` — update the header **Status** field to match
 
-**Why:** Updating only the tracker leaves notes.md out of sync. First time this came up (PunttAI, 2026-05-02), only the tracker was updated and the user had to prompt for notes.md.
+**Why:** Updating only the tracker leaves notes.md out of sync. First happened with PunttAI (2026-05-02, only tracker updated on submission). Extended 2026-05-09: same issue applies to withdrawals and "not pursuing" decisions — user had to prompt for notes.md update.
 
-**How to apply:** Any confirmation of submission — treat as a two-file update, not one.
+**How to apply:** Treat every status change as a two-file operation. No exceptions for "quick" closes or decisions not to apply.
