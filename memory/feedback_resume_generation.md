@@ -49,7 +49,11 @@ Use `(415) 516-4894` — no `+1` country code prefix.
 
 **Why:** Observed in Ashby: name and email parse correctly but phone is blank when `+1 (415) 516-4894` is used. Dropping the country code prefix resolves this.
 
-**How to apply:** Contact line format: `City, State | email | (area) exchange-number | linkedin-url`
+**How to apply:** Contact block — two lines, using two trailing spaces (markdown `<br>`) after line 1:
+- Line 1: `email | (area) exchange-number | linkedin-url`
+- Line 2: `City, State`
+
+Placing location first caused Ashby's embedded form parser to fail all fields (observed: Attio 2026-05-11). Parseable fields must come first; location last or on its own line.
 
 ## Education and Certifications
 
