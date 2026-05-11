@@ -122,3 +122,17 @@ Do NOT recommend cover letters by default. They are generally not read or consid
 - Do not suggest drafting a cover letter as a next step
 - Do not flag the absence of a cover letter as a gap
 - Exception: offer one only if the applicant explicitly requests it, the role requires it, or there is a specific signal the hiring manager reviews them
+
+## Age Perception — Standard Mitigations (No Fabrication)
+
+Apply these to every resume without being asked. None involve changing facts.
+
+1. **Remove year ranges from Earlier Career entries.** Dates in Earlier Career are the biggest age signal (e.g., "1985–1999" instantly reveals a 40-year career). Earlier Career is already a compressed section — readers don't expect dates. Remove all year ranges from Earlier Career role names; keep company names and role titles. Do not add "earlier" or vague date placeholders.
+
+2. **Replace "X+ years" language in summaries with positioning language.** "20+ years" (or any tenure anchor) invites mental math. Replace with experience-depth language: "Deep delivery experience spanning..." or "Extensive customer-facing background in..." — equally credible, no calendar anchor.
+
+3. **Omit graduation year from Education.** Never include the year a degree was conferred. University name and degree are sufficient; the year is an age signal with no benefit.
+
+**Why:** These are universally standard resume practices for experienced candidates. No content is removed or misrepresented — only age-calculable dates are withheld from sections where dates add no reader value.
+
+**How to apply:** Check every resume draft before presenting. Flag if any of the three conditions are violated.
