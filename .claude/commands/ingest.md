@@ -102,15 +102,21 @@ For each **fit** job (profile_score >= 7) in Haiku results:
   - Create `$APPLICANT_DIR/applications/<folder>/`
 
   **FETCH FULL JD** (before writing any files):
-  - Determine fetch URL: prefer `apply_link` from the job object; if absent or empty, use `raw.sharing_link`
-  - If no URL is available: set `fetch_result = "no_url"`, `full_jd_content = null`
-  - If URL is available, run:
+
+  Do NOT use `sharing_link` — it is a Google search URL with session parameters that returns HTTP 500 once the job leaves Google's index. Only use direct apply URLs.
+
+  - Build `candidate_urls` list:
+    - If `raw.apply_links` is present and non-empty: add each `raw.apply_links[].link` in order
+    - If `apply_link` is present and not already in the list: append it
+    - If `candidate_urls` is empty: set `fetch_result = "no_url"`, `full_jd_content = null` — skip to writing files
+  - For each `url` in `candidate_urls` (in order):
     ```bash
     "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>" --md-out
     ```
-    - Exit code 0: `fetch_result = "success"`, `full_jd_content = stdout`
-    - Exit code 2: `fetch_result = "auth_required"`, `full_jd_content = null`
-    - Exit code 1 or other: `fetch_result = "failed"`, `full_jd_content = null`
+    - Exit code 0: `fetch_result = "success"`, `full_jd_content = stdout`, `fetch_url = url` — stop iterating
+    - Exit code 2: `fetch_result = "auth_required"` — continue to next url
+    - Exit code 1 or other: `fetch_result = "failed"` — continue to next url
+  - If all urls exhausted without exit code 0: `full_jd_content = null` (`fetch_result` retains last non-zero result)
 
   **Write `job-description.md`:**
 
@@ -282,8 +288,8 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     ---
 
     ```
-  - **If `fetch_result == "auth_required"`**: prepend `_Note: Full JD requires authentication at <fetch_url> — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
-  - **If `fetch_result == "failed"` or `"no_url"`**: prepend `_Note: Full JD fetch failed — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
+  - **If `fetch_result == "auth_required"`**: prepend `_Note: All apply URLs require authentication — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
+  - **If `fetch_result == "failed"` or `"no_url"`**: prepend `_Note: Full JD fetch failed (no apply URLs available or all failed) — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
 
   **SearchAPI HTML-to-markdown fallback rules** (used when fetch did not succeed):
     - **If description contains HTML tags**: convert to markdown:
