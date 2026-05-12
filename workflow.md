@@ -11,6 +11,16 @@ This document describes the full automated pipeline that runs when a job descrip
 1. Fall back to `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"`
 2. Exit code 2 (auth required): tell the user to run the setup command printed to stderr — do not proceed until they confirm auth is done, then retry. Auth files live in `$APPLICANT_DIR/.auth/`. Re-run `--setup <url>` or `--import <domain>` to refresh expired cookies. If prompted for manual entry: DevTools (F12) → Application → Cookies → copy the session cookie name and value.
 3. Exit code 1 (navigation error): ask the user to paste the JD text directly
+4. Exit code 3 (job closed): the posting is no longer available or the position has been filled.
+   - Search `$APPLICANT_DIR/applications/` for an existing folder whose slug matches this company and role (fuzzy: lowercase folder name contains the company name and a fragment of the role title)
+   - **If an existing application IS found:**
+     - Update `notes.md`: change the `**Status:**` line to `Closed — position no longer available (YYYY-MM-DD)`
+     - Append to the `## Application Log` section: `YYYY-MM-DD — Position confirmed closed/no longer available via URL fetch`
+     - Update `application-tracker.md`: move the row from Active Applications to the Rejected/Closed section; set Status to "Position closed" and Date to today
+     - Inform the user: "This job posting is no longer available. Application [folder] status updated to Closed."
+   - **If no existing application is found:**
+     - Inform the user: "This job posting is no longer available — position appears closed or filled. No further processing."
+   - In both cases: stop — do not proceed with screening or document generation
 
 **PDF and document JDs:** Use `pdftotext` or ask the user to paste if WebFetch fails.
 
@@ -58,6 +68,18 @@ Save the following:
 - Present for user review
 
 **After the user submits:** Run `/audit [folder-name]` to verify completeness, then `/apply "Company" "Role" "date"` to record the submission in both the tracker and notes.md atomically.
+
+---
+
+## JD Regeneration (Existing Applications)
+
+When regenerating `jd-*.md` and/or `job-description.md` for an existing application folder (e.g., batch re-fetch, /ingest re-run, manual JD update):
+
+1. After writing the updated files, compare the new `job-description.md` fit assessment against the current `notes.md` **Status** line and the tracker row.
+2. If the new data reveals a status change — confirmed hard stop, closed posting, passed deadline, domain mismatch, or materially changed fit score — apply the two-file rule immediately:
+   - Update `notes.md`: change `**Status:**`, replace Next Steps with a Decision section explaining the reason
+   - Update `application-tracker.md`: update the Active row or move to Closed as appropriate
+3. Do not close the regeneration task without checking for status drift. Regeneration without sync leaves notes.md and the tracker stale.
 
 ---
 

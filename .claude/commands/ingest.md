@@ -115,6 +115,7 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     ```
     - Exit code 0: `fetch_result = "success"`, `full_jd_content = stdout`, `fetch_url = url` — stop iterating
     - Exit code 2: `fetch_result = "auth_required"` — continue to next url
+    - Exit code 3: job is closed/no longer available — stop iterating all URLs for this job; skip it entirely (do not create folder, do not write any files, do not add to tracker); output one line: `- <Company> — <Role> [skipped — job closed/no longer available]`; do NOT increment fit_count; continue to next fit job
     - Exit code 1 or other: `fetch_result = "failed"` — continue to next url
   - If all urls exhausted without exit code 0: `full_jd_content = null` (`fetch_result` retains last non-zero result)
 

@@ -36,6 +36,7 @@ EXIT CODES
     0  Success
     1  Error — navigation or script failure
     2  Auth required — no saved auth (or expired); run --setup <url> first
+    3  Job closed — posting is no longer available or position filled
 
 AUTH STORAGE
     $APPLICANT_DIR/.auth/<domain>.json  (applicant-specific, never committed)
@@ -86,6 +87,28 @@ AUTH_TEXT_SIGNALS = [
     "sign in to view", "join to see",
 ]
 
+JOB_CLOSED_TITLE_SIGNALS = [
+    "job no longer available", "no longer available", "job not found",
+    "page not found", "404", "job expired", "position filled",
+    "this job has been removed", "job has closed",
+]
+
+JOB_CLOSED_BODY_SIGNALS = [
+    "this job is no longer available",
+    "this position has been filled",
+    "this job posting has expired",
+    "no longer accepting applications",
+    "job has been removed",
+    "position is no longer open",
+    "this job has been closed",
+    "this posting has expired",
+    "job is no longer active",
+    "this role has been filled",
+    "this opportunity is no longer available",
+    "application is closed",
+    "this job has expired",
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,6 +132,15 @@ def is_auth_wall(url: str, title: str, body: str) -> bool:
         any(s in url_l for s in AUTH_URL_SIGNALS)
         or any(s in title_l for s in ["sign in", "log in", "join now"])
         or any(s in body_l for s in AUTH_TEXT_SIGNALS)
+    )
+
+
+def is_job_closed(title: str, body: str) -> bool:
+    title_l = title.lower()
+    body_l = body[:2000].lower()
+    return (
+        any(s in title_l for s in JOB_CLOSED_TITLE_SIGNALS)
+        or any(s in body_l for s in JOB_CLOSED_BODY_SIGNALS)
     )
 
 
@@ -484,6 +516,10 @@ def fetch(url: str, md_out: str | None = None) -> None:
         print(f"Re-authenticate:", file=sys.stderr)
         print(f"  python3 scripts/fetch-jd.py --setup '{url}'", file=sys.stderr)
         sys.exit(2)
+
+    if is_job_closed(title, body):
+        print(f"[job-closed] Job posting is no longer available.", file=sys.stderr)
+        sys.exit(3)
 
     print(f"URL: {final_url}")
     print(f"Title: {title}")
