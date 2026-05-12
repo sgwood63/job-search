@@ -64,21 +64,145 @@ Before spawning Haiku, extract from the source files:
 - From `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`: the `## Hard Stops` section and `## Location Check` section only — do not pass the full file
 
 Spawn **ONE** Haiku agent with:
-- Instruction to read the batch file at `$batch_file`. The file is newline-delimited JSON (one job object per line). For each job's `description`: use the first 3,000 characters and the last 3,000 characters (if under 6,000 characters, use it in full). Other fields to use: title, company, location, apply_link, posted_at.
+- Instruction to read the batch file at `$batch_file`. The file is newline-delimited JSON (one job object per line). For each job's `description`: use the first 3,000 characters and the last 3,000 characters (if under 6,000 characters, use it in full). If `description` is empty, use `job_highlights` fields. Other fields to use: title, company, location, apply_link, posted_at, `job_highlights`.
 - The extracted criteria sections above (~500 bytes total)
-- Instruction: for each job, return `fit` (true/false), `profile_score` (1–10), `profile_match` (profile slug), and `no_fit_reason` (if false). Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return fit=true only if score >= 7 and no Hard Stop applies.
+- Instruction: for each job, return a JSON object with all of the following fields. Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return fit=true only if score >= 7 and no Hard Stop applies.
 
-After Haiku returns, populate `screened_jobs` from all results:
+  IMPORTANT: Your JSON output fields are used verbatim to fill a prescribed template. Do not summarize or truncate lists — completeness matters for downstream use.
+
+  ```
+  fit               — true/false
+  profile_score     — 1–10
+  profile_match     — profile slug
+  employment_type   — "Full-time" / "Contract" / "Part-time" / "Not listed"
+  seniority         — level as written in JD, or inferred (e.g. "Senior", "Mid-Senior"), or "Not listed"
+  travel            — travel requirement as stated, or "Not listed"
+  compensation      — comp range as stated, or "Not listed"
+  role_summary      — 2–3 sentence paragraph: what the role does and who it serves
+  responsibilities  — array of ALL distinct responsibilities stated in the JD (not a sample)
+  must_have         — array of {text, gap} objects for ALL must-have/required qualifications; gap=true if applicant has a clear deficiency vs. that requirement
+  preferred         — array of ALL preferred/nice-to-have qualifications stated in JD (omit array if none stated)
+  fit_reasoning     — narrative paragraph explaining fit or no-fit (replaces no_fit_reason)
+  coverage          — for fit=true jobs only: array of {requirement, status} where status ∈ ["✅ Strong", "⚠️ Partial", "❌ Gap"]; 3–8 key requirements; omit array for no-fit jobs
+  ```
+
+After Haiku returns, populate `screened_jobs` by merging Haiku's results with the batch file. Read the batch file (NDJSON) and for each job Haiku screened, match by company + title (case-insensitive) to retrieve the full job object. Store:
 ```
-{ company, title, location, profile_score, fit, no_fit_reason (if fit=false), folder: null }
+{ company, title, location, profile_score, fit, folder: null,
+  employment_type, seniority, travel, compensation,
+  role_summary, responsibilities, must_have, preferred, fit_reasoning, coverage,
+  description, apply_link, posted_at, raw }
 ```
+This ensures Phase 3-SAVE has all extracted fields and the raw object available without re-reading the batch file per job.
 
 ### Phase 3-SAVE — create application stubs for fit jobs
 
 For each **fit** job (profile_score >= 7) in Haiku results:
   - Derive folder slug: `YYYY-MM-DD-<company-slug>-<role-slug>` (today's date; slugify: lowercase, spaces → hyphens, strip special chars)
   - Create `$APPLICANT_DIR/applications/<folder>/`
-  - Write `job-description.md`:
+
+  **FETCH FULL JD** (before writing any files):
+  - Determine fetch URL: prefer `apply_link` from the job object; if absent or empty, use `raw.sharing_link`
+  - If no URL is available: set `fetch_result = "no_url"`, `full_jd_content = null`
+  - If URL is available, run:
+    ```bash
+    "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>" --md-out
+    ```
+    - Exit code 0: `fetch_result = "success"`, `full_jd_content = stdout`
+    - Exit code 2: `fetch_result = "auth_required"`, `full_jd_content = null`
+    - Exit code 1 or other: `fetch_result = "failed"`, `full_jd_content = null`
+
+  **Write `job-description.md`:**
+
+  **Path 1 — Full JD available (`fetch_result == "success"`):**
+  Read `full_jd_content` and generate a rich structured file. Use Haiku's fit/score/coverage/gap fields for the assessment sections; extract company context, full responsibilities, and full requirements from the fetched JD text.
+    ```markdown
+    # <Company> — <Role Title>
+
+    **Profile match:** <profile_slug> (score: N/10)
+    **Source:** SearchAPI / Google Jobs + full JD fetch
+    **Apply link:** <fetch_url>
+    **Status:** Found via search — pending review
+    **Date found:** YYYY-MM-DD
+
+    ---
+
+    ## Key Info
+
+    | Field | Value |
+    |---|---|
+    | Company | <company — use full JD value if more specific than SearchAPI> |
+    | Role | <role_title> |
+    | Location | <location> |
+    | Employment Type | <employment_type — from Haiku> |
+    | Seniority | <seniority — from Haiku> |
+    | Compensation | <compensation — from full JD if available, else Haiku> |
+    | Travel | <travel — from full JD if available, else Haiku> |
+    | Posted | <posted_at or "Not listed"> |
+
+    ---
+
+    ## Company Overview
+
+    <Extract 2–4 sentences from full JD about what the company does, industry, and customer base.
+    If posted via a recruiting agency (e.g. Jobot, Robert Half), note the likely employer and confidence level.
+    Omit this section if the full JD contains no company description.>
+
+    ---
+
+    ## Role Summary
+
+    <role_summary from Haiku, or re-extract from full JD if Haiku's is thin (under 2 sentences)>
+
+    ---
+
+    ## Key Responsibilities
+
+    <Extract ALL distinct responsibilities from the full JD as bullets.
+    If the JD groups them by subsection (e.g. Pre-Sales, Architecture, Implementation), preserve those subheadings.
+    Do not limit to 5–8 — include every distinct responsibility stated.>
+
+    ---
+
+    ## Requirements
+
+    ### Must Have
+    - <requirement text> [append "⚠️ GAP" if Haiku flagged gap=true for a matching requirement]
+    <Use the full requirements list from the fetched JD. Overlay Haiku's gap=true flags where requirement text matches.
+    Omit section if no required qualifications are stated.>
+
+    ### Preferred / Nice-to-Have
+    - <preferred requirement>
+    <From full JD preferred/nice-to-have section. Omit section if none stated.>
+
+    ---
+
+    ## Benefits
+
+    - <benefit bullet>
+    <From full JD benefits section. Omit section if none listed.>
+
+    ---
+
+    ## Fit Assessment
+
+    **Profile**: <profile_slug>
+    **Score**: N/10
+
+    <fit_reasoning from Haiku>
+
+    ---
+
+    ## Coverage Assessment
+
+    | Requirement | Coverage |
+    |---|---|
+    | <requirement> | <✅ Strong / ⚠️ Partial / ❌ Gap> |
+    (one row per coverage item from Haiku; omit entire section if coverage array is empty or absent)
+    ```
+
+  **Path 2 — Fetch failed (`fetch_result != "success"`):**
+  Populate from Haiku output only, following this template exactly:
     ```markdown
     # <Company> — <Role Title>
 
@@ -86,22 +210,103 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     **Source:** SearchAPI / Google Jobs
     **Status:** Found via search — pending review
     **Date found:** YYYY-MM-DD
-    **Apply link:** <url>
-    **Posted:** <posted_at>
+    **Apply link:** <apply_link or "Not available — check company careers page directly">
 
-    ## Location
-    <location>
+    ---
 
-    ## Compensation
-    <comp if present, else "Not listed">
+    ## Key Info
 
-    ## Requirements Summary
-    <2–4 sentence summary of key requirements from description>
+    | Field | Value |
+    |---|---|
+    | Company | <company> |
+    | Role | <role_title> |
+    | Location | <location> |
+    | Employment Type | <employment_type> |
+    | Seniority | <seniority> |
+    | Compensation | <compensation> |
+    | Travel | <travel> |
+    | Posted | <posted_at or "Not listed"> |
 
-    ## Fit Reasoning
-    <Haiku's fit reasoning>
+    ---
+
+    ## Role Summary
+
+    <role_summary — if empty: "Role summary not available from search result.">
+
+    ---
+
+    ## Key Responsibilities
+
+    - <bullet from responsibilities array>
+    (one bullet per item; omit section if responsibilities array is empty)
+
+    ---
+
+    ## Must Have Requirements
+
+    - <text> [append " ⚠️ GAP" if gap=true]
+    (one bullet per must_have item; omit section if must_have array is empty)
+
+    ---
+
+    ## Preferred / Nice-to-Have
+
+    - <bullet from preferred array>
+    (one bullet per item; omit entire section if preferred array is empty or absent)
+
+    ---
+
+    ## Fit Assessment
+
+    **Profile**: <profile_slug>
+    **Score**: N/10
+
+    <fit_reasoning>
+
+    ---
+
+    ## Coverage Assessment
+
+    | Requirement | Coverage |
+    |---|---|
+    | <requirement> | <status> |
+    (one row per coverage item; omit entire section if coverage array is empty or absent)
     ```
-  - Write `jd-<company>-<role>.md`: verbatim description text from search result (the `description` field — full text, not truncated)
+
+  **Write `jd-<company>-<role>.md`:**
+  - **If `fetch_result == "success"`**: write the fetched markdown content as-is. Prepend:
+    ```
+    **Source:** <fetch_url> (fetched via fetch-jd.py)
+    **Date fetched:** YYYY-MM-DD
+
+    ---
+
+    ```
+  - **If `fetch_result == "auth_required"`**: prepend `_Note: Full JD requires authentication at <fetch_url> — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
+  - **If `fetch_result == "failed"` or `"no_url"`**: prepend `_Note: Full JD fetch failed — content below is from SearchAPI and may be truncated._` followed by a blank line, then write SearchAPI content using the HTML-to-markdown rules below.
+
+  **SearchAPI HTML-to-markdown fallback rules** (used when fetch did not succeed):
+    - **If description contains HTML tags**: convert to markdown:
+      - `<h2>` or `<h3>` → `## text` (all JD heading levels are treated as top-level section headers)
+      - `<p><strong>text</strong></p>` or `<p><b>text</b></p>` (standalone bold paragraph — section header) → `## text`
+      - `<strong>text</strong>` or `<b>text</b>` inline → `**text**`
+      - `<em>text</em>` or `<i>text</i>` → `_text_`
+      - `<ul>` / `</ul>` → structural only, no output
+      - `<ol>` / `</ol>` → structural only; items become numbered list (1. 2. 3...)
+      - `<li>` in `<ul>` (including `<li><p>text</p></li>`) → `- text`
+      - `<li>` in `<ol>` → `N. text` (increment per item)
+      - `<p style="min-height:1.5em"></p>` or other empty `<p>` → skip
+      - `<p>text</p>` → text followed by a blank line
+      - `<a href="url">text</a>` → `[text](url)`
+      - `<u>text</u>` → text (drop underline)
+      - `<br />`, `<br>`, `<br><br>` → newline (`<br><br>` = blank line between paragraphs)
+      - `<div>` / `</div>` and `<span style="...">` → structural only, no output
+      - HTML entities (`&rsquo;` → `'`, `&amp;` → `&`, `&nbsp;` → space, `&ndash;` → `–`, etc.) → decoded
+      - Strip all remaining HTML tags, preserving their text content
+      - Result must mirror the visual structure: section headers, bullets, bold labels
+    - **If description is plain text (no HTML tags)**: write as-is with markdown paragraph breaks. If `raw.job_highlights` is present, prepend structured sections (`## Responsibilities`, `## Qualifications`, etc.) using its bullet items.
+    - **If description is empty**: use `raw.job_highlights` to write structured sections with bullet lists. Append: `_Note: Full JD not available from search API — content from job highlights only._`
+
   - Write `search-result.json`: the `raw` field from the job object (full SearchAPI job object)
   - Write `notes.md`:
     ```markdown

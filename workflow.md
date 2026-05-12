@@ -70,15 +70,14 @@ Every `notes.md` must include a **Table of Contents** immediately after the head
 1. Table of Contents
 2. JD Analysis *(full source URL + original JD filename)*
 3. Fit Assessment *(include a "Domain Connection" subsection — see CLAUDE.md Critical Rules)*
-4. Pre-Application Checklist *(if applicable — open flags before applying)*
-5. Resume Strategy
-6. Resume Evaluation Report *(JD requirement coverage table + Recruiter & ATS Appeal Analysis — see feedback_resume_generation.md)*
-7. Company Research
-8. Notes from Recruiter Interview *(add when available)*
-9. Process *(hiring process steps)*
-10. Interview Prep sections — **in chronological interview order** (e.g., HM interview before technical screen before panel)
-11. Process Reminder *(recap of next steps)*
-12. Application Log
+4. Resume Strategy
+5. Resume Evaluation Report *(JD requirement coverage table + Recruiter & ATS Appeal Analysis — see feedback_resume_generation.md)*
+6. Company Research
+7. Notes from Recruiter Interview *(add when available)*
+8. Process *(hiring process steps)*
+9. Interview Prep sections — **in chronological interview order** (e.g., HM interview before technical screen before panel)
+10. Process Reminder *(recap of next steps)*
+11. Application Log
 
 ### Interview Prep Section Rules
 - Each stage gets its own H2: `## Interview Prep N — [Stage Name]`
