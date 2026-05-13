@@ -69,41 +69,45 @@ function ok(r: Response) {
   return r
 }
 
+function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, { cache: 'no-store', ...init }).then(ok)
+}
+
 export const api = {
   tracker: (): Promise<TrackerData> =>
-    fetch(`${BASE}/tracker`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/tracker`).then(r => r.json()),
 
   rootFiles: (): Promise<RootFile[]> =>
-    fetch(`${BASE}/root-files`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/root-files`).then(r => r.json()),
 
   profiles: (): Promise<Profile[]> =>
-    fetch(`${BASE}/profiles`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/profiles`).then(r => r.json()),
 
   applications: (): Promise<Array<{ name: string; path: string }>> =>
-    fetch(`${BASE}/applications`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/applications`).then(r => r.json()),
 
   application: (folder: string): Promise<Application> =>
-    fetch(`${BASE}/applications/${encodeURIComponent(folder)}`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/applications/${encodeURIComponent(folder)}`).then(r => r.json()),
 
   baseDocuments: (): Promise<FileNode[]> =>
-    fetch(`${BASE}/base-documents`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/base-documents`).then(r => r.json()),
 
   search: (): Promise<FileNode[]> =>
-    fetch(`${BASE}/search`).then(ok).then(r => r.json()),
+    apiFetch(`${BASE}/search`).then(r => r.json()),
 
   fileUrl: (path: string) => `${BASE}/file?path=${encodeURIComponent(path)}`,
 
   downloadUrl: (path: string) => `${BASE}/download?path=${encodeURIComponent(path)}`,
 
   getFile: (path: string): Promise<string> =>
-    fetch(`${BASE}/file?path=${encodeURIComponent(path)}`).then(ok).then(r => r.text()),
+    apiFetch(`${BASE}/file?path=${encodeURIComponent(path)}`).then(r => r.text()),
 
   putFile: (path: string, content: string): Promise<void> =>
-    fetch(`${BASE}/file?path=${encodeURIComponent(path)}`, {
+    apiFetch(`${BASE}/file?path=${encodeURIComponent(path)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
-    }).then(ok).then(() => undefined),
+    }).then(() => undefined),
 
   upload: (
     dir: string,
@@ -111,11 +115,9 @@ export const api = {
   ): Promise<{ ok: boolean; path: string; name: string }> => {
     const form = new FormData()
     form.append('file', file)
-    return fetch(`${BASE}/upload?dir=${encodeURIComponent(dir)}`, {
+    return apiFetch(`${BASE}/upload?dir=${encodeURIComponent(dir)}`, {
       method: 'POST',
       body: form,
-    })
-      .then(ok)
-      .then(r => r.json())
+    }).then(r => r.json())
   },
 }

@@ -3,11 +3,14 @@ import { api, FileNode } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
 import UploadButton from './UploadButton'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 export default function BaseDocsView() {
   const [nodes, setNodes] = useState<FileNode[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.baseDocuments().then(setNodes)

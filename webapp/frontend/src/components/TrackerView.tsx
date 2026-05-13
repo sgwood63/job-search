@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, TrackerRow, PhaseDRow, ClosedRow, TrackerData } from '../api'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 function statusClass(status: string): string {
   const s = status.toLowerCase()
@@ -185,10 +186,13 @@ function ClosedTable({ rows }: { rows: ClosedRow[] }) {
 export default function TrackerView() {
   const [data, setData] = useState<TrackerData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.tracker().then(setData).catch(e => setError(String(e)))
-  }, [])
+  }, [version])
 
   if (error) {
     return (

@@ -3,16 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api, Profile } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 export default function ProfilesView() {
   const { profile: profileParam } = useParams<{ profile?: string }>()
   const navigate = useNavigate()
   const [profiles, setProfiles] = useState<Profile[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.profiles().then(setProfiles)
-  }, [])
+  }, [version])
 
   const activeProfile = profiles?.find(p => p.name === profileParam) ?? profiles?.[0] ?? null
 

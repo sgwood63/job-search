@@ -4,6 +4,7 @@ import { api, Application } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
 import UploadButton from './UploadButton'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 function parseFolder(folder: string) {
   const m = folder.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/)
@@ -23,10 +24,15 @@ export default function ApplicationView() {
   const [error, setError] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
 
+  useRefreshOnFocus(() => setTreeVersion(v => v + 1))
+
   useEffect(() => {
-    if (!folder) return
     setApp(null)
     setSelected(null)
+  }, [folder])
+
+  useEffect(() => {
+    if (!folder) return
     api.application(folder).then(setApp).catch(e => setError(String(e)))
   }, [folder, treeVersion])
 

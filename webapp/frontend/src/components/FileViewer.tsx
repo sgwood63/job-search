@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api } from '../api'
 import MarkdownEditor from './MarkdownEditor'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 function ext(path: string): string {
   return path.split('.').pop()?.toLowerCase() ?? ''
@@ -25,9 +26,14 @@ function MarkdownViewer({ path }: { path: string }) {
   const [editing, setEditing] = useState(false)
   const [version, setVersion] = useState(0)
 
+  useRefreshOnFocus(() => setVersion(v => v + 1))
+
   useEffect(() => {
     setContent(null)
     setEditing(false)
+  }, [path])
+
+  useEffect(() => {
     api.getFile(path).then(setContent).catch(() => setContent('⚠ Could not load file.'))
   }, [path, version])
 
@@ -73,12 +79,18 @@ function MarkdownViewer({ path }: { path: string }) {
 
 function TextViewer({ path }: { path: string }) {
   const [content, setContent] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
   const name = path.split('/').pop() ?? path
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     setContent(null)
-    api.getFile(path).then(setContent).catch(() => setContent('⚠ Could not load file.'))
   }, [path])
+
+  useEffect(() => {
+    api.getFile(path).then(setContent).catch(() => setContent('⚠ Could not load file.'))
+  }, [path, version])
 
   return (
     <div className="flex flex-col h-full">
@@ -99,10 +111,16 @@ function TextViewer({ path }: { path: string }) {
 
 function JsonViewer({ path }: { path: string }) {
   const [content, setContent] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
   const name = path.split('/').pop() ?? path
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     setContent(null)
+  }, [path])
+
+  useEffect(() => {
     api
       .getFile(path)
       .then(raw => {
@@ -113,7 +131,7 @@ function JsonViewer({ path }: { path: string }) {
         }
       })
       .catch(() => setContent('⚠ Could not load file.'))
-  }, [path])
+  }, [path, version])
 
   return (
     <div className="flex flex-col h-full">

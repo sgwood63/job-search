@@ -2,19 +2,25 @@ import { useState, useEffect } from 'react'
 import { api, FileNode } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 export default function SearchView() {
   const [nodes, setNodes] = useState<FileNode[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.search().then(data => {
       setNodes(data)
-      // Auto-select first file
-      const firstFile = data.find(n => n.type === 'file')
-      if (firstFile) setSelected(firstFile.path)
+      setSelected(prev => {
+        if (prev) return prev
+        const firstFile = data.find(n => n.type === 'file')
+        return firstFile?.path ?? null
+      })
     })
-  }, [])
+  }, [version])
 
   return (
     <div className="flex h-full">

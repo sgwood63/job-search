@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api, RootFile } from '../api'
 import FileViewer from './FileViewer'
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
@@ -11,13 +12,16 @@ function formatSize(bytes: number): string {
 export default function RootFilesView() {
   const [files, setFiles] = useState<RootFile[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.rootFiles().then(data => {
       setFiles(data)
-      if (data.length > 0) setSelected(data[0].path)
+      setSelected(prev => prev ?? (data.length > 0 ? data[0].path : null))
     })
-  }, [])
+  }, [version])
 
   return (
     <div className="flex h-full">
