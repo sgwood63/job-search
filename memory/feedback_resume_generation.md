@@ -18,9 +18,9 @@ Always follow this two-phase sequence. Never generate the PDF before the user ha
 2. Assess vs. JD — score coverage per workflow.md Verification Gate rules (MET / PARTIAL / GAP per requirement)
 3. Produce Recruiter & ATS Appeal Analysis (see section below)
 4. Write the full Resume Evaluation Report (coverage table + recruiter/ATS analysis) to the `## Resume Evaluation Report` section of `notes.md`
-5. **Present the full resume markdown AND full evaluation report inline in the conversation** — not a condensed summary, the complete text of both — then stop and wait for user review
+5. **Present the full evaluation report inline in the conversation** — then stop and wait for user review. Do NOT reproduce the resume markdown in the conversation; it is already in the `.md` file.
 
-**Why:** A condensed summary in the conversation is not a substitute for the full resume text. The user cannot review or edit what they cannot read. The notes.md write is the archive copy; the inline presentation is the review step. Both are required. (Learned: Nash resume 2026-05-13 — only a summary was shown, full resume text was not presented.)
+**Why:** The resume markdown is in the file — the user can open it directly. What must appear in the conversation is the evaluation report (coverage table + recruiter/ATS analysis) so the user can review quality and decide whether to approve the PDF. A condensed summary is not sufficient — the full evaluation must appear in the chat. (Learned: Nash resume 2026-05-13 — condensed summary was shown instead of full evaluation report.)
 
 **Phase 2 — Finalize (after user approves):**
 6. Apply any edits from user review
