@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ensure PDF iframes fill their container */
+iframe {
+  border: none;
+}
+
+/* Markdown editor full-height override */
+.w-md-editor {
+  height: 100% !important;
+}
+.w-md-editor-content {
+  height: calc(100% - 40px) !important;
+}
