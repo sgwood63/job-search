@@ -1,7 +1,10 @@
 ---
-name: Resume generation rules
-description: All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming, recruiter/ATS appeal analysis
-type: feedback
+name: resume-generation-rules
+description: "All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming, recruiter/ATS appeal analysis"
+metadata: 
+  node_type: memory
+  type: feedback
+  originSessionId: f0ba43a8-e226-4f7c-ac90-cb4c37b4ea99
 ---
 
 ## Resume Generation — Two-Phase Flow
@@ -15,7 +18,9 @@ Always follow this two-phase sequence. Never generate the PDF before the user ha
 2. Assess vs. JD — score coverage per workflow.md Verification Gate rules (MET / PARTIAL / GAP per requirement)
 3. Produce Recruiter & ATS Appeal Analysis (see section below)
 4. Write the full Resume Evaluation Report (coverage table + recruiter/ATS analysis) to the `## Resume Evaluation Report` section of `notes.md`
-5. Present the `.md` file and evaluation to the user for review — stop here and wait
+5. **Present the full resume markdown AND full evaluation report inline in the conversation** — not a condensed summary, the complete text of both — then stop and wait for user review
+
+**Why:** A condensed summary in the conversation is not a substitute for the full resume text. The user cannot review or edit what they cannot read. The notes.md write is the archive copy; the inline presentation is the review step. Both are required. (Learned: Nash resume 2026-05-13 — only a summary was shown, full resume text was not presented.)
 
 **Phase 2 — Finalize (after user approves):**
 6. Apply any edits from user review
