@@ -504,9 +504,11 @@ def fetch(url: str, md_out: str | None = None) -> None:
         body = page.inner_text("body") or ""
 
         if md_out:
-            Path(md_out).write_text(
-                f"# {title}\n\nSource: {final_url}\n\n{body}", encoding="utf-8"
-            )
+            content = f"# {title}\n\nSource: {final_url}\n\n{body}"
+            if md_out == "-":
+                print(content)
+            else:
+                Path(md_out).write_text(content, encoding="utf-8")
 
         ctx.close()
         browser.close()

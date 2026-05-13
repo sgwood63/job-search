@@ -147,6 +147,7 @@ Commands are defined as Markdown files in `$APP_DIR/.claude/commands/`. Claude C
 | `commands/apply.md` | `/apply` |
 | `commands/interview.md` | `/interview` |
 | `commands/memory.md` | `/memory` |
+| `commands/ingest.md` | `/ingest` |
 
 **To add a command:** Create a new `.md` file in `.claude/commands/`. The file's content is the instruction Claude receives when the command is invoked. Takes effect at the next session — no restart needed.
 
@@ -172,6 +173,10 @@ Runs `scripts/sync-memory.sh` after every Claude response. The script:
 1. Checks for uncommitted changes in `$APP_DIR/memory/`
 2. If any exist, commits them with an auto-generated message
 3. Copies all `memory/*.md` files to `~/.claude/projects/.../memory/` so the live session picks them up on the next message
+
+### PostToolUse — write summary
+
+Runs `scripts/summarize-write.sh` after every `Write` tool call. Outputs a one-line impact summary for significant file writes (e.g., resume written, notes updated). Suppresses output for routine or system files.
 
 To add or modify hooks, edit the `hooks` section in `.claude/settings.json` (requires `DEV_MODE=true`).
 
@@ -242,6 +247,7 @@ Process rules live in three locations with different scopes:
 - `0` — success
 - `1` — navigation error → ask user to paste JD text
 - `2` — auth required or expired → show user the `--setup` command from stderr
+- `3` — job posting closed or no longer available → skip; folder not created
 
 **Auth setup for login-walled sites:**
 
@@ -262,7 +268,7 @@ Auth is saved to `$APPLICANT_DIR/.auth/<domain>.json`. Re-run `--setup` or `--im
 "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --import linkedin.com
 ```
 
-**Save full page text as markdown alongside the processed job-description.md:**
+**Save full page text as markdown to a file:**
 
 ```bash
 "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
@@ -337,6 +343,9 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `APPLICANT_NAME` | `setup.sh` | Used by `check-md-hygiene.sh` for name-leak detection |
 | `PLAYWRIGHT_PYTHON` | `setup.sh` | Python interpreter with Playwright installed |
 | `DEV_MODE` | Manual | `"true"` to allow APP_DIR writes; `"false"` to block |
+| `SEARCHAPI_KEY` | Manual | SearchAPI key required for `/ingest` |
+| `SEARCH_TARGET_FITS` | Manual | Target fit count per `/ingest` run (default 10) |
+| `SEARCH_BATCH_SIZE` | Manual | Max new jobs per API call in `/ingest` (default 10) |
 
 **`.claude/settings.json`**:
 

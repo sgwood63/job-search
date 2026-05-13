@@ -1,8 +1,10 @@
 Search Google Jobs for a profile and save fit jobs as application stubs for review.
 
 USAGE
-    /ingest                   — list available profiles and prompt for selection
-    /ingest <profile-slug>    — search that profile (e.g. /ingest presales-se)
+    /ingest                              — list available profiles and prompt for selection
+    /ingest <profile-slug>               — search that profile (e.g. /ingest presales-se)
+    /ingest <profile-slug> --fits N      — override SEARCH_TARGET_FITS for this run
+    /ingest <profile-slug> --batch N     — override SEARCH_BATCH_SIZE for this run
 
 Available profile slugs: presales-se, ai-governance-se, post-sales-se, ai-transformation-consultant, technical-enablement
 
@@ -12,6 +14,7 @@ EXECUTION STEPS — run in order without asking for confirmation
 
 **Step 1 — Load context**
 - Read `$APP_DIR/.env`, resolve `$APP_DIR`, `$APPLICANT_DIR`, `SEARCHAPI_KEY`, `SEARCH_TARGET_FITS` (default 10), `SEARCH_BATCH_SIZE` (default 10)
+- Parse invocation arguments: if `--fits N` was provided, override `SEARCH_TARGET_FITS` with N; if `--batch N` was provided, override `SEARCH_BATCH_SIZE` with N
 - Read `$APPLICANT_DIR/applicant.md` for location/comp hard-stops
 - Read `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`; confirm the profile exists and has at least one search query row in the `## Search Queries` table
 - Extract ALL rows for this profile from the `## Search Queries` table into an ordered list `sub_queries`. Each row has the same profile slug in the left column and a backtick-quoted query string in the right column. There will be 2–3 rows per profile.
@@ -41,7 +44,7 @@ Iterate over each entry in `sub_queries`. For each `current_query`:
 
   3b-i. Run the search script:
   ```bash
-  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<current_query>" --batch-out "$batch_file" [--page-token <token>]
+  "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<current_query>" --batch-out "$batch_file" [--page-token <token>] [--batch-size <SEARCH_BATCH_SIZE> if overridden]
   ```
   Parse stdout as JSON. On exit code 1, report the error and stop.
 
@@ -111,7 +114,7 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     - If `candidate_urls` is empty: set `fetch_result = "no_url"`, `full_jd_content = null` — skip to writing files
   - For each `url` in `candidate_urls` (in order):
     ```bash
-    "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>" --md-out
+    "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out - "<url>"
     ```
     - Exit code 0: `fetch_result = "success"`, `full_jd_content = stdout`, `fetch_url = url` — stop iterating
     - Exit code 2: `fetch_result = "auth_required"` — continue to next url

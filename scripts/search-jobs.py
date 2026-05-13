@@ -168,11 +168,12 @@ def main():
     parser.add_argument("--query", default=None, help="Override search query (skips table lookup)")
     parser.add_argument("--dry-run", action="store_true", help="Print params, skip API call")
     parser.add_argument("--batch-out", default=None, metavar="FILE", help="Append new jobs as NDJSON to FILE; omit new_jobs from stdout")
+    parser.add_argument("--batch-size", default=None, type=int, metavar="N", help="Max new jobs to return (overrides SEARCH_BATCH_SIZE env var)")
     args = parser.parse_args()
 
     applicant_dir = Path(get_env("APPLICANT_DIR"))
     api_key = get_env("SEARCHAPI_KEY")
-    batch_size = int(os.environ.get("SEARCH_BATCH_SIZE", "10"))
+    batch_size = args.batch_size if args.batch_size is not None else int(os.environ.get("SEARCH_BATCH_SIZE", "10"))
 
     profiles_dir = applicant_dir / "profiles"
     quick_ref = profiles_dir / "PROFILES-QUICK-REFERENCE.md"

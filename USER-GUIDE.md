@@ -90,13 +90,24 @@ This searches Google Jobs using the role-title queries defined for that profile 
 
 **Requires:** `SEARCHAPI_KEY` set in `.env`. Add your SearchAPI key to that file before running. If the key is missing, the command will tell you and stop.
 
+**Environment variables (all in `.env`):**
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `SEARCHAPI_KEY` | Yes | — | SearchAPI authentication key |
+| `SEARCH_TARGET_FITS` | No | 10 | Target number of fit jobs per run |
+| `SEARCH_BATCH_SIZE` | No | 10 | Max new jobs returned per API call |
+
 **When to run:** Every few days per profile. The command deduplicates against jobs already seen so re-running is safe.
 
 **After ingestion:** Review the stubs in your applications folder. For any job you want to pursue, open the folder and say "generate a resume for [company]" — this kicks off the standard resume workflow at Step 2 below.
 
-**Example:**
+**Examples:**
 ```
 /ingest presales-se
+/ingest presales-se --fits 5
+/ingest presales-se --batch 20
+/ingest presales-se --fits 5 --batch 20
 ```
 
 If you leave out the profile name, the command lists available profiles and asks you to choose.
@@ -325,16 +336,25 @@ To reload context mid-conversation (for example, after a status change):
 
 ## Command Quick Reference
 
-| Command | What it does | When to use |
-|---------|-------------|-------------|
-| `/context` | Loads your full job search state | Automatic when you start a conversation; use manually to refresh |
-| `/status` | Pipeline snapshot with overdue follow-ups | Weekly check-in |
-| `/ingest [profile]` | Search Google Jobs via SearchAPI; save fit jobs for review | Proactive job discovery, ~every 3 days per profile |
-| `/audit [folder]` | Confirms an application is complete and ready to submit | Before submitting |
-| `/apply "Co" "Role" "date" [url?]` | Records a submission and sets a follow-up reminder | Right after you submit |
-| `/interview [company] [stage]` | Interview brief: talking points, questions, positioning | Night before any call |
-| `/memory` | List or read saved process rules | When you want to see what's been remembered |
-| `/setup [phase]` | First-time onboarding (phases A–E) | Once, at the very beginning |
+| Command | Parameters | What it does | When to use |
+|---------|-----------|--------------|-------------|
+| `/context` | none | Loads your full job search state | Automatic at conversation start; use manually to refresh |
+| `/status` | none | Pipeline snapshot with overdue follow-ups | Weekly check-in |
+| `/ingest [profile] [--fits N] [--batch N]` | `profile` — profile slug (optional; lists profiles if omitted); `--fits N` — override target fit count; `--batch N` — override batch size | Search Google Jobs; screen and save fit jobs | Proactive discovery, ~every 3 days per profile |
+| `/audit [folder]` | `folder` — application folder name (optional; lists folders if omitted) | Confirms application is complete and ready to submit | Before submitting |
+| `/apply "Co" "Role" "date" [url?]` | `company`, `role`, `date` (YYYY-MM-DD) required; `url` — portal URL, optional | Records submission; sets 14-day follow-up reminder | Right after submitting |
+| `/interview [company] [stage?]` | `company` — partial name match required; `stage` — interview stage (optional; inferred from notes if omitted) | Interview brief: talking points, questions, positioning | Night before any call |
+| `/memory [subcommand]` | No arg: list all; `read [name]`; `update`; `add [topic]` | Navigate and update the memory system | See subcommands below |
+| `/setup [phase?]` | `phase` — A–E (optional; auto-detects current state if omitted) | First-time onboarding; phases A–E | Once at the beginning; `/setup A` to restart |
+
+### /memory subcommands
+
+| Form | What it does |
+|------|--------------|
+| `/memory` | List all memory files (process rules and applicant memory) |
+| `/memory read [name]` | Read a specific memory file — partial name match OK (e.g., `/memory read domain` finds `feedback_domain_connection.md`) |
+| `/memory update` | End-of-session sync: Claude asks what changed, updates the relevant file(s), and runs the memory sync script |
+| `/memory add [topic]` | Create a new memory note — saved as `feedback_[topic].md` or `project_[topic].md` and added to the index |
 
 ---
 
