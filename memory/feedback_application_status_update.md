@@ -22,3 +22,11 @@ If multiple folders exist for the same role (duplicate ingest runs), update **al
 **Why:** Tracker-only updates were made twice (PunttAI 2026-05-02, Adobe 3D 2026-05-13) before the user had to prompt. The application folder is a self-contained record — its notes.md must stay in sync with the tracker.
 
 **How to apply:** Treat every status change as a two-target update. Never update just the tracker.
+
+---
+
+**Submission recording in notes.md:** Do NOT create a `## Submission Log` section. Update the `**Status:**` header field and append a one-line entry to the existing `## Application Log` section. The Application Log is the single chronological record of all events for a folder.
+
+Format: `- [date] — Applied via [portal name] ([URL]); resume: [filename].pdf`
+
+**Why:** A `## Submission Log` section was incorrectly created during the Pylon application (2026-05-13) because apply.md instructed it. This created a duplicate logging structure. The Application Log already serves this purpose — adding a second section is redundant and inconsistent.
