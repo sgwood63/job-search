@@ -145,3 +145,43 @@ Apply these to every resume without being asked. None involve changing facts.
 **Why:** These are universally standard resume practices for experienced candidates. No content is removed or misrepresented — only age-calculable dates are withheld from sections where dates add no reader value.
 
 **How to apply:** Check every resume draft before presenting. Flag if any of the three conditions are violated.
+
+## Summary Section — Never Use "## Summary" Heading
+
+Do NOT use `## Summary` as a section heading. It renders as "SUMMARY" (uppercase via CSS) — generic and tells the recruiter nothing.
+
+**Replace with:** A bold positioning title on its own line between the `---` divider and the summary paragraph. The title should reflect the target role and qualifier.
+
+**Format:**
+```markdown
+---
+
+**[Role Title] — [Domain/Qualifier]**
+
+[Summary paragraph...]
+```
+
+**Example:** `**Implementation Engineer — Enterprise SaaS**`
+
+**Why:** A role title immediately anchors the reader to who they're reading about. A bold line (not an h2 heading) avoids the uppercase CSS treatment and renders as a clean subtitle. ATS parsers still read the summary paragraph text normally.
+
+**How to apply:** Every new resume draft. Never use `## Summary`, `## Professional Summary`, or any h2 heading above the opening paragraph.
+
+## Earlier Career — Apply the Same Relevance Filter as the Main Experience Section
+
+Do NOT include all Earlier Career entries by default. Apply the same role/domain relevance judgment used to select bullets in the main Experience section.
+
+Include an Earlier Career entry only if it is relevant to the specific role being applied for or to the target company's domain.
+
+**Canonical entries and their relevance signals:**
+
+| Entry | Relevant to... |
+|---|---|
+| Jaspersoft — Founding Architect | Tech companies, SaaS implementation/onboarding roles, analytics/BI domain, open source ecosystem |
+| GalenWorks — Co-founder | Healthcare domain, clinical analytics, startup-stage companies |
+| Consulting (Fireman's Fund, Irish Life) | FS/insurance domain, enterprise architecture roles, regulated industry roles |
+| Financial Services Technology (Morgan Stanley, Macquarie) | Financial services domain, investment banking/capital markets |
+
+**Why:** Including irrelevant Earlier Career entries adds wrong-domain signal and dilutes the resume's positioning — the same reason you would omit an irrelevant main Experience bullet.
+
+**How to apply:** For each application, evaluate each Earlier Career entry against the target role and company domain. Include only entries that reinforce the positioning. Omit entries that add noise or wrong-domain signal.
