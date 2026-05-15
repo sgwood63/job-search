@@ -52,6 +52,11 @@ export type Profile = {
   files: FileNode[]
 }
 
+export type ProfilesData = {
+  profiles: Profile[]
+  reference_files: FileNode[]
+}
+
 export type RootFile = {
   name: string
   path: string
@@ -80,7 +85,7 @@ export const api = {
   rootFiles: (): Promise<RootFile[]> =>
     apiFetch(`${BASE}/root-files`).then(r => r.json()),
 
-  profiles: (): Promise<Profile[]> =>
+  profiles: (): Promise<ProfilesData> =>
     apiFetch(`${BASE}/profiles`).then(r => r.json()),
 
   applications: (): Promise<Array<{ name: string; path: string }>> =>

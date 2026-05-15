@@ -107,16 +107,26 @@ def get_root_files():
 def get_profiles():
     profiles_dir = APPLICANT_DIR / 'profiles'
     if not profiles_dir.exists():
-        return []
+        return {'profiles': [], 'reference_files': []}
     profiles = []
+    reference_files = []
     for entry in sorted(profiles_dir.iterdir(), key=lambda e: e.name):
-        if entry.is_dir() and not entry.name.startswith('.') and entry.name != 'search-results':
+        if entry.name.startswith('.') or entry.name == 'search-results':
+            continue
+        if entry.is_dir():
             profiles.append({
                 'name': entry.name,
                 'path': f'profiles/{entry.name}',
                 'files': build_tree(entry, APPLICANT_DIR),
             })
-    return profiles
+        elif entry.is_file():
+            reference_files.append({
+                'name': entry.name,
+                'path': f'profiles/{entry.name}',
+                'type': 'file',
+                'size': entry.stat().st_size,
+            })
+    return {'profiles': profiles, 'reference_files': reference_files}
 
 
 @app.get('/api/applications')
