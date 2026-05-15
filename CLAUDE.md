@@ -86,6 +86,8 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 ## Resume Generation
 
+**Before generating any resume:** Read `$APP_DIR/memory/feedback_resume_generation.md` in full and apply all rules.
+
 **Length:** 2 pages for enterprise/consulting/governance roles; 1 page for networking, warm referrals, recruiter outreach, pre-sales SE, pivots.
 
 **After generating:** Produce a detailed evaluation report scoring each JD requirement vs. resume coverage, flagging gaps and competitive positioning.
