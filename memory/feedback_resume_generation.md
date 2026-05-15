@@ -46,7 +46,22 @@ Use `, ` (comma-space) as the delimiter between skills in the Capabilities secti
 
 **Why:** ATS parsers may treat an entire `·`-delimited line as a single token, failing to extract individual skills. Commas are universally recognized as list separators.
 
-**How to apply:** Content library files (`*-CONTENT.md`) use `·` as their source format — that is fine for source material. When writing the output resume, convert every ` · ` to `, ` in the Capabilities section. Do not change bullets inside role entries.
+**How to apply:** Content library files (`*-CONTENT.md`) store capabilities as bullet lists under bold category headings:
+
+```
+**Category Name:**
+- Item one
+- Item two
+- Item three
+```
+
+When writing the output resume, flatten each category's bullet list to a single comma-separated inline line:
+
+```
+**Category Name:** Item one, Item two, Item three
+```
+
+Do not change bullets inside role entries.
 
 ## Phone Number Format
 
