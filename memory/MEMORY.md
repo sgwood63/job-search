@@ -115,7 +115,8 @@ At the start of every session, automatically run the `/context` workflow before 
 When the user states a clear preference, fact, constraint, or rule about themselves, immediately update the relevant file in `$APPLICANT_DIR/memory/`. No sync step needed — `$APPLICANT_DIR` is plain local storage.
 
 ## Session End (DO WITHOUT BEING ASKED)
-- See `feedback_session_end.md` — always update `$APPLICANT_DIR/memory/applicant-setup-status.md` and ensure `.claude/settings.json` statusLine is current before ending any session
+- See `feedback_session_end.md` — always update `$APPLICANT_DIR/memory/applicant-setup-status.md` before ending any session
+- statusLine is now dynamic (`scripts/status-line.sh` reads the tracker live) — no manual update needed
 - `$APP_DIR/memory/` sync is now automatic (Stop hook runs `scripts/sync-memory.sh` after every response) — no manual git step needed
 
 ## Profiles Directory — Source of Truth
@@ -149,6 +150,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
 - See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
 - See `feedback_model_selection.md` — when to use Opus vs Sonnet; no auto-routing in Claude Code; opusplan alias for planning sessions
+- See `feedback_interview_preparation.md` — required reading before interview prep output; output structure; no-fabrication rule; warm connection protocol
 
 ## Memory Sync Rule
 `$APP_DIR/memory/` is the source of truth. After every Claude response, `scripts/sync-memory.sh` runs automatically via a Stop hook: commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed during sessions.
@@ -165,7 +167,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in re
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-05-05
+**Last Updated**: 2026-05-15
 
 ---
 

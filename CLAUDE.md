@@ -119,10 +119,10 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 At the start of every session, automatically run the `/context` workflow before responding to any user request:
 1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, and `DEV_MODE`
 2. Read `$APPLICANT_DIR/applicant.md`
-3. Read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items
+3. Read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count (unreviewed SearchAPI stubs that have accumulated)
 4. Read `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 5. Read `$APP_DIR/memory/MEMORY.md`
-6. Output a session briefing (10 lines max): active pipeline count, past-due follow-ups, most urgent next action, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
+6. Output a session briefing (10 lines max): active pipeline count, pending-review count, past-due follow-ups, most urgent next action, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
 
 **DEV_MODE=false (default):** State: "DEV_MODE=false — APP_DIR is read-only." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules.
 
@@ -136,7 +136,7 @@ When the user states a clear new preference, fact, constraint, or rule about the
 
 **Session end — do without being asked:**
 1. Update `$APPLICANT_DIR/memory/applicant-setup-status.md` with current search state
-2. Ensure `$APP_DIR/.claude/settings.json` statusLine reflects current phase
+2. The statusLine is now dynamic (`scripts/status-line.sh` reads the tracker live) — no manual update needed unless the script itself is broken
 
 Note: `$APP_DIR/memory/` sync (git commit + copy to `~/.claude/`) is now handled automatically by a Stop hook after every response — no manual step needed.
 
