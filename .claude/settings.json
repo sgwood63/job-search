@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/sync-memory.sh'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/generate-setup-status.sh'"
           }
         ]
       }
