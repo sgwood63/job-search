@@ -1,26 +1,17 @@
 ---
 name: Session end checklist — memory and status
-description: At the end of every session, update applicant memory and ensure the status line is set up
+description: At the end of every session, update applicant memory; applicant-setup-status.md is now auto-generated
 type: feedback
 ---
 
-At the end of every session, always do two things without being asked:
+At the end of every session, do the following without being asked:
 
-1. **Update applicant memory** — `$APPLICANT_DIR/memory/applicant-setup-status.md` should reflect the current state of the job search: completed phases, active profiles, hot opportunities, key findings, unverified items. This file is what future sessions use to orient quickly.
+1. **`applicant-setup-status.md` is auto-generated — no action needed.** The Stop hook runs `scripts/generate-setup-status.sh` after every Claude response, writing a fresh snapshot of active profiles, pipeline counts, high-priority items, and unverified tags from authoritative sources. Claude does not write this file.
 
-2. **Set up the status line** — `$APP_DIR/.claude/settings.json` should have a `statusLine` command that shows the current job search status. If it's already set and accurate, leave it. If the status has changed (new phase complete, applications submitted, etc.), update it to reflect the current state.
+2. **Update permanent memory in real-time, not at session end.** When a notable discovery occurs during the session (new constraint, changed preference, key finding about a company, resolved unverified item), update the appropriate file immediately (`$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`, a profile content file, etc.). Do not batch these to session end.
 
-**Why:** The user explicitly asked for both of these to be done routinely. These are the two session-end hygiene tasks that carry context forward without relying on conversation history.
+3. **The statusLine is dynamic** — `scripts/status-line.sh` reads `application-tracker.md` live every 5 minutes. No manual update needed unless the script itself is broken.
 
-**How to apply:** Before ending any session (when wrapping up work or when the user signals the session is complete), check both of these and update them. Do not wait to be asked.
+**Why:** Session-end write steps are unreliable — sessions end abruptly, Claude forgets. Anything that can be generated from authoritative sources should be; anything Claude should record should be written immediately when discovered, not as a ritual.
 
-**StatusLine format:**
-```
-"Job Search 2026 | [N] active | [Status hint] | [next action]"
-```
-Examples:
-- `"Job Search 2026 | 4 active | 2 interviews pending | Drop a JD to screen"`
-- `"Job Search 2026 | 2 active | Setup complete | Drop a JD to screen"`
-- `"Job Search 2026 | 0 active | Profile refresh in progress | Drop a JD to screen"`
-
-Update the `command` field in `.claude/settings.json` `statusLine` to reflect the current state using this format. The command runs as a shell `printf` so keep it a single-line string with no embedded newlines.
+**How to apply:** The only active session-end obligation is: if something important was learned this session and hasn't yet been recorded in permanent memory (`APPLICANT-MEMORY.md`, a profile file, etc.), write it now before the session ends.
