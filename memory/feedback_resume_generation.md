@@ -1,7 +1,10 @@
 ---
-name: Resume generation rules
-description: All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming, recruiter/ATS appeal analysis
-type: feedback
+name: resume-generation-rules
+description: "All resume generation rules — review before PDF, role ordering, section headings, Education/Certs, no unverified percentages, Playwright PDF, cover letters, file naming, recruiter/ATS appeal analysis"
+metadata: 
+  node_type: memory
+  type: feedback
+  originSessionId: f0ba43a8-e226-4f7c-ac90-cb4c37b4ea99
 ---
 
 ## Resume Generation — Two-Phase Flow
@@ -15,7 +18,9 @@ Always follow this two-phase sequence. Never generate the PDF before the user ha
 2. Assess vs. JD — score coverage per workflow.md Verification Gate rules (MET / PARTIAL / GAP per requirement)
 3. Produce Recruiter & ATS Appeal Analysis (see section below)
 4. Write the full Resume Evaluation Report (coverage table + recruiter/ATS analysis) to the `## Resume Evaluation Report` section of `notes.md`
-5. Present the `.md` file and evaluation to the user for review — stop here and wait
+5. **Present the full evaluation report inline in the conversation** — then stop and wait for user review. Do NOT reproduce the resume markdown in the conversation; it is already in the `.md` file.
+
+**Why:** The resume markdown is in the file — the user can open it directly. What must appear in the conversation is the evaluation report (coverage table + recruiter/ATS analysis) so the user can review quality and decide whether to approve the PDF. A condensed summary is not sufficient — the full evaluation must appear in the chat. (Learned: Nash resume 2026-05-13 — condensed summary was shown instead of full evaluation report.)
 
 **Phase 2 — Finalize (after user approves):**
 6. Apply any edits from user review
@@ -41,7 +46,22 @@ Use `, ` (comma-space) as the delimiter between skills in the Capabilities secti
 
 **Why:** ATS parsers may treat an entire `·`-delimited line as a single token, failing to extract individual skills. Commas are universally recognized as list separators.
 
-**How to apply:** Content library files (`*-CONTENT.md`) use `·` as their source format — that is fine for source material. When writing the output resume, convert every ` · ` to `, ` in the Capabilities section. Do not change bullets inside role entries.
+**How to apply:** Content library files (`*-CONTENT.md`) store capabilities as bullet lists under bold category headings:
+
+```
+**Category Name:**
+- Item one
+- Item two
+- Item three
+```
+
+When writing the output resume, flatten each category's bullet list to a single comma-separated inline line:
+
+```
+**Category Name:** Item one, Item two, Item three
+```
+
+Do not change bullets inside role entries.
 
 ## Phone Number Format
 
@@ -140,3 +160,43 @@ Apply these to every resume without being asked. None involve changing facts.
 **Why:** These are universally standard resume practices for experienced candidates. No content is removed or misrepresented — only age-calculable dates are withheld from sections where dates add no reader value.
 
 **How to apply:** Check every resume draft before presenting. Flag if any of the three conditions are violated.
+
+## Summary Section — Never Use "## Summary" Heading
+
+Do NOT use `## Summary` as a section heading. It renders as "SUMMARY" (uppercase via CSS) — generic and tells the recruiter nothing.
+
+**Replace with:** A bold positioning title on its own line between the `---` divider and the summary paragraph. The title should reflect the target role and qualifier.
+
+**Format:**
+```markdown
+---
+
+**[Role Title] — [Domain/Qualifier]**
+
+[Summary paragraph...]
+```
+
+**Example:** `**Implementation Engineer — Enterprise SaaS**`
+
+**Why:** A role title immediately anchors the reader to who they're reading about. A bold line (not an h2 heading) avoids the uppercase CSS treatment and renders as a clean subtitle. ATS parsers still read the summary paragraph text normally.
+
+**How to apply:** Every new resume draft. Never use `## Summary`, `## Professional Summary`, or any h2 heading above the opening paragraph.
+
+## Earlier Career — Apply the Same Relevance Filter as the Main Experience Section
+
+Do NOT include all Earlier Career entries by default. Apply the same role/domain relevance judgment used to select bullets in the main Experience section.
+
+Include an Earlier Career entry only if it is relevant to the specific role being applied for or to the target company's domain.
+
+**Canonical entries and their relevance signals:**
+
+| Entry | Relevant to... |
+|---|---|
+| Jaspersoft — Founding Architect | Tech companies, SaaS implementation/onboarding roles, analytics/BI domain, open source ecosystem |
+| GalenWorks — Co-founder | Healthcare domain, clinical analytics, startup-stage companies |
+| Consulting (Fireman's Fund, Irish Life) | FS/insurance domain, enterprise architecture roles, regulated industry roles |
+| Financial Services Technology (Morgan Stanley, Macquarie) | Financial services domain, investment banking/capital markets |
+
+**Why:** Including irrelevant Earlier Career entries adds wrong-domain signal and dilutes the resume's positioning — the same reason you would omit an irrelevant main Experience bullet.
+
+**How to apply:** For each application, evaluate each Earlier Career entry against the target role and company domain. Include only entries that reinforce the positioning. Omit entries that add noise or wrong-domain signal.

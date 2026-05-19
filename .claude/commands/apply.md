@@ -10,8 +10,9 @@ Record an application submission atomically — updates both tracker and notes.m
    - Set Next Action to "Follow up [date + 14 days]"
    - Confirm Priority is set
 3. Update `$APPLICANT_DIR/applications/[folder]/notes.md`:
-   - Add a `## Submission Log` section immediately after the header block (before the Table of Contents)
-   - Record: date submitted, portal URL if provided, resume filename used
+   - Update the `**Status:**` line in the header block to `Applied [date]`
+   - Append to the existing `## Application Log` section:
+     `- [date] — Applied via [portal name] ([URL if provided]); resume: [filename].pdf`
 4. Report: "Applied to [Company] — [Role] on [date]. Tracker and notes.md updated. Follow up due [date+14]."
 
 If the company/role is ambiguous (multiple tracker entries), confirm which one before proceeding.

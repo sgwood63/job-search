@@ -1,8 +1,8 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "printf \"Job Search 2026 | Phase E pending | %s | Drop a JD to screen\" \"$(date '+%b %d')\"",
-    "refreshInterval": 3600
+    "command": "bash /Users/shermanwood/Documents/Job-Search-2026/scripts/status-line.sh",
+    "refreshInterval": 300
   },
   "hooks": {
     "PreToolUse": [
@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/sync-memory.sh'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/generate-setup-status.sh'"
           }
         ]
       }
