@@ -1,7 +1,33 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, TrackerRow, PhaseDRow, ClosedRow, TrackerData } from '../api'
 import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
+
+const CANONICAL_STATUSES = [
+  'Resume Ready',
+  'Applied',
+  'Pending Review',
+  'Screening',
+  'Awaiting',
+  'Hard Stop',
+  'Comp Hard Stop',
+  'Rejected',
+  'Not Pursuing',
+  'No Fit',
+]
+
+function rowMatchesQuery(row: Record<string, string | null>, query: string): boolean {
+  if (!query) return true
+  const q = query.toLowerCase()
+  return Object.values(row).some(v => v && v.toLowerCase().includes(q))
+}
+
+function matchesPriority(priority: string, filter: string): boolean {
+  if (filter === 'all') return true
+  if (filter === 'star') return priority.includes('⭐')
+  if (filter === 'high') return priority.toLowerCase() === 'high'
+  return true
+}
 
 function statusClass(status: string): string {
   const s = status.toLowerCase()
@@ -26,24 +52,32 @@ function priorityBadge(priority: string) {
   return <span className="text-gray-400">—</span>
 }
 
-function Section({ title, count, children, defaultOpen = true }: {
+function Section({ title, count, total, children, defaultOpen = true, forceOpen = false }: {
   title: string
   count: number
+  total: number
   children: React.ReactNode
   defaultOpen?: boolean
+  forceOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const isOpen = forceOpen || open
+  const isFiltered = count !== total
   return (
     <div className="mb-6">
       <button
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-2 mb-2 text-left w-full"
       >
-        <span className="text-xs text-gray-400">{open ? '▾' : '▸'}</span>
+        <span className="text-xs text-gray-400">{isOpen ? '▾' : '▸'}</span>
         <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
-        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{count}</span>
+        {isFiltered ? (
+          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{count} / {total}</span>
+        ) : (
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{count}</span>
+        )}
       </button>
-      {open && children}
+      {isOpen && children}
     </div>
   )
 }
@@ -187,12 +221,57 @@ export default function TrackerView() {
   const [data, setData] = useState<TrackerData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [profileFilter, setProfileFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
 
   useRefreshOnFocus(() => setVersion(v => v + 1))
 
   useEffect(() => {
     api.tracker().then(setData).catch(e => setError(String(e)))
   }, [version])
+
+  const { filteredActive, filteredPhaseD, filteredClosed, profiles, isFiltering } = useMemo(() => {
+    if (!data) return { filteredActive: [], filteredPhaseD: [], filteredClosed: [], profiles: [], isFiltering: false }
+
+    const allProfiles = Array.from(new Set([
+      ...data.active.map(r => r.profile),
+      ...data.phase_d.map(r => r.profile),
+      ...data.closed.map(r => r.profile),
+    ].filter(Boolean))).sort()
+
+    const isFiltering = !!(query || statusFilter !== 'all' || profileFilter !== 'all' || priorityFilter !== 'all')
+
+    const filterActive = (rows: TrackerRow[]) => rows.filter(r => {
+      if (!rowMatchesQuery(r as unknown as Record<string, string | null>, query)) return false
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (profileFilter !== 'all' && r.profile !== profileFilter) return false
+      if (!matchesPriority(r.priority, priorityFilter)) return false
+      return true
+    })
+
+    const filterPhaseD = (rows: PhaseDRow[]) => rows.filter(r => {
+      if (!rowMatchesQuery(r as unknown as Record<string, string | null>, query)) return false
+      if (profileFilter !== 'all' && r.profile !== profileFilter) return false
+      return true
+    })
+
+    const filterClosed = (rows: ClosedRow[]) => rows.filter(r => {
+      if (!rowMatchesQuery(r as unknown as Record<string, string | null>, query)) return false
+      if (statusFilter !== 'all' && r.outcome !== statusFilter) return false
+      if (profileFilter !== 'all' && r.profile !== profileFilter) return false
+      return true
+    })
+
+    return {
+      filteredActive: filterActive(data.active),
+      filteredPhaseD: filterPhaseD(data.phase_d),
+      filteredClosed: filterClosed(data.closed),
+      profiles: allProfiles,
+      isFiltering,
+    }
+  }, [data, query, statusFilter, profileFilter, priorityFilter])
 
   if (error) {
     return (
@@ -208,14 +287,65 @@ export default function TrackerView() {
 
   return (
     <div className="h-full overflow-auto p-6">
-      <Section title="Active Applications" count={data.active.length}>
-        <ActiveTable rows={data.active} />
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="relative flex-1 min-w-48">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search all columns…"
+            className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+            >✕</button>
+          )}
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+        >
+          <option value="all">Status: All</option>
+          {CANONICAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={profileFilter}
+          onChange={e => setProfileFilter(e.target.value)}
+          className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+        >
+          <option value="all">Profile: All</option>
+          {profiles.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select
+          value={priorityFilter}
+          onChange={e => setPriorityFilter(e.target.value)}
+          className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+        >
+          <option value="all">Priority: All</option>
+          <option value="star">⭐ only</option>
+          <option value="high">High only</option>
+        </select>
+        {isFiltering && (
+          <button
+            onClick={() => { setQuery(''); setStatusFilter('all'); setProfileFilter('all'); setPriorityFilter('all') }}
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >Clear filters</button>
+        )}
+      </div>
+
+      <Section title="Active Applications" count={filteredActive.length} total={data.active.length} forceOpen={isFiltering}>
+        <ActiveTable rows={filteredActive} />
       </Section>
-      <Section title="Phase D Samples" count={data.phase_d.length} defaultOpen={false}>
-        <PhaseDTable rows={data.phase_d} />
+      <Section title="Phase D Samples" count={filteredPhaseD.length} total={data.phase_d.length} defaultOpen={false} forceOpen={isFiltering}>
+        <PhaseDTable rows={filteredPhaseD} />
       </Section>
-      <Section title="Closed / Rejected" count={data.closed.length} defaultOpen={false}>
-        <ClosedTable rows={data.closed} />
+      <Section title="Closed / Rejected" count={filteredClosed.length} total={data.closed.length} defaultOpen={false} forceOpen={isFiltering}>
+        <ClosedTable rows={filteredClosed} />
       </Section>
     </div>
   )

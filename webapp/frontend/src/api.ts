@@ -125,4 +125,21 @@ export const api = {
       body: form,
     }).then(r => r.json())
   },
+
+  docs: (): Promise<Array<{ name: string; size: number }>> =>
+    apiFetch(`${BASE}/docs`).then(r => r.json()),
+
+  docFileUrl: (name: string) => `${BASE}/docs/file?name=${encodeURIComponent(name)}`,
+
+  docFile: (name: string): Promise<string> =>
+    apiFetch(`${BASE}/docs/file?name=${encodeURIComponent(name)}`).then(r => r.text()),
+
+  setupStatus: (): Promise<{ phases: Record<string, boolean>; raw: string }> =>
+    apiFetch(`${BASE}/setup-status`).then(r => r.json()),
+
+  terminalWsUrl: () => {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = location.hostname === 'localhost' ? 'localhost:8000' : location.host
+    return `${proto}//${host}/ws/terminal`
+  },
 }
