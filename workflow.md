@@ -124,6 +124,10 @@ Spaces → underscores, special characters removed. Example: "GRC Solutions Engi
 
 ### Generation Steps
 
+**Phase 0 — Role Classification check (before drafting):**
+
+Verify every role to be included in this resume has a `**Role Classification:**` field in `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. If any included role is missing one, stop and ask the user to provide it before generating any bullets. Do not infer role type from activity descriptions — the user must confirm.
+
 **Phase 1 — Draft, evaluate, and present for review (stop here, wait for approval):**
 
 1. Write the resume `.md` file

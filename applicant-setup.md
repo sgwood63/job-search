@@ -236,6 +236,7 @@ For any maintenance update, consult this registry to determine which files are a
 - Contains: Verified fact sheet for every role: exact title, company, dates, contributions, technologies, verified metrics
 - Read by: Sonnet during resume generation (no-fabrication source of truth)
 - Update when: New role added; fact corrected; metric verified or resolved from [UNVERIFIED]; tenure explanation confirmed
+- **Role Classification required:** Every new role entry must include a `**Role Classification:**` field — the structural type of the role and any explicit NOT statements for role types that the activity profile could be confused with (e.g., "BD/market development, NOT presales SE"). Claude must ask the user to confirm this field; do not infer it from activity descriptions alone.
 
 **`profiles/role-achievements.md`**
 - Contains: Full achievement set scored per profile (Power + profile relevance)
