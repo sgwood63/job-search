@@ -31,9 +31,17 @@ cd webapp/frontend
 npm install
 ```
 
-## Launch — Development
+## Launch — Recommended (single script)
 
-Run both servers simultaneously (two terminals from the repo root):
+```bash
+bash webapp/start.sh
+```
+
+Opens at [http://localhost:8000](http://localhost:8000). Runs the backend and `vite build --watch` together — the dist rebuilds automatically whenever you edit frontend files, so styles and new components stay current without a manual rebuild.
+
+## Launch — Development (Vite dev server)
+
+Use this if you want instant HMR (hot-module reload) instead of rebuild-on-save:
 
 **Terminal 1 — Backend (port 8000):**
 ```bash
@@ -49,9 +57,9 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
-## Launch — Production
+## Launch — One-time build only
 
-Build the frontend once, then run only the backend (it serves the built assets):
+Build once, then run only the backend (no auto-rebuild):
 
 ```bash
 cd webapp/frontend
