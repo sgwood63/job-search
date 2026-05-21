@@ -109,7 +109,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 3. Can they succeed in our environment?
 
 ## Session Start (DO WITHOUT BEING ASKED)
-At the start of every session, automatically run the `/context` workflow before responding: read `.env`, `applicant.md`, `application-tracker.md`, `APPLICANT-MEMORY.md`, and `MEMORY.md`, then output a 10-line session briefing ending with "Context loaded. Ready." Skip if the user's first message makes clear context is already loaded.
+At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, `applicant.md`, `application-tracker.md`, `APPLICANT-MEMORY.md`, and `MEMORY.md`, then output a 10-line session briefing ending with "Context loaded. Ready." Skip if the user's first message makes clear context is already loaded.
 
 ## Applicant Memory — Update in Real-Time (DO WITHOUT BEING ASKED)
 When the user states a clear preference, fact, constraint, or rule about themselves, immediately update the relevant file in `$APPLICANT_DIR/memory/`. No sync step needed — `$APPLICANT_DIR` is plain local storage.
