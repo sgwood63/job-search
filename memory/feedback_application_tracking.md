@@ -20,9 +20,13 @@ When the user references a company that is not already part of the current conve
 
 **Any status change** (submission, withdrawal, rejection, closing, deciding not to pursue) must update **both**:
 
-1. `$APPLICANT_DIR/application-tracker.md` — update the row (status, next action, or move to Closed section)
-2. `$APPLICANT_DIR/applications/<folder>/notes.md` — update the header **Status** field to match
+1. `$APPLICANT_DIR/application-tracker.md` — update the row: set `Status` (canonical) and `Status Detail` (free text), update Next Action, or move to Closed section
+2. `$APPLICANT_DIR/applications/<folder>/notes.md` — update the header `**Status:**` and `**Status Detail:**` fields to match
 
-**Why:** Updating only the tracker leaves notes.md out of sync. First happened with PunttAI (2026-05-02, only tracker updated on submission). Extended 2026-05-09: same issue applies to withdrawals and "not pursuing" decisions — user had to prompt for notes.md update.
+**Status field schema (both files must use this):**
+- `**Status:**` — one of 7 canonical values: `Pending Review` | `Resume Ready` | `Applied` | `Screening` | `Interviewing` | `Offer` | `Closed`
+- `**Status Detail:**` — free text: dates, flags, recruiter names, context (e.g., `Applied 2026-05-15 via Greenhouse`, `Not pursuing — comp hard stop ($90K)`)
 
-**How to apply:** Treat every status change as a two-file operation. No exceptions for "quick" closes or decisions not to apply.
+**Why:** Updating only the tracker leaves notes.md out of sync. First happened with PunttAI (2026-05-02, only tracker updated on submission). Extended 2026-05-09: same issue applies to withdrawals and "not pursuing" decisions. Canonical status added 2026-05-21 to make filtering deterministic.
+
+**How to apply:** Treat every status change as a two-file operation. Set both `Status` (canonical) and `Status Detail` (free text) in both files. No exceptions for "quick" closes or decisions not to apply.
