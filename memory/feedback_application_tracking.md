@@ -24,7 +24,7 @@ When the user references a company that is not already part of the current conve
 2. `$APPLICANT_DIR/applications/<folder>/notes.md` — update the header `**Status:**` and `**Status Detail:**` fields to match
 
 **Status field schema (both files must use this):**
-- `**Status:**` — one of 7 canonical values: `Pending Review` | `Resume Ready` | `Applied` | `Screening` | `Interviewing` | `Offer` | `Closed`
+- `**Status:**` — one of 9 canonical values: `Pending Review` | `Resume Ready` | `Applied` | `Interview scheduled` | `Interviewed` | `Exercise/Test requested` | `Exercise/Test` | `Offer` | `Closed`
 - `**Status Detail:**` — free text: dates, flags, recruiter names, context (e.g., `Applied 2026-05-15 via Greenhouse`, `Not pursuing — comp hard stop ($90K)`)
 
 **Why:** Updating only the tracker leaves notes.md out of sync. First happened with PunttAI (2026-05-02, only tracker updated on submission). Extended 2026-05-09: same issue applies to withdrawals and "not pursuing" decisions. Canonical status added 2026-05-21 to make filtering deterministic.
