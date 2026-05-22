@@ -3,6 +3,14 @@
 ## Contents
 
 - [What This System Does](#what-this-system-does)
+- [Using the Web App](#using-the-web-app)
+  - [Starting the Web App](#starting-the-web-app)
+  - [Tracker View](#tracker-view)
+  - [Application View](#application-view)
+  - [Base Docs View](#base-docs-view)
+  - [Setup Guide](#setup-guide)
+  - [Command Launcher and Terminal](#command-launcher-and-terminal)
+  - [Documentation View](#documentation-view)
 - [Getting Set Up](#getting-set-up)
   - [Prerequisites](#prerequisites)
   - [Step 1 — Run the setup script](#step-1--run-the-setup-script)
@@ -34,6 +42,87 @@ One setup: you describe your background, experience, and goals once. After that,
 - **Full-cycle tracking** — application status, interview prep, post-call notes, and debrief feedback all live in one place; corrections and new experience automatically carry forward into future applications.
 
 **How to start:** Open Claude Code, navigate to this folder, and start typing. Context loads automatically at the beginning of every conversation.
+
+---
+
+## Using the Web App
+
+The web app gives you a browser-based interface to manage your job search: view your pipeline, browse and edit application files, upload documents, run assistant commands, and work through the guided setup — all without leaving the browser.
+
+### Starting the Web App
+
+From the repo root:
+
+```bash
+cd webapp
+./start.sh
+```
+
+Or start the two processes separately:
+
+```bash
+# Terminal 1 — backend
+cd webapp/backend && python3 -m uvicorn main:app --port 8000 --reload
+
+# Terminal 2 — frontend
+cd webapp/frontend && npm run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Tracker View
+
+The default view (`/`) shows your full application pipeline in three collapsible sections: Active Applications, Phase D Samples, and Closed / Rejected.
+
+**Search and filter:** A filter bar at the top of the page lets you search across all columns (company, role, status, notes) or narrow by Status, Profile, or Priority. Section counts update to show `filtered / total` when a filter is active.
+
+**Navigating to an application:** Click any row with an application folder linked to open that application's detail view. Rows without a linked folder show a faint dot indicator.
+
+### Application View
+
+Clicking a tracker row opens the application folder view (`/applications/<folder>`). The header shows all tracker data for that application — company, role, profile, status, next action, and priority — refreshed from the live tracker on every visit.
+
+The left sidebar lists all files in the folder. Click a file to view it in the main panel:
+- **Markdown files** render with full formatting; click **Edit** to edit inline
+- **PDF files** render in an iframe; click **Download** to save
+- **Images** display inline
+- **Other file types** show a download link
+
+**Uploading files:** Drag and drop files anywhere onto the right panel, or click the **Upload** button in the sidebar footer. Both methods upload to the current application folder and immediately show the new file in the tree.
+
+### Base Docs View
+
+The Base Docs view (`/base-docs`) shows your source materials: resume PDFs, LinkedIn extracts, and any other reference documents you've uploaded. Use this view to add new source files before or during setup.
+
+**Uploading:** Drag files onto the right panel, or use the **Upload to base docs** button in the sidebar.
+
+### Setup Guide
+
+The Setup Guide (`/setup`) provides a chat interface for working through the five setup phases (A through E). Each phase is a focused, short session with Claude — clicking a phase button starts a fresh conversation scoped to that phase, keeping context small and responses accurate.
+
+| Phase | What it covers |
+|---|---|
+| A — Documents | Provide your resume PDF, LinkedIn URL, existing cover letters |
+| B — Interview | Location, compensation floor, deal-breakers, travel limits |
+| C — Profiles | Build your experience fact sheet and content libraries |
+| D — Career Advice | Role scoring, market demand analysis, target recommendations |
+| E — Validation | Test profiles against sample JDs, generate a sample resume |
+
+Phase completion status is shown in the sidebar under **Setup Status**. Once all phases are complete, the status bar shows all five as done.
+
+### Command Launcher and Terminal
+
+A collapsible panel at the bottom of every page gives you two tabs:
+
+**Commands tab (default):** Run preset assistant commands with one click, or type any allowed command in the input box. Output streams in real time from a fresh Claude Code session. Supported commands: `/status`, `/memory read`, `/ingest <profile>`, `/audit <folder>`, `/apply "Co" "Role" "date"`.
+
+**Terminal tab:** A full interactive terminal connected to a shell session opened in the repo directory. Type `claude` to start an interactive Claude Code session, run scripts, or use any shell command. Each terminal connection is a fresh session — close and reopen the tab to start a new one.
+
+Drag the top border of the panel to resize it. Click the **▾/▴** button to collapse or expand.
+
+### Documentation View
+
+The Docs view (`/docs`) renders the system documentation in the browser — the same files in this repo (README, Quick Start, User Guide, Developer Guide, Workflow, Setup Guide). Use it as a quick reference while working in the app without switching to a file editor.
 
 ---
 

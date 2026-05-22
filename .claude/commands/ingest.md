@@ -132,7 +132,8 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     **Profile match:** <profile_slug> (score: N/10)
     **Source:** SearchAPI / Google Jobs + full JD fetch
     **Apply link:** <fetch_url>
-    **Status:** Found via search — pending review
+    **Status:** Pending Review
+    **Status Detail:** Found via search — pending review[<⚠️ flag(s) if any — e.g., ⚠️ 40% travel; ⚠️ staffing firm>]
     **Date found:** YYYY-MM-DD
 
     ---
@@ -218,7 +219,8 @@ For each **fit** job (profile_score >= 7) in Haiku results:
 
     **Profile match:** <profile_slug> (score: N/10)
     **Source:** SearchAPI / Google Jobs
-    **Status:** Found via search — pending review
+    **Status:** Pending Review
+    **Status Detail:** Found via search — pending review[<⚠️ flag(s) if any>]
     **Date found:** YYYY-MM-DD
     **Apply link:** <apply_link or "Not available — check company careers page directly">
 
@@ -322,7 +324,8 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     ```markdown
     # Notes — <Company> — <Role Title>
 
-    **Status:** Found via search — pending review
+    **Status:** Pending Review
+    **Status Detail:** Found via search — pending review[<⚠️ flag(s) if any>]
     **Source:** SearchAPI / Google Jobs — /ingest <profile>
     **Date found:** YYYY-MM-DD
     **Profile match:** <profile_slug> (score: N/10)
@@ -342,7 +345,7 @@ For each **fit** job (profile_score >= 7) in Haiku results:
     - [ ] Generate resume if proceeding
     ```
   - Update `$APPLICANT_DIR/application-tracker.md`: add row to Active Applications table:
-    `| YYYY-MM-DD | <Company> | <Role> | <profile_slug> | SearchAPI | Found via search — pending review | Review JD | — |`
+    `| YYYY-MM-DD | <Company> | <Role> | <profile_slug> | SearchAPI | Pending Review | Found via search — pending review[<⚠️ flag(s) if any>] | Review JD | — |`
   - Set `folder` on this job's entry in `screened_jobs` to `applications/<folder>/`
   - Output one line: `+ <Company> — <Role> → applications/<folder>/`
   - Increment `fit_count`
