@@ -25,7 +25,10 @@ function statusClass(status: string): string {
   if (s.includes('pending review')) return 'bg-yellow-100 text-yellow-700'
   if (s.includes('rejected') || s.includes('not pursuing') || s.includes('no fit')) return 'bg-gray-100 text-gray-500'
   if (s.includes('resume ready')) return 'bg-blue-100 text-blue-700'
-  if (s.includes('screening') || s.includes('jobot')) return 'bg-purple-100 text-purple-700'
+  if (s.includes('interview scheduled')) return 'bg-purple-100 text-purple-700'
+  if (s.includes('interviewed')) return 'bg-indigo-100 text-indigo-700'
+  if (s.includes('exercise/test requested')) return 'bg-orange-100 text-orange-700'
+  if (s.includes('exercise/test')) return 'bg-amber-100 text-amber-700'
   if (s.includes('awaiting')) return 'bg-teal-100 text-teal-700'
   return 'bg-gray-100 text-gray-600'
 }

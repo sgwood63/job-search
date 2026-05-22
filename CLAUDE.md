@@ -116,7 +116,7 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 
 **Session start — DO NOT ASK, JUST DO:**
 
-At the start of every session, automatically run the `/context` workflow before responding to any user request:
+At the start of every session, automatically run the `/context` workflow once before responding to the first user request:
 1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, and `DEV_MODE`
 2. Read `$APPLICANT_DIR/applicant.md`
 3. Read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count (unreviewed SearchAPI stubs that have accumulated)

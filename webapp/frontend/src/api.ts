@@ -15,6 +15,7 @@ export type TrackerRow = {
   profile: string
   source: string
   status: string
+  status_detail: string
   next_action: string
   priority: string
   folder: string | null
@@ -34,7 +35,8 @@ export type ClosedRow = {
   date: string
   company: string
   role: string
-  outcome: string
+  status: string
+  status_detail: string
   notes: string
   profile: string
   folder: string | null

@@ -2,8 +2,13 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import threading
+import time
+import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -28,8 +33,8 @@ if not APP_DIR.exists():
     APP_DIR = Path(__file__).parent.parent.parent
 
 DOCS_ALLOWLIST = {
-    'README.md', 'QUICK-START.md', 'USER-GUIDE.md',
-    'DEVELOPER-README.md', 'workflow.md', 'applicant-setup.md',
+    'README.md', 'USER-GUIDE.md', 'QUICK-START.md',
+    'applicant-setup.md', 'DEVELOPER-README.md',
 }
 
 UPLOAD_ROOTS = [
@@ -275,200 +280,272 @@ def get_setup_status():
     return {'phases': phases, 'raw': content[:800]}
 
 
-# ── Command launcher (SSE) ────────────────────────────────────────────────────
+# ── Session management (subprocess --print mode) ──────────────────────────────
 
-ALLOWED_COMMAND_PREFIXES = ['/status', '/ingest', '/audit', '/apply', '/memory']
+@dataclass
+class ChatSession:
+    id: str
+    label: str
+    created_at: float
+    status: str              # 'executing' | 'waiting' | 'closed'
+    mode: str                # 'execute' | 'plan'
+    claude_session_id: Optional[str] = None   # Claude Code session ID for --resume
+    messages_structured: list = field(default_factory=list)  # {role, content, ts}
+    clients: list = field(default_factory=list)  # connected WebSockets
+    current_proc: Any = None  # subprocess.Popen, if a message is running
 
 
-class CommandBody(BaseModel):
-    command: str
+_sessions: dict[str, ChatSession] = {}
+_sessions_lock = threading.Lock()
+_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
-@app.post('/api/run-command')
-async def run_command(body: CommandBody):
-    cmd = body.command.strip()
-    if not any(cmd.startswith(p) for p in ALLOWED_COMMAND_PREFIXES):
-        raise HTTPException(status_code=400, detail='Command not in allowlist')
+@app.on_event('startup')
+async def _on_startup() -> None:
+    global _loop
+    _loop = asyncio.get_running_loop()
 
-    async def generate():
+
+def _broadcast(session: ChatSession, msg: dict) -> None:
+    if _loop is None:
+        return
+    text = json.dumps(msg)
+    dead = []
+    for ws in list(session.clients):
         try:
-            proc = await asyncio.create_subprocess_exec(
-                'claude', '--print', cmd,
-                cwd=str(APP_DIR),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env={**os.environ, 'TERM': 'dumb', 'NO_COLOR': '1'},
-            )
-            async for raw in proc.stdout:
-                line = raw.decode('utf-8', errors='replace')
-                yield f'data: {json.dumps(line)}\n\n'
-            await proc.wait()
-        except Exception as e:
-            yield f'data: {json.dumps(f"Error: {e}")}\n\n'
-        yield 'data: [DONE]\n\n'
-
-    return StreamingResponse(
-        generate(),
-        media_type='text/event-stream',
-        headers={'X-Accel-Buffering': 'no'},
-    )
+            asyncio.run_coroutine_threadsafe(ws.send_text(text), _loop)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in session.clients:
+            session.clients.remove(ws)
 
 
-# ── WebSocket terminal (PTY) ──────────────────────────────────────────────────
+def _run_message_thread(session: ChatSession, message: str) -> None:
+    """Spawn `claude -p --output-format stream-json` for one user message, stream chunks."""
+    cmd = [
+        'claude', '-p',
+        '--dangerously-skip-permissions',
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--include-partial-messages',
+    ]
+    if session.mode == 'plan':
+        cmd += ['--permission-mode', 'plan']
+    if session.claude_session_id:
+        cmd += ['--resume', session.claude_session_id]
 
-@app.websocket('/ws/terminal')
-async def terminal_ws(websocket: WebSocket):
-    await websocket.accept()
-    import ptyprocess
-
-    shell = os.environ.get('SHELL', '/bin/zsh')
-    proc = ptyprocess.PtyProcessUnicode.spawn(
-        [shell],
-        cwd=str(APP_DIR),
-        dimensions=(24, 220),
-    )
-
-    loop = asyncio.get_event_loop()
-    stop_event = asyncio.Event()
-
-    def _read_pty():
-        while not stop_event.is_set():
-            try:
-                data = proc.read(1024)
-                asyncio.run_coroutine_threadsafe(
-                    websocket.send_text(data),
-                    loop,
-                )
-            except Exception:
-                break
-        asyncio.run_coroutine_threadsafe(stop_event.set(), loop)
-
-    thread = threading.Thread(target=_read_pty, daemon=True)
-    thread.start()
+    session.status = 'executing'
+    _broadcast(session, {'type': 'status', 'status': 'executing'})
 
     try:
-        while not stop_event.is_set():
-            try:
-                raw = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
-                # Check if it's a control message (resize) or terminal input
-                try:
-                    msg = json.loads(raw)
-                    if msg.get('type') == 'resize':
-                        cols = int(msg.get('cols', 220))
-                        rows = int(msg.get('rows', 24))
-                        proc.setwinsize(rows, cols)
-                except (json.JSONDecodeError, ValueError):
-                    proc.write(raw)
-            except asyncio.TimeoutError:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            cwd=str(APP_DIR),
+            env={**os.environ},
+        )
+        session.current_proc = proc
+        proc.stdin.write(message)
+        proc.stdin.close()
+
+        prev_text = ''
+        last_saved_text = None
+
+        for raw_line in proc.stdout:
+            raw_line = raw_line.strip()
+            if not raw_line:
                 continue
-            except WebSocketDisconnect:
-                break
-    finally:
-        stop_event.set()
+            try:
+                obj = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+
+            # Capture Claude Code session ID for --resume on subsequent messages
+            if 'session_id' in obj and not session.claude_session_id:
+                session.claude_session_id = obj['session_id']
+
+            if obj.get('type') == 'assistant':
+                content_blocks = obj.get('message', {}).get('content', [])
+                current_text = ''.join(
+                    b.get('text', '') for b in content_blocks if b.get('type') == 'text'
+                )
+                if not current_text:
+                    continue
+                if current_text.startswith(prev_text):
+                    # Continuing the current segment
+                    delta = current_text[len(prev_text):]
+                    if delta:
+                        _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
+                    prev_text = current_text
+                else:
+                    # New segment started — finalize the previous one
+                    if prev_text and prev_text != last_saved_text:
+                        seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
+                        session.messages_structured.append(seg)
+                        _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
+                        last_saved_text = prev_text
+                    # Begin streaming the new segment from scratch
+                    prev_text = current_text
+                    _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
+
+        proc.wait()
+    except Exception:
+        pass
+
+    # Save and broadcast the final segment
+    if prev_text and prev_text != last_saved_text:
+        seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
+        session.messages_structured.append(seg)
+        _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
+
+    if session.status != 'closed':
+        session.status = 'waiting'
+        _broadcast(session, {'type': 'status', 'status': 'waiting'})
+    session.current_proc = None
+
+
+class CreateSessionBody(BaseModel):
+    label: str = ''
+    mode: str = 'execute'
+
+
+@app.post('/api/sessions')
+async def create_session(body: CreateSessionBody):
+    sid = str(uuid.uuid4())[:8]
+    label = body.label or f'Session {len(_sessions) + 1}'
+    session = ChatSession(
+        id=sid,
+        label=label,
+        created_at=time.time(),
+        status='waiting',
+        mode=body.mode,
+    )
+    with _sessions_lock:
+        _sessions[sid] = session
+    return {'id': sid, 'label': label, 'status': 'waiting', 'mode': session.mode}
+
+
+@app.get('/api/sessions')
+async def list_sessions():
+    with _sessions_lock:
+        items = list(_sessions.values())
+    items.sort(key=lambda s: s.created_at, reverse=True)
+    return [
+        {
+            'id': s.id,
+            'label': s.label,
+            'created_at': s.created_at,
+            'status': s.status,
+            'mode': s.mode,
+            'preview': s.messages_structured[-1]['content'][:120] if s.messages_structured else '',
+        }
+        for s in items
+    ]
+
+
+@app.get('/api/sessions/{session_id}')
+async def get_session(session_id: str):
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found')
+    return {
+        'id': session.id,
+        'label': session.label,
+        'created_at': session.created_at,
+        'status': session.status,
+        'mode': session.mode,
+        'claude_session_id': session.claude_session_id,
+        'messages': session.messages_structured,
+    }
+
+
+@app.get('/api/sessions/{session_id}/debug')
+async def debug_session(session_id: str):
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found')
+    return {
+        'id': session.id,
+        'status': session.status,
+        'claude_session_id': session.claude_session_id,
+        'proc_alive': session.current_proc is not None and session.current_proc.poll() is None,
+        'message_count': len(session.messages_structured),
+        'last_message': session.messages_structured[-1] if session.messages_structured else None,
+    }
+
+
+class CloseSessionBody(BaseModel):
+    pass
+
+
+@app.post('/api/sessions/{session_id}/close')
+async def close_session(session_id: str):
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found')
+    session.status = 'closed'
+    if session.current_proc:
         try:
-            proc.terminate(force=True)
+            session.current_proc.terminate()
         except Exception:
             pass
+        session.current_proc = None
+    _broadcast(session, {'type': 'status', 'status': 'closed'})
+    return {'ok': True}
 
 
-# ── Setup chat (Claude API, SSE) ──────────────────────────────────────────────
+@app.websocket('/ws/session/{session_id}')
+async def session_ws(websocket: WebSocket, session_id: str):
+    session = _sessions.get(session_id)
+    if not session:
+        await websocket.close(code=4004)
+        return
+    await websocket.accept()
+    session.clients.append(websocket)
 
-class ChatMessage(BaseModel):
-    role: str
-    content: str
+    # Replay conversation history on reconnect
+    if session.messages_structured:
+        await websocket.send_text(json.dumps({'type': 'replay', 'messages': session.messages_structured}))
+    # Sessions are always immediately ready (no init phase)
+    await websocket.send_text(json.dumps({'type': 'system', 'content': 'ready'}))
+    await websocket.send_text(json.dumps({'type': 'status', 'status': session.status}))
 
-
-class SetupChatBody(BaseModel):
-    phase: str
-    messages: list[ChatMessage]
-
-
-def _load_context_file(path: Path, label: str, max_chars: int = 4000) -> str:
-    if not path.exists():
-        return ''
-    text = path.read_text(encoding='utf-8')[:max_chars]
-    return f'\n\n--- {label} ---\n{text}'
-
-
-@app.post('/api/setup-chat')
-async def setup_chat(body: SetupChatBody):
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-
-    ctx = ''
-    ctx += _load_context_file(APP_DIR / 'CLAUDE.md', 'CLAUDE.md (system instructions)', 6000)
-    ctx += _load_context_file(APPLICANT_DIR / 'applicant.md', 'applicant.md', 3000)
-    ctx += _load_context_file(APPLICANT_DIR / 'memory' / 'APPLICANT-MEMORY.md', 'APPLICANT-MEMORY.md', 3000)
-    ctx += _load_context_file(APPLICANT_DIR / 'memory' / 'applicant-setup-status.md', 'applicant-setup-status.md', 2000)
-
-    system_text = (
-        'You are Claude Code, running the Job Search 2026 assistant. '
-        f'You are helping with Phase {body.phase} of the applicant setup workflow. '
-        'Keep your response focused on this phase only. '
-        'Be concise and guide the user step by step.\n\n'
-        f'Context loaded from the applicant directory:{ctx}'
-    )
-
-    if api_key:
-        # API key path: use Anthropic SDK with token-by-token streaming
-        import anthropic
-
-        messages = [{'role': m.role, 'content': m.content} for m in body.messages]
-        if not messages:
-            messages = [{'role': 'user', 'content': f'/setup {body.phase}'}]
-
-        client = anthropic.Anthropic(api_key=api_key)
-
-        async def generate_sdk():
+    try:
+        while True:
             try:
-                with client.messages.stream(
-                    model='claude-sonnet-4-6',
-                    max_tokens=2048,
-                    system=system_text,
-                    messages=messages,
-                ) as stream:
-                    for text in stream.text_stream:
-                        yield f'data: {json.dumps(text)}\n\n'
-            except Exception as e:
-                yield f'data: {json.dumps(f"Error: {e}")}\n\n'
-            yield 'data: [DONE]\n\n'
-
-        return StreamingResponse(
-            generate_sdk(),
-            media_type='text/event-stream',
-            headers={'X-Accel-Buffering': 'no'},
-        )
-
-    else:
-        # OAuth path: use claude CLI binary (same auth as /api/run-command)
-        msgs = body.messages or [type('M', (), {'role': 'user', 'content': f'/setup {body.phase}'})()]
-        conv_parts = [
-            ('User' if m.role == 'user' else 'Assistant') + ': ' + m.content
-            for m in msgs[:-1]
-        ]
-        prompt = ('\n'.join(conv_parts) + '\nUser: ' if conv_parts else '') + msgs[-1].content
-
-        async def generate_cli():
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                try:
+                    await websocket.send_text(json.dumps({'type': 'ping'}))
+                except Exception:
+                    break
+                continue
             try:
-                proc = await asyncio.create_subprocess_exec(
-                    'claude', '--print', prompt,
-                    '--append-system-prompt', system_text,
-                    cwd=str(APP_DIR),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env={**os.environ, 'TERM': 'dumb', 'NO_COLOR': '1'},
-                )
-                async for raw in proc.stdout:
-                    yield f'data: {json.dumps(raw.decode("utf-8", errors="replace"))}\n\n'
-                await proc.wait()
-            except Exception as e:
-                yield f'data: {json.dumps(f"Error: {e}")}\n\n'
-            yield 'data: [DONE]\n\n'
-
-        return StreamingResponse(
-            generate_cli(),
-            media_type='text/event-stream',
-            headers={'X-Accel-Buffering': 'no'},
-        )
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if msg.get('type') == 'input' and session.status != 'closed':
+                text = msg.get('data', '')
+                if text and session.status != 'executing':
+                    clean_text = text.strip()
+                    user_msg = {'role': 'user', 'content': clean_text, 'ts': time.time()}
+                    session.messages_structured.append(user_msg)
+                    _broadcast(session, {'type': 'user_message', 'content': clean_text})
+                    t = threading.Thread(
+                        target=_run_message_thread,
+                        args=(session, clean_text),
+                        daemon=True,
+                    )
+                    t.start()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in session.clients:
+            session.clients.remove(websocket)
 
 
 # ── Static frontend (production) ──────────────────────────────────────────────

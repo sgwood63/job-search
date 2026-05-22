@@ -14,9 +14,9 @@ This document describes the full automated pipeline that runs when a job descrip
 4. Exit code 3 (job closed): the posting is no longer available or the position has been filled.
    - Search `$APPLICANT_DIR/applications/` for an existing folder whose slug matches this company and role (fuzzy: lowercase folder name contains the company name and a fragment of the role title)
    - **If an existing application IS found:**
-     - Update `notes.md`: change the `**Status:**` line to `Closed — position no longer available (YYYY-MM-DD)`
+     - Update `notes.md`: set `**Status:**` to `Closed` and `**Status Detail:**` to `Closed — position no longer available (YYYY-MM-DD)`
      - Append to the `## Application Log` section: `YYYY-MM-DD — Position confirmed closed/no longer available via URL fetch`
-     - Update `application-tracker.md`: move the row from Active Applications to the Rejected/Closed section; set Status to "Position closed" and Date to today
+     - Update `application-tracker.md`: move the row from Active Applications to the Rejected/Closed section; set `Status` to `Closed` and `Status Detail` to `Position closed (YYYY-MM-DD)`; set Date to today
      - Inform the user: "This job posting is no longer available. Application [folder] status updated to Closed."
    - **If no existing application is found:**
      - Inform the user: "This job posting is no longer available — position appears closed or filled. No further processing."
@@ -52,8 +52,8 @@ Save the following:
 
 ## If NO FIT (stay in Haiku)
 
-- Create brief `notes.md` with no-fit reasoning
-- Update `$APPLICANT_DIR/application-tracker.md` (Rejected/Closed section)
+- Create brief `notes.md` with no-fit reasoning; header must include `**Status:** Closed` and `**Status Detail:** No fit — [reason]`
+- Update `$APPLICANT_DIR/application-tracker.md` (Closed/Rejected section); set `Status = Closed`, `Status Detail = No fit — [reason]`
 - Stop
 
 ---
@@ -63,8 +63,8 @@ Save the following:
 - Read `$APPLICANT_DIR/profiles/[matched-profile]/[matched-profile].md` and `-CONTENT.md`
 - Read `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
 - Generate tailored resume (see Resume Generation below)
-- Create detailed `notes.md` (see notes.md Structure below)
-- Update `$APPLICANT_DIR/application-tracker.md` (Active Applications)
+- Create detailed `notes.md` (see notes.md Structure below); header must include `**Status:** Resume Ready` and `**Status Detail:** Resume generated [YYYY-MM-DD] — not yet submitted`
+- Update `$APPLICANT_DIR/application-tracker.md` (Active Applications); set `Status = Resume Ready`, `Status Detail = Resume generated [YYYY-MM-DD] — not yet submitted`
 - Present for user review
 
 **After the user submits:** Run `/audit [folder-name]` to verify completeness, then `/apply "Company" "Role" "date"` to record the submission in both the tracker and notes.md atomically.
@@ -77,15 +77,29 @@ When regenerating `jd-*.md` and/or `job-description.md` for an existing applicat
 
 1. After writing the updated files, compare the new `job-description.md` fit assessment against the current `notes.md` **Status** line and the tracker row.
 2. If the new data reveals a status change — confirmed hard stop, closed posting, passed deadline, domain mismatch, or materially changed fit score — apply the two-file rule immediately:
-   - Update `notes.md`: change `**Status:**`, replace Next Steps with a Decision section explaining the reason
-   - Update `application-tracker.md`: update the Active row or move to Closed as appropriate
+   - Update `notes.md`: set `**Status:**` to the new canonical value and `**Status Detail:**` to the free-text reason; replace Next Steps with a Decision section explaining the reason
+   - Update `application-tracker.md`: update the `Status` and `Status Detail` columns on the Active row, or move to Closed as appropriate
 3. Do not close the regeneration task without checking for status drift. Regeneration without sync leaves notes.md and the tracker stale.
 
 ---
 
 ## notes.md Structure
 
-Every `notes.md` must include a **Table of Contents** immediately after the header block (title, date, status, profile, fit source URL).
+Every `notes.md` must include a **Table of Contents** immediately after the header block.
+
+### Header Block
+
+The header block (before the TOC) must include these fields in order:
+
+```
+**Status:** <canonical>          ← one of: Pending Review | Resume Ready | Applied | Interview scheduled | Interviewed | Exercise/Test requested | Exercise/Test | Offer | Closed
+**Status Detail:** <free text>   ← full context: dates, flags, recruiter names, etc.
+**Date:** YYYY-MM-DD
+**Profile:** <profile-name>
+**Source URL:** <url>            ← omit if no URL
+```
+
+Both `Status` and `Status Detail` must be kept in sync with the matching row in `application-tracker.md` at all times (two-file rule).
 
 ### Required Section Order
 

@@ -4,13 +4,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 
+const DOC_ORDER = ['README.md', 'USER-GUIDE.md', 'QUICK-START.md', 'applicant-setup.md', 'DEVELOPER-README.md']
+
 const DOC_LABELS: Record<string, string> = {
   'README.md': 'README',
-  'QUICK-START.md': 'Quick Start',
   'USER-GUIDE.md': 'User Guide',
+  'QUICK-START.md': 'Quick Start',
+  'applicant-setup.md': 'Applicant Setup Guide',
   'DEVELOPER-README.md': 'Developer Guide',
-  'workflow.md': 'Workflow',
-  'applicant-setup.md': 'Setup Guide',
 }
 
 function slugify(text: string): string {
@@ -50,33 +51,27 @@ function makeComponents(onDocLink?: (name: string) => void): Components {
       }
       return <a href={href}>{children}</a>
     },
-    h1({ children }) {
-      const id = slugify(String(children))
-      return <h1 id={id}>{children}</h1>
-    },
-    h2({ children }) {
-      const id = slugify(String(children))
-      return <h2 id={id}>{children}</h2>
-    },
-    h3({ children }) {
-      const id = slugify(String(children))
-      return <h3 id={id}>{children}</h3>
-    },
-    h4({ children }) {
-      const id = slugify(String(children))
-      return <h4 id={id}>{children}</h4>
-    },
+    h1({ children }) { return <h1 id={slugify(String(children))}>{children}</h1> },
+    h2({ children }) { return <h2 id={slugify(String(children))}>{children}</h2> },
+    h3({ children }) { return <h3 id={slugify(String(children))}>{children}</h3> },
+    h4({ children }) { return <h4 id={slugify(String(children))}>{children}</h4> },
   }
 }
 
-export default function DocsView() {
+export default function HelpView() {
   const [docs, setDocs] = useState<Array<{ name: string; size: number }>>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    api.docs().then(setDocs)
+    api.docs().then(list => {
+      const ordered = DOC_ORDER
+        .filter(name => list.some(d => d.name === name))
+        .map(name => list.find(d => d.name === name)!)
+      setDocs(ordered)
+      if (ordered.length > 0) setSelected(ordered[0].name)
+    })
   }, [])
 
   useEffect(() => {
@@ -96,7 +91,7 @@ export default function DocsView() {
     <div className="flex h-full">
       <aside className="w-56 flex-shrink-0 border-r bg-white flex flex-col overflow-hidden">
         <div className="px-3 pt-3 pb-1">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Documentation</h2>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Help</h2>
         </div>
         <div className="flex-1 overflow-auto py-1">
           {docs.length === 0 ? (

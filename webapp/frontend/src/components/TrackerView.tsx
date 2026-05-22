@@ -4,16 +4,15 @@ import { api, TrackerRow, PhaseDRow, ClosedRow, TrackerData } from '../api'
 import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
 const CANONICAL_STATUSES = [
+  'Pending Review',
   'Resume Ready',
   'Applied',
-  'Pending Review',
-  'Screening',
-  'Awaiting',
-  'Hard Stop',
-  'Comp Hard Stop',
-  'Rejected',
-  'Not Pursuing',
-  'No Fit',
+  'Interview scheduled',
+  'Interviewed',
+  'Exercise/Test requested',
+  'Exercise/Test',
+  'Offer',
+  'Closed',
 ]
 
 function rowMatchesQuery(row: Record<string, string | null>, query: string): boolean {
@@ -30,16 +29,18 @@ function matchesPriority(priority: string, filter: string): boolean {
 }
 
 function statusClass(status: string): string {
-  const s = status.toLowerCase()
-  if (s.includes('hard stop') || s.includes('comp hard stop')) return 'bg-red-100 text-red-700'
-  if (s.includes('applied')) return 'bg-green-100 text-green-700'
-  if (s.includes('pending review')) return 'bg-yellow-100 text-yellow-700'
-  if (s.includes('rejected') || s.includes('not pursuing') || s.includes('no fit'))
-    return 'bg-gray-100 text-gray-500'
-  if (s.includes('resume ready')) return 'bg-blue-100 text-blue-700'
-  if (s.includes('screening') || s.includes('jobot')) return 'bg-purple-100 text-purple-700'
-  if (s.includes('awaiting')) return 'bg-teal-100 text-teal-700'
-  return 'bg-gray-100 text-gray-600'
+  switch (status) {
+    case 'Pending Review': return 'bg-yellow-100 text-yellow-700'
+    case 'Resume Ready':   return 'bg-blue-100 text-blue-700'
+    case 'Applied':        return 'bg-green-100 text-green-700'
+    case 'Interview scheduled':     return 'bg-purple-100 text-purple-700'
+    case 'Interviewed':             return 'bg-indigo-100 text-indigo-700'
+    case 'Exercise/Test requested': return 'bg-orange-100 text-orange-700'
+    case 'Exercise/Test':           return 'bg-amber-100 text-amber-700'
+    case 'Offer':          return 'bg-emerald-100 text-emerald-700'
+    case 'Closed':         return 'bg-gray-100 text-gray-500'
+    default:               return 'bg-gray-100 text-gray-600'
+  }
 }
 
 function priorityBadge(priority: string) {
@@ -122,8 +123,13 @@ function ActiveTable({ rows }: { rows: TrackerRow[] }) {
               </td>
               <td className="px-3 py-2 max-w-xs">
                 <span className={`px-1.5 py-0.5 rounded text-xs ${statusClass(row.status)}`}>
-                  {row.status.length > 60 ? row.status.slice(0, 60) + '…' : row.status}
+                  {row.status}
                 </span>
+                {row.status_detail && (
+                  <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">
+                    {row.status_detail}
+                  </div>
+                )}
               </td>
               <td className="px-3 py-2 text-gray-500 max-w-xs">
                 <span className="line-clamp-2">{row.next_action}</span>
@@ -187,7 +193,7 @@ function ClosedTable({ rows }: { rows: ClosedRow[] }) {
             <th className="px-3 py-2 text-left font-medium">Date</th>
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-left font-medium">Role</th>
-            <th className="px-3 py-2 text-left font-medium">Outcome</th>
+            <th className="px-3 py-2 text-left font-medium">Status</th>
             <th className="px-3 py-2 text-left font-medium">Notes</th>
           </tr>
         </thead>
@@ -201,10 +207,15 @@ function ClosedTable({ rows }: { rows: ClosedRow[] }) {
               <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{row.date}</td>
               <td className="px-3 py-2 font-medium text-gray-700">{row.company}</td>
               <td className="px-3 py-2 text-gray-500">{row.role}</td>
-              <td className="px-3 py-2">
-                <span className={`px-1.5 py-0.5 rounded text-xs ${statusClass(row.outcome)}`}>
-                  {row.outcome}
+              <td className="px-3 py-2 max-w-xs">
+                <span className={`px-1.5 py-0.5 rounded text-xs ${statusClass(row.status)}`}>
+                  {row.status}
                 </span>
+                {row.status_detail && (
+                  <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">
+                    {row.status_detail}
+                  </div>
+                )}
               </td>
               <td className="px-3 py-2 text-gray-400 max-w-xs">
                 <span className="line-clamp-2">{row.notes}</span>
@@ -252,6 +263,7 @@ export default function TrackerView() {
     })
 
     const filterPhaseD = (rows: PhaseDRow[]) => rows.filter(r => {
+      if (statusFilter !== 'all') return false
       if (!rowMatchesQuery(r as unknown as Record<string, string | null>, query)) return false
       if (profileFilter !== 'all' && r.profile !== profileFilter) return false
       return true
@@ -259,7 +271,7 @@ export default function TrackerView() {
 
     const filterClosed = (rows: ClosedRow[]) => rows.filter(r => {
       if (!rowMatchesQuery(r as unknown as Record<string, string | null>, query)) return false
-      if (statusFilter !== 'all' && r.outcome !== statusFilter) return false
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
       if (profileFilter !== 'all' && r.profile !== profileFilter) return false
       return true
     })
