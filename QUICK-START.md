@@ -52,7 +52,7 @@ source .env
 
 ### Step 2: Run the applicant setup process
 
-Open a new Claude Code session and run `/setup` (or say "Start the applicant setup process"). Claude interviews you, builds your experience and profile files, gives career direction advice, and validates with sample JDs. The session ends with a sample resume per profile. Takes 1–2 sessions.
+Open a new Claude Code session and run `/setup` (or say "Start the applicant setup process"). Claude reads your uploaded documents and generates a pre-filled questionnaire you complete in your editor, then builds your experience and profile files, gives career direction advice, and validates with sample JDs. The session ends with a sample resume per profile. Takes 1–2 sessions.
 
 See [USER-GUIDE.md → Getting Set Up](USER-GUIDE.md) for what each phase covers and what to bring.
 

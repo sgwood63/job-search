@@ -34,9 +34,9 @@ function statusClass(status: string): string {
 }
 
 function TrackerHeader({ row }: { row: AnyRow }) {
-  const isActive = 'status' in row
-  const isClosed = 'outcome' in row && !('status' in row)
-  const statusValue = isActive ? (row as TrackerRow).status : isClosed ? (row as ClosedRow).outcome : (row as PhaseDRow).fit
+  const isActive = 'next_action' in row
+  const isPhaseD = 'fit' in row
+  const statusValue = isActive ? (row as TrackerRow).status : isPhaseD ? (row as PhaseDRow).fit : (row as ClosedRow).status
   const nextAction = isActive ? (row as TrackerRow).next_action : ''
   const priority = isActive ? (row as TrackerRow).priority : ''
 

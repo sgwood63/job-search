@@ -45,24 +45,23 @@ For JDs provided as URLs: use `fetch-jd.py --md-out` to save as a markdown file 
 
 ---
 
-## Phase B — Interview the Applicant
+## Phase B — Generate Applicant Questionnaire
 
-With the documents uploaded, run a guided interview. Cover all of the following:
+With base-documents uploaded, generate `$APPLICANT_DIR/applicant.md` as a structured questionnaire:
 
-### Demographics
-- Confirm details from base-documents
-- Get additional details that might affect employment prospects, like age, location, willingness to relocate
-- Suggest additional details that could be useful for resumes
+1. **Read all files in `$APPLICANT_DIR/base-documents/`** — extract contact info, location, domain expertise, and any facts about role history or preferences explicitly stated in the uploaded resumes or LinkedIn profile.
 
-### Job preferences
-- What are the must-haves vs. nice-to-haves in a role? What are the deal-breakers? (like compensation floor, travel limit, culture fit, company type, product type, industry)
-- What roles are they explicitly NOT interested in?
-- What goals do you have for the next position? (Increased salary? More seniority? Move to management? At minimum, match or exceed prior compensation?)
-- When do you want to start work? Now, when something becomes available
+2. **Generate `$APPLICANT_DIR/applicant.md`** using `$APP_DIR/templates/scaffold/applicant.md` as the template:
+   - Pre-populate all fields Claude can confidently extract from base-documents (name, contact info, clearly stated domains)
+   - Leave `[Fill in: ...]` markers on every required field that needs the applicant's direct input
+   - Leave `[Optional: ...]` markers on optional fields the applicant may skip
+   - Do not guess preferences — only fill in facts that are explicit in the documents
 
-### Visibility and search activity
-- What the applicant is currently doing to be found? (LinkedIn "Open to Work" settings)
-- Any existing recruiter relationships to activate?
+3. **Tell the applicant:** "I've generated `applicant.md` at `$APPLICANT_DIR/applicant.md` with what I could extract from your documents. Open the file, read each section, fill in your answers, and remove the markers as you go. Optional fields can be left blank or deleted. When you're done, reply **done** to continue to Phase C."
+
+4. **Wait for the done signal.** When the applicant replies "done" (or equivalent), read `$APPLICANT_DIR/applicant.md` and confirm: summarize what is filled in and flag any required `[Fill in: ...]` markers still present. Proceed to Phase C.
+
+**If Phase B is revisited** (applicant.md already exists): Display the current contents of `$APPLICANT_DIR/applicant.md` and ask whether they want to edit it or proceed to Phase C.
 
 ---
 

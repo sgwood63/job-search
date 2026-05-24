@@ -14,7 +14,7 @@ const topLinks = [
 const setupPhases = [
   { key: 'overview', label: 'Overview', icon: '🗺' },
   { key: 'A', label: 'Documents', icon: '📁' },
-  { key: 'B', label: 'Interview', icon: '🎤' },
+  { key: 'B', label: 'Questionnaire', icon: '📝' },
   { key: 'C', label: 'Profiles', icon: '👤' },
   { key: 'D', label: 'Career Advice', icon: '🎯' },
   { key: 'E', label: 'Validation', icon: '✅' },
