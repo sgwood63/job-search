@@ -392,6 +392,11 @@ _No fit jobs found._ (use this line only if fit_count == 0, instead of the table
 <one row per no-fit job from screened_jobs where fit=false>
 ```
 
+4b-ob1. **OB1 sync** (when open-brain MCP is connected):
+- Call `upload_file('search/<summary_filename>', <summary_content>, 'text/markdown')` to persist the summary to the object store.
+- Call `log_search_run(profile_id, query, pages_fetched, total_results, new_after_dedup, screened, fit_count, 'search/<summary_filename>')` to record this run in `js_search_runs`. Look up `profile_id` via `get_pipeline(status=null)` or assume NULL if the profile is not yet in `js_profiles`.
+- For each fit job: the stub folder and notes.md were already written — call `upload_file('applications/<folder>/notes.md', ...)` and `upload_file('applications/<folder>/job-description.md', ...)` if those files were written locally. Also call `upsert_company(name, slug)` and note the application row should be inserted via `update_application_status` or a direct SQL insert through the `get_pipeline` MCP context.
+
 4b. Append one row to `$APPLICANT_DIR/search/search-log.csv`. Create the file with header if it does not exist:
 ```
 date,time,profile,pages_fetched,total_results,new_after_dedup,screened,fit_count,query,summary_file

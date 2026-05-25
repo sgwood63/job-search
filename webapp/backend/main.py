@@ -1,5 +1,6 @@
 import asyncio
 import json
+import mimetypes
 import os
 import re
 import subprocess
@@ -9,38 +10,32 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+import asyncpg
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from tracker import parse_tracker
+from storage import make_store
 
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
 
-_raw = os.environ.get('APPLICANT_DIR', '')
-APPLICANT_DIR = Path(_raw.strip('"').strip("'"))
-if not APPLICANT_DIR.exists():
-    raise RuntimeError(f'APPLICANT_DIR does not exist: {APPLICANT_DIR}')
-
 _app_raw = os.environ.get('APP_DIR', '')
 APP_DIR = Path(_app_raw.strip('"').strip("'")) if _app_raw else Path(__file__).parent.parent.parent
-if not APP_DIR.exists():
-    APP_DIR = Path(__file__).parent.parent.parent
 
 DOCS_ALLOWLIST = {
     'README.md', 'USER-GUIDE.md', 'QUICK-START.md',
     'applicant-setup.md', 'DEVELOPER-README.md',
 }
 
-UPLOAD_ROOTS = [
-    APPLICANT_DIR / 'base-documents',
-    APPLICANT_DIR / 'applications',
-]
+ALLOWED_UPLOAD_PREFIXES = ('applications/', 'base-documents/')
+
+store = make_store()
+_pool: asyncpg.Pool | None = None
 
 app = FastAPI()
 
@@ -62,149 +57,221 @@ app.add_middleware(
 )
 
 
-def safe_resolve(relative_path: str) -> Path:
-    resolved = (APPLICANT_DIR / relative_path).resolve()
-    if not str(resolved).startswith(str(APPLICANT_DIR.resolve())):
-        raise HTTPException(status_code=403, detail='Path traversal not allowed')
-    return resolved
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _validate_key(key: str) -> str:
+    if '..' in key or key.startswith('/'):
+        raise HTTPException(status_code=403, detail='Invalid file key')
+    return key
 
 
-def assert_upload_allowed(target_dir: Path) -> None:
-    resolved = target_dir.resolve()
-    for root in UPLOAD_ROOTS:
-        if str(resolved).startswith(str(root.resolve())):
-            return
-    raise HTTPException(status_code=403, detail='Upload not allowed to this directory')
+def _validate_upload_key(key: str) -> str:
+    _validate_key(key)
+    if not any(key.startswith(p) for p in ALLOWED_UPLOAD_PREFIXES):
+        raise HTTPException(status_code=403, detail='Upload not allowed to this path')
+    return key
 
 
-def build_tree(directory: Path, base: Path) -> list:
-    items = []
-    try:
-        for entry in sorted(directory.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
-            if entry.name.startswith('.'):
-                continue
-            rel = str(entry.relative_to(base))
-            if entry.is_dir():
-                items.append({
-                    'name': entry.name,
-                    'path': rel,
-                    'type': 'directory',
-                    'children': build_tree(entry, base),
-                })
+def _rows_to_tree(rows: list[dict]) -> list[dict]:
+    """Convert a flat list of {key, content_type, size} into a nested tree."""
+    tree: dict = {}
+    for row in rows:
+        key: str = row['key'] if isinstance(row, dict) else row['storage_key']
+        parts = key.split('/')
+        node = tree
+        for part in parts[:-1]:
+            node = node.setdefault(part, {'_type': 'directory', '_children': {}})['_children']
+        node[parts[-1]] = {
+            'name': parts[-1],
+            'path': key,
+            'type': 'file',
+            'size': row.get('size') or row.get('file_size') or 0,
+        }
+
+    def _flatten(d: dict) -> list:
+        out = []
+        for name, val in sorted(d.items()):
+            if val.get('_type') == 'directory':
+                out.append({'name': name, 'path': name, 'type': 'directory',
+                            'children': _flatten(val['_children'])})
             else:
-                items.append({
-                    'name': entry.name,
-                    'path': rel,
-                    'type': 'file',
-                    'size': entry.stat().st_size,
-                })
-    except PermissionError:
-        pass
-    return items
+                out.append(val)
+        return out
 
+    return _flatten(tree)
+
+
+# ---------------------------------------------------------------------------
+# Tracker
+# ---------------------------------------------------------------------------
 
 @app.get('/api/tracker')
-def get_tracker():
-    tracker_path = APPLICANT_DIR / 'application-tracker.md'
-    if not tracker_path.exists():
-        raise HTTPException(status_code=404, detail='Tracker not found')
-    content = tracker_path.read_text(encoding='utf-8')
-    return parse_tracker(content, APPLICANT_DIR)
+async def get_tracker():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT a.id, a.role_title, a.status, a.status_detail,
+                   a.applied_date, a.follow_up_date, a.priority,
+                   a.source_url, a.folder_prefix, a.resume_key,
+                   COALESCE(c.name, a.company_name_raw) AS company,
+                   p.slug AS profile
+            FROM js_applications a
+            LEFT JOIN js_companies c ON a.company_id = c.id
+            LEFT JOIN js_profiles p ON a.profile_id = p.id
+            ORDER BY a.priority DESC, a.created_at DESC
+        """)
 
+    active, phase_d, closed = [], [], []
+    for r in rows:
+        entry = {
+            'id': str(r['id']),
+            'company': r['company'] or '',
+            'role': r['role_title'],
+            'profile': r['profile'] or '',
+            'status': r['status'],
+            'status_detail': r['status_detail'] or '',
+            'applied_date': r['applied_date'].isoformat() if r['applied_date'] else '',
+            'follow_up_date': r['follow_up_date'].isoformat() if r['follow_up_date'] else '',
+            'priority': r['priority'],
+            'source_url': r['source_url'] or '',
+            'folder': r['folder_prefix'] or '',
+        }
+        if r['status'] == 'closed':
+            closed.append(entry)
+        elif r['status'] in ('interview-scheduled', 'interviewed', 'exercise', 'offer'):
+            phase_d.append(entry)
+        else:
+            active.append(entry)
+    return {'active': active, 'phase_d': phase_d, 'closed': closed}
+
+
+# ---------------------------------------------------------------------------
+# File listing endpoints
+# ---------------------------------------------------------------------------
 
 @app.get('/api/root-files')
-def get_root_files():
-    excluded = {'application-tracker.md', '.env', '.auth', '.DS_Store'}
-    files = []
-    for entry in sorted(APPLICANT_DIR.iterdir(), key=lambda e: e.name.lower()):
-        if entry.is_file() and entry.name not in excluded and not entry.name.startswith('.'):
-            files.append({'name': entry.name, 'path': entry.name, 'size': entry.stat().st_size})
-    return files
+async def get_root_files():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT storage_key AS key, file_size AS size FROM js_files "
+            "WHERE storage_key NOT LIKE '%/%' ORDER BY storage_key"
+        )
+    return [{'name': r['key'], 'path': r['key'], 'size': r['size']} for r in rows]
 
 
 @app.get('/api/profiles')
-def get_profiles():
-    profiles_dir = APPLICANT_DIR / 'profiles'
-    if not profiles_dir.exists():
-        return {'profiles': [], 'reference_files': []}
+async def get_profiles():
+    async with _pool.acquire() as conn:
+        profile_rows = await conn.fetch(
+            "SELECT slug, display_name FROM js_profiles WHERE active ORDER BY slug"
+        )
+        file_rows = await conn.fetch(
+            "SELECT storage_key AS key, content_type, file_size AS size "
+            "FROM js_files WHERE storage_key LIKE 'profiles/%' ORDER BY storage_key"
+        )
+
     profiles = []
-    reference_files = []
-    for entry in sorted(profiles_dir.iterdir(), key=lambda e: e.name):
-        if entry.name.startswith('.') or entry.name == 'search-results':
-            continue
-        if entry.is_dir():
-            profiles.append({
-                'name': entry.name,
-                'path': f'profiles/{entry.name}',
-                'files': build_tree(entry, APPLICANT_DIR),
-            })
-        elif entry.is_file():
-            reference_files.append({
-                'name': entry.name,
-                'path': f'profiles/{entry.name}',
-                'type': 'file',
-                'size': entry.stat().st_size,
-            })
+    for p in profile_rows:
+        prefix = f"profiles/{p['slug']}/"
+        files = [dict(r) for r in file_rows if r['key'].startswith(prefix)]
+        profiles.append({
+            'name': p['slug'],
+            'display_name': p['display_name'],
+            'path': f"profiles/{p['slug']}",
+            'files': _rows_to_tree(files),
+        })
+    reference_files = [
+        {'name': r['key'].split('/')[-1], 'path': r['key'], 'type': 'file', 'size': r['size']}
+        for r in file_rows if r['key'].count('/') == 1  # top-level profiles/ files
+    ]
     return {'profiles': profiles, 'reference_files': reference_files}
 
 
 @app.get('/api/applications')
-def get_applications():
-    apps_dir = APPLICANT_DIR / 'applications'
-    if not apps_dir.exists():
-        return []
+async def get_applications():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT folder_prefix FROM js_applications "
+            "WHERE folder_prefix IS NOT NULL "
+            "ORDER BY created_at DESC"
+        )
     return [
-        {'name': d.name, 'path': f'applications/{d.name}'}
-        for d in sorted(apps_dir.iterdir(), key=lambda e: e.name, reverse=True)
-        if d.is_dir() and not d.name.startswith('.')
+        {
+            'name': r['folder_prefix'].rstrip('/').split('/')[-1],
+            'path': r['folder_prefix'].rstrip('/'),
+        }
+        for r in rows
     ]
 
 
 @app.get('/api/applications/{folder}')
-def get_application(folder: str):
-    app_dir = APPLICANT_DIR / 'applications' / folder
-    if not app_dir.exists():
+async def get_application(folder: str):
+    prefix = f'applications/{folder}/'
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT storage_key AS key, content_type, file_size AS size "
+            "FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
+            prefix + '%',
+        )
+    if not rows:
         raise HTTPException(status_code=404, detail='Application folder not found')
     return {
         'name': folder,
         'path': f'applications/{folder}',
-        'files': build_tree(app_dir, APPLICANT_DIR),
+        'files': _rows_to_tree([dict(r) for r in rows]),
     }
 
 
 @app.get('/api/base-documents')
-def get_base_documents():
-    base_dir = APPLICANT_DIR / 'base-documents'
-    if not base_dir.exists():
-        return []
-    return build_tree(base_dir, APPLICANT_DIR)
+async def get_base_documents():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT storage_key AS key, content_type, file_size AS size "
+            "FROM js_files WHERE storage_key LIKE 'base-documents/%' ORDER BY storage_key"
+        )
+    return _rows_to_tree([dict(r) for r in rows])
 
 
 @app.get('/api/search')
-def get_search():
-    search_dir = APPLICANT_DIR / 'search'
-    if not search_dir.exists():
-        return []
-    return build_tree(search_dir, APPLICANT_DIR)
+async def get_search():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT storage_key AS key, content_type, file_size AS size "
+            "FROM js_files WHERE storage_key LIKE 'search/%' ORDER BY storage_key"
+        )
+    return _rows_to_tree([dict(r) for r in rows])
 
+
+# ---------------------------------------------------------------------------
+# File read / write / upload / download
+# ---------------------------------------------------------------------------
 
 @app.get('/api/file')
-def get_file(path: str = Query(...)):
-    target = safe_resolve(path)
-    if not target.exists() or not target.is_file():
+async def get_file(path: str = Query(...)):
+    key = _validate_key(path)
+    try:
+        content = await store.get(key)
+        mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
+        return Response(content, media_type=mime)
+    except Exception:
         raise HTTPException(status_code=404, detail='File not found')
-    return FileResponse(target)
 
 
 @app.get('/api/download')
-def download_file(path: str = Query(...)):
-    target = safe_resolve(path)
-    if not target.exists() or not target.is_file():
+async def download_file(path: str = Query(...)):
+    key = _validate_key(path)
+    try:
+        content = await store.get(key)
+        mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
+        filename = key.split('/')[-1]
+        return Response(
+            content,
+            media_type=mime,
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    except Exception:
         raise HTTPException(status_code=404, detail='File not found')
-    return FileResponse(
-        target,
-        headers={'Content-Disposition': f'attachment; filename="{target.name}"'},
-    )
 
 
 class FileBody(BaseModel):
@@ -212,61 +279,87 @@ class FileBody(BaseModel):
 
 
 @app.put('/api/file')
-def put_file(path: str = Query(...), body: FileBody = None):
+async def put_file(path: str = Query(...), body: FileBody = None):
     if not path.endswith('.md'):
         raise HTTPException(status_code=400, detail='Only markdown files can be edited')
-    target = safe_resolve(path)
-    if not target.exists():
-        raise HTTPException(status_code=404, detail='File not found')
-    target.write_text(body.content, encoding='utf-8')
+    key = _validate_key(path)
+    content_bytes = body.content.encode('utf-8')
+    await store.put(key, content_bytes, 'text/markdown')
+    # Update js_files record
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO js_files (storage_key, bucket, content_type, file_size)
+               VALUES ($1, $2, 'text/markdown', $3)
+               ON CONFLICT (storage_key) DO UPDATE SET
+                 file_size = EXCLUDED.file_size, updated_at = now()""",
+            key,
+            os.environ.get('MINIO_BUCKET') or os.environ.get('SUPABASE_BUCKET', 'job-search'),
+            len(content_bytes),
+        )
     return {'ok': True}
 
 
 @app.post('/api/upload')
 async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
-    target_dir = safe_resolve(dir)
-    assert_upload_allowed(target_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    dest = target_dir / file.filename
+    key = _validate_upload_key(f"{dir.rstrip('/')}/{file.filename}")
     data = await file.read()
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail='File too large (max 50 MB)')
-    dest.write_bytes(data)
-    return {'ok': True, 'path': str(dest.relative_to(APPLICANT_DIR)), 'name': file.filename}
+    mime = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+    await store.put(key, data, mime)
+    bucket = os.environ.get('MINIO_BUCKET') or os.environ.get('SUPABASE_BUCKET', 'job-search')
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO js_files (storage_key, bucket, content_type, file_size)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (storage_key) DO UPDATE SET
+                 content_type = EXCLUDED.content_type,
+                 file_size = EXCLUDED.file_size, updated_at = now()""",
+            key, bucket, mime, len(data),
+        )
+    return {'ok': True, 'path': key, 'name': file.filename}
 
 
 # ── Docs endpoints ────────────────────────────────────────────────────────────
 
 @app.get('/api/docs')
-def get_docs():
-    docs = []
-    for name in sorted(DOCS_ALLOWLIST):
-        p = APP_DIR / name
-        if p.exists():
-            docs.append({'name': name, 'size': p.stat().st_size})
-    return docs
+async def get_docs():
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT storage_key AS key, file_size AS size "
+            "FROM js_files WHERE storage_key LIKE 'docs/%' ORDER BY storage_key"
+        )
+    names_in_store = {r['key'].replace('docs/', '') for r in rows}
+    return [
+        {'name': r['key'].replace('docs/', ''), 'size': r['size']}
+        for r in rows
+        if r['key'].replace('docs/', '') in DOCS_ALLOWLIST
+    ]
 
 
 @app.get('/api/docs/file')
-def get_docs_file(name: str = Query(...)):
+async def get_docs_file(name: str = Query(...)):
     if name not in DOCS_ALLOWLIST:
         raise HTTPException(status_code=403, detail='File not in allowlist')
-    p = APP_DIR / name
-    if not p.exists():
+    key = f'docs/{name}'
+    try:
+        content = await store.get(key)
+        return Response(content, media_type='text/plain; charset=utf-8')
+    except Exception:
         raise HTTPException(status_code=404, detail='File not found')
-    return FileResponse(p, media_type='text/plain; charset=utf-8')
 
 
 # ── Setup status ──────────────────────────────────────────────────────────────
 
 @app.get('/api/setup-status')
-def get_setup_status():
-    status_file = APPLICANT_DIR / 'memory' / 'applicant-setup-status.md'
-    if not status_file.exists():
+async def get_setup_status():
+    key = 'memory/applicant-setup-status.md'
+    try:
+        raw_bytes = await store.get(key)
+        content = raw_bytes.decode('utf-8')
+    except Exception:
         return {'phases': {p: False for p in 'ABCDEF'}, 'raw': ''}
-    content = status_file.read_text(encoding='utf-8')
     phases: dict[str, bool] = {}
-    # "Phase A–E (initial setup): Complete" marks A-E all done
     if re.search(r'Phase\s+A[–-]E.*?:\s*(complete|done)', content, re.IGNORECASE):
         for ph in 'ABCDE':
             phases[ph] = True
@@ -302,8 +395,23 @@ _loop: Optional[asyncio.AbstractEventLoop] = None
 
 @app.on_event('startup')
 async def _on_startup() -> None:
-    global _loop
+    global _loop, _pool
     _loop = asyncio.get_running_loop()
+    _pool = await asyncpg.create_pool(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        port=int(os.environ.get('DB_PORT', 5432)),
+        database=os.environ.get('DB_NAME', 'openbrain'),
+        user=os.environ.get('DB_USER', 'postgres'),
+        password=os.environ.get('DB_PASSWORD', ''),
+        min_size=2,
+        max_size=10,
+    )
+
+
+@app.on_event('shutdown')
+async def _on_shutdown() -> None:
+    if _pool:
+        await _pool.close()
 
 
 def _broadcast(session: ChatSession, msg: dict) -> None:

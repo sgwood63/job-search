@@ -48,23 +48,36 @@ Save the following:
   - **Pasted text:** save verbatim to `$FOLDER/jd-<company>-<role>.md`
 - In `notes.md` JD Analysis section: record the full source URL (if URL-sourced) and the original filename saved
 
+**OB1 dual persistence (when open-brain MCP is connected):** After writing all files to the local folder, sync to OB1:
+1. `upsert_company(name, slug)` — create or confirm company record in `js_companies`
+2. Insert application: a row in `js_applications` with `company_id`, `role_title`, `profile_id`, `source_url`, `folder_prefix = 'applications/YYYY-MM-DD-company-role/'`, `status = 'pending-review'` (no-fit) or `'resume-ready'` (fit)
+3. `upload_file('applications/YYYY-MM-DD-company-role/job-description.md', content, 'text/markdown')` — writes to object store + `js_files`
+4. `upload_file('applications/YYYY-MM-DD-company-role/jd-<company>-<role>.md', content, 'text/markdown')` (or `.pdf`)
+5. `upload_file('applications/YYYY-MM-DD-company-role/notes.md', content, 'text/markdown')`
+6. For the resume (fit applications only): `upload_file('applications/YYYY-MM-DD-company-role/[Name_Role].pdf', bytes, 'application/pdf')` and set `js_applications.resume_key`
+
 ---
 
 ## If NO FIT (stay in Haiku)
 
 - Create brief `notes.md` with no-fit reasoning; header must include `**Status:** Closed` and `**Status Detail:** No fit — [reason]`
-- Update `$APPLICANT_DIR/application-tracker.md` (Closed/Rejected section); set `Status = Closed`, `Status Detail = No fit — [reason]`
+- Update tracker — use first available:
+  - **OB1 active**: `update_application_status(id, 'closed', 'No fit — [reason]', null)`
+  - **Fallback**: update `$APPLICANT_DIR/application-tracker.md` (Closed/Rejected section)
 - Stop
 
 ---
 
 ## If FIT (switch to Sonnet)
 
-- Read `$APPLICANT_DIR/profiles/[matched-profile]/[matched-profile].md` and `-CONTENT.md`
-- Read `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
+- Read profile content — use first available:
+  - **OB1 active**: `get_file('profiles/[matched-profile]/[matched-profile]-CONTENT.md')` and `get_file('profiles/EXPERIENCE-REFERENCE.md')`
+  - **Fallback**: read directly from `$APPLICANT_DIR/profiles/[matched-profile]/`
 - Generate tailored resume (see Resume Generation below)
 - Create detailed `notes.md` (see notes.md Structure below); header must include `**Status:** Resume Ready` and `**Status Detail:** Resume generated [YYYY-MM-DD] — not yet submitted`
-- Update `$APPLICANT_DIR/application-tracker.md` (Active Applications); set `Status = Resume Ready`, `Status Detail = Resume generated [YYYY-MM-DD] — not yet submitted`
+- Update tracker — use first available:
+  - **OB1 active**: `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)`
+  - **Fallback**: update `$APPLICANT_DIR/application-tracker.md` (Active Applications)
 - Present for user review
 
 **After the user submits:** Run `/audit [folder-name]` to verify completeness, then `/apply "Company" "Role" "date"` to record the submission in both the tracker and notes.md atomically.
@@ -175,6 +188,13 @@ pdfinfo "$RESUME_PDF" | grep Pages
 For 1-page resumes, add `--css="$APP_DIR/templates/one-page-override.css"` to the pandoc command.
 
 Output: date in header (right), page number in footer (center), no filename or filepath anywhere.
+
+**OB1 sync after PDF generation (when open-brain MCP is connected):**
+After the PDF is generated and page count verified, call:
+- `upload_file('applications/[folder]/[Name_Role].pdf', <pdf_bytes>, 'application/pdf')` — stores in object store + `js_files`
+- `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)` — sets `resume_key` on the `js_applications` row
+
+The resume `.md` should also be uploaded: `upload_file('applications/[folder]/[Name_Role].md', content, 'text/markdown')`.
 
 ### Required Resume Sections (every resume)
 

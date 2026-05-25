@@ -4,6 +4,8 @@
 
 **Prerequisite:** `scripts/setup.sh` must have been run first (creates directories, `.env`, and stub files).
 
+**OB1 note:** If OB1 is deployed and active (see `integrations/ob1/README.md`), after each phase that writes files to `$APPLICANT_DIR`, also call `upload_file(key, content, content_type)` via the open-brain MCP for every file created. For the SQL tables (js_applicant, js_profiles, js_experience), use the OB1 MCP state tools or run `python scripts/migrate-to-ob1.py --only-sql` after setup completes to seed the database. If OB1 is not yet deployed, run the migration script once it is.
+
 Open a Claude Code session in the `$APP_DIR` repo directory and say:
 
 > **"Start the applicant setup process"**
