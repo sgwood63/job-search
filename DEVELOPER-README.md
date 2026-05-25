@@ -78,7 +78,7 @@ $APP_DIR/
 │   ├── achievements-example.md
 │   ├── PROFILES-README.md       # Guide for authoring profile files
 │   └── scaffold/                # Stub files written by scripts/setup.sh
-│       ├── applicant.md
+│       ├── applicant.md         # Phase B questionnaire template — pre-populated from base-documents, edited by applicant
 │       ├── application-tracker.md
 │       ├── base-documents/
 │       ├── profiles/

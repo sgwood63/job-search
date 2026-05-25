@@ -103,7 +103,7 @@ The Setup Guide (`/setup`) provides a chat interface for working through the fiv
 | Phase | What it covers |
 |---|---|
 | A — Documents | Provide your resume PDF, LinkedIn URL, existing cover letters |
-| B — Interview | Location, compensation floor, deal-breakers, travel limits |
+| B — Questionnaire | Fill in a pre-generated file with your location, compensation floor, deal-breakers, travel limits, and goals |
 | C — Profiles | Build your experience fact sheet and content libraries |
 | D — Career Advice | Role scoring, market demand analysis, target recommendations |
 | E — Validation | Test profiles against sample JDs, generate a sample resume |
@@ -154,7 +154,7 @@ Claude leads you through five phases:
 | Phase | What happens |
 |---|---|
 | A — Documents | You provide your source materials: LinkedIn URL or resume PDF, existing cover letters, any job postings you're already interested in |
-| B — Interview | Claude asks about your location preferences, must-haves, deal-breakers, compensation floor, travel limits, and what you want from your next role |
+| B — Questionnaire | Claude reads your uploaded documents and generates a pre-filled `applicant.md`. You open the file, fill in your preferences (location, compensation floor, deal-breakers, travel limits, goals), and reply **done** when finished |
 | C — Profile generation | Claude builds your experience fact sheet, one profile per target role type, and an achievement library — you review and can edit anything |
 | D — Career advice | Claude scores each profile (experience match, market demand, differentiation), suggests target roles, identifies skill gaps, and tells you which profile is most likely to land interviews fastest |
 | E — Validation | Claude finds example JDs for each profile, runs them through the screening process, and generates a sample resume to confirm the content is ready |

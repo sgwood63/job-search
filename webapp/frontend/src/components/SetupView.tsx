@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import MDEditor from '@uiw/react-md-editor'
 import { api, FileNode } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
@@ -15,7 +16,7 @@ type Stage = 'overview' | 'A' | 'B' | 'C' | 'D' | 'E' | 'help'
 const STAGE_LABELS: Record<Stage, string> = {
   overview: 'Overview',
   A: 'Documents',
-  B: 'Interview',
+  B: 'Questionnaire',
   C: 'Profiles',
   D: 'Career Advice',
   E: 'Validation',
@@ -169,20 +170,158 @@ function DocumentsPane({ onFinish }: { onFinish: () => void }) {
   )
 }
 
-// ── Chat-based stages (B, C, D, E) ────────────────────────────────────────────
-
 const STAGE_SESSION_LABELS: Record<string, string> = {
-  B: 'setup-interview',
+  B: 'setup-questionnaire',
   C: 'setup-profiles',
   D: 'setup-career-advice',
   E: 'setup-validation',
 }
 
+// ── Questionnaire (Phase B) ────────────────────────────────────────────────────
+
+function QuestionnairePane({ onFinish }: { onFinish: () => void }) {
+  const {
+    sessions,
+    activeSessionId,
+    activeStatus,
+    messages,
+    streamingContent,
+    sessionReady,
+    createSession,
+    setActiveSession,
+    sendInput,
+  } = useSessionContext()
+
+  const [fileContent, setFileContent] = useState<string | null>(null)
+  const [editedContent, setEditedContent] = useState('')
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.getFile('applicant.md').then(setFileContent).catch(() => setFileContent(null))
+  }, [])
+
+  useEffect(() => {
+    if (fileContent != null) {
+      setEditedContent(fileContent)
+      setDirty(false)
+    }
+  }, [fileContent])
+
+  const remaining = (editedContent.match(/\[Fill in:/g) ?? []).length
+  const executing = activeStatus === 'executing'
+  const label = STAGE_SESSION_LABELS['B']
+
+  useEffect(() => {
+    const existing = sessions.find(s => s.label === label && s.status !== 'closed')
+    if (existing) {
+      if (existing.id !== activeSessionId) setActiveSession(existing.id)
+      return
+    }
+    let cancelled = false
+    createSession(label).then(() => {
+      if (!cancelled) setTimeout(() => sendInput(STAGE_PROMPTS['B']), 500)
+    })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSend = useCallback((text: string) => sendInput(text), [sendInput])
+
+  const handleSave = useCallback(async () => {
+    setSaving(true)
+    try {
+      await api.putFile('applicant.md', editedContent)
+      setDirty(false)
+    } finally {
+      setSaving(false)
+    }
+  }, [editedContent])
+
+  const handleDone = useCallback(async () => {
+    if (dirty) await handleSave()
+    sendInput('done')
+    onFinish()
+  }, [dirty, handleSave, sendInput, onFinish])
+
+  return (
+    <div className="flex h-full">
+      {/* Chat pane — generation step + done signal */}
+      <div className="w-72 flex-shrink-0 border-r flex flex-col">
+        <div className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b ${executing ? 'bg-blue-50' : 'bg-gray-50'}`}>
+          {executing && (
+            <span className="inline-flex gap-0.5">
+              {[0, 1, 2].map(i => (
+                <span key={i} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </span>
+          )}
+          <span className={`text-xs font-medium flex-1 ${executing ? 'text-blue-700' : 'text-gray-500'}`}>
+            {executing ? 'Claude is working…' : activeStatus === 'waiting' ? 'Waiting for input' : 'Ready'}
+          </span>
+        </div>
+        <ChatMessages messages={messages} streamingContent={streamingContent} executing={executing} sessionReady={sessionReady} />
+        <ChatInput onSend={handleSend} disabled={activeStatus === 'closed'} />
+      </div>
+
+      {/* File editor pane */}
+      <div className="flex-1 flex flex-col overflow-hidden" data-color-mode="light">
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 border-b bg-gray-50">
+          <span className="text-xs font-medium text-gray-600">applicant.md</span>
+          {fileContent == null ? (
+            <span className="text-xs text-gray-400">Not yet generated</span>
+          ) : remaining > 0 ? (
+            <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded font-medium">
+              {remaining} field{remaining !== 1 ? 's' : ''} remaining
+            </span>
+          ) : (
+            <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded font-medium">All fields complete</span>
+          )}
+          <div className="flex-1" />
+          {dirty && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs px-3 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 font-medium text-gray-700"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
+          <button
+            onClick={handleDone}
+            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+          >
+            Done editing →
+          </button>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          {fileContent != null ? (
+            <MDEditor
+              value={editedContent}
+              onChange={v => { setEditedContent(v ?? ''); setDirty(true) }}
+              height="100%"
+              preview="live"
+              style={{ height: '100%' }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+              <div className="text-2xl">📝</div>
+              <p className="text-sm">applicant.md will appear here after Claude generates it</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Chat-based stages (C, D, E) ────────────────────────────────────────────────
+
 function ChatStagePane({
   stage,
   onFinish,
 }: {
-  stage: 'B' | 'C' | 'D' | 'E'
+  stage: 'C' | 'D' | 'E'
   onFinish: () => void
 }) {
   const {
@@ -298,7 +437,8 @@ export default function SetupView() {
       <div className="flex-1 overflow-hidden">
         {stage === 'overview' && <OverviewPane phaseStatus={phaseStatus} />}
         {stage === 'A' && <DocumentsPane onFinish={advanceStage} />}
-        {(stage === 'B' || stage === 'C' || stage === 'D' || stage === 'E') && (
+        {stage === 'B' && <QuestionnairePane onFinish={advanceStage} />}
+        {(stage === 'C' || stage === 'D' || stage === 'E') && (
           <ChatStagePane stage={stage} onFinish={advanceStage} />
         )}
         {stage === 'help' && <HelpView />}
