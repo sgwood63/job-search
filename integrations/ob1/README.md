@@ -270,23 +270,17 @@ curl -s "$JOB_SEARCH_MCP_URL/mcp" \
 
 ### 10. Run migration
 
-Migrate existing local applicant files to OB1. The migration script connects directly to `localhost:5432` — a port-forward is required while it runs:
+Migrate existing local applicant files to OB1. The migration script connects directly to `localhost:5432` — ensure the PostgreSQL port-forward is running first (see "Accessing Services Locally" → "PostgreSQL Port-Forward").
 
 ```bash
-# Open port-forward in background
-kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
-PF_PID=$!
-
 source .venv/bin/activate && source .env
 python scripts/migrate-to-ob1.py --dry-run   # preview — check for parse errors first
 python scripts/migrate-to-ob1.py             # full run
-
-kill $PF_PID   # clean up port-forward
 ```
 
 ## Accessing Services Locally
 
-No port-forwarding required. Services are permanently accessible once the Ingress controller and manifests are applied:
+Most services are permanently accessible once the Ingress controller and manifests are applied. PostgreSQL requires a persistent port-forward that must be running whenever the webapp or any tool that connects directly to the database is active.
 
 | Service | URL | Notes |
 |---|---|---|
@@ -294,7 +288,22 @@ No port-forwarding required. Services are permanently accessible once the Ingres
 | job-search MCP | `http://localhost/job-search/mcp` | Used by Claude Code `.mcp.json`; base path `/job-search` returns 401 |
 | MinIO console | `http://localhost/minio` | Web UI — bucket management |
 | MinIO S3 API | `http://localhost:30900` | S3 SDK / `mc` access (NodePort — fixed) |
-| PostgreSQL | cluster-internal only | Use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand |
+| PostgreSQL | `localhost:5432` | **Requires persistent port-forward** — see below |
+
+### PostgreSQL Port-Forward (always-on)
+
+The webapp backend and migration script connect directly to `localhost:5432`. Start this forward before launching the webapp and keep it running for the duration of your session:
+
+```bash
+kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
+```
+
+To restart after a disconnect:
+
+```bash
+pkill -f "kubectl port-forward svc/openbrain-db" 2>/dev/null || true
+kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
+```
 
 ## Verify Deployment
 
