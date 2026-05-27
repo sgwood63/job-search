@@ -114,9 +114,9 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 
 The applicant content system (APPLICANT_DIR) is being migrated to an OB1 Kubernetes deployment. When fully active, all applicant files live in the object store (MinIO or Supabase) and structured data lives in OB1 PostgreSQL. The `open-brain` MCP server provides access to both.
 
-**OB1 is active when:** `OB1_MCP_URL` is set in `.env`, K8s port-forwards are running, and the migration script has run (`python scripts/migrate-to-ob1.py`).
+**OB1 is configured when:** `OB1_MCP_URL` is set in `.env`. When configured, **all APPLICANT file operations must use OB1 MCP tools** — direct `$APPLICANT_DIR` file reads and writes are forbidden. See `memory/feedback_ob1_integration.md` for the full rule, MCP tool mapping, and session-start check protocol.
 
-Port-forwards needed for both MCP servers:
+Port-forwards needed for both MCP servers (nginx Ingress routes them; no port-forward needed when Ingress is up):
 ```bash
 kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
 kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
@@ -124,14 +124,14 @@ kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
 
 MCP servers are registered in `.mcp.json` (gitignored). Copy `.mcp.json.example` and fill in your access keys if the file doesn't exist yet.
 
-**When OB1 is active, use these tools instead of local file operations:**
+**When OB1 is configured, use these tools for all APPLICANT operations:**
 - Reading applicant files: `get_file('applicant.md')`, `get_file('memory/APPLICANT-MEMORY.md')`, etc.
 - Writing files: `upload_file(key, content, content_type)` — handles dual persistence to object store + `js_files` + optional thought capture
 - Pipeline state: `get_pipeline()`, `update_application_status()`, `log_interview()`, `get_overdue_followups()`
 - Company/contact tracking: `upsert_company()`, `add_contact()`, `get_contacts()`
 - Semantic search: `search_applications_semantic(query)` — full-text + vector search over notes/JDs
 
-**Fallback:** When OB1 is not connected, all workflows fall back to local APPLICANT_DIR file operations. The /context, /apply, /interview, and /ingest commands all implement this fallback pattern — see `integrations/ob1/README.md` for setup instructions.
+**No silent fallback:** If OB1 is configured but MCP tools are not connected, that is a hard stop — do not fall back to GDrive. Tell the user to restart the session. See `memory/feedback_ob1_integration.md`.
 
 **File key convention:** Object store keys mirror the former local paths relative to APPLICANT_DIR. `applications/2026-05-15-co-role/notes.md` in the object store corresponds to `$APPLICANT_DIR/applications/2026-05-15-co-role/notes.md` on disk.
 
@@ -142,12 +142,13 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 **Session start — DO NOT ASK, JUST DO:**
 
 At the start of every session, automatically run the `/context` workflow once before responding to the first user request:
-1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is active (`OB1_MCP_URL` set)
-2. Read `$APPLICANT_DIR/applicant.md` (or `get_file('applicant.md')` if OB1 active)
-3. Get pipeline — if OB1 active: `get_pipeline()` + `get_overdue_followups()`; else read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count
-4. Read `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md` (or `get_file('memory/APPLICANT-MEMORY.md')` if OB1 active)
-5. Read `$APP_DIR/memory/MEMORY.md`
-6. Output a session briefing (10 lines max): active pipeline count, pending-review count, past-due follow-ups, most urgent next action, OB1 mode status, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
+1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is configured (`OB1_MCP_URL` set)
+2. If OB1 is configured: verify OB1 MCP tools appear in the session's deferred tool list (`mcp__job_search__*` or `mcp__open_brain__*`). If they do NOT appear → **hard stop**: tell the user "OB1 is configured but MCP tools are not connected. Please restart Claude Code, then re-run `/context`." Do not proceed to read applicant files.
+3. Read `applicant.md` — via `get_file('applicant.md')` if OB1 configured, else `$APPLICANT_DIR/applicant.md`
+4. Get pipeline — if OB1 configured: `get_pipeline()` + `get_overdue_followups()`; else read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count
+5. Read `memory/APPLICANT-MEMORY.md` — via `get_file('memory/APPLICANT-MEMORY.md')` if OB1 configured, else `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
+6. Read `$APP_DIR/memory/MEMORY.md`
+7. Output a session briefing (10 lines max): active pipeline count, pending-review count, past-due follow-ups, most urgent next action, OB1 mode status, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
 
 **DEV_MODE=false (default):** State: "DEV_MODE=false — APP_DIR is read-only." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules.
 

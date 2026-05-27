@@ -138,6 +138,9 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
 - Requires `SEARCHAPI_KEY` in `.env`
 
+## OB1 Integration
+- See [feedback_ob1_integration.md](feedback_ob1_integration.md) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback)
+
 ## Workflow Rules
 - See `feedback_application_tracking.md` — check tracker before acting on any company mention; update both tracker AND notes.md when application is submitted
 - See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
