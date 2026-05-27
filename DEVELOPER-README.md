@@ -182,7 +182,7 @@ Both servers use the **Streamable HTTP** transport. Claude Code requires:
 
 ### Session-start protocol
 
-When `OB1_MCP_URL` is set in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `memory/feedback_ob1_integration.md`.
+When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `memory/feedback_ob1_integration.md`.
 
 ### Data persistence (Docker Desktop)
 
@@ -412,6 +412,7 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `SEARCHAPI_KEY` | Manual | SearchAPI key required for `/ingest` |
 | `SEARCH_TARGET_FITS` | Manual | Target fit count per `/ingest` run (default 10) |
 | `SEARCH_BATCH_SIZE` | Manual | Max new jobs per API call in `/ingest` (default 10) |
+| `DATA_BACKEND` | Manual | `"local"` (default) or `"ob1"` — selects backend for both the webapp and Claude Code terminal sessions |
 | `OB1_REPO_PATH` | Manual | Path to local OB1 repo clone; required to build `openbrain-mcp-server:latest` |
 | `OB1_MCP_URL` | Manual | Base URL for OB1 MCP server (e.g. `http://localhost/ob1`) |
 | `OB1_MCP_KEY` | Manual | Auth key for OB1 MCP server (`x-brain-key` header) |

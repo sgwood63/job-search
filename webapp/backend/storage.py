@@ -5,9 +5,11 @@ Backend is selected via OBJECT_STORE_BACKEND in .env:
   'supabase' — Supabase Storage (cloud)
 """
 
+import asyncio
+import mimetypes
 import os
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -53,37 +55,44 @@ class MinioStore(ObjectStore):
 
     async def put(self, key: str, content: bytes, content_type: str) -> None:
         import io
-        self._client.put_object(
-            self._bucket, key, io.BytesIO(content), len(content),
+        data = io.BytesIO(content)
+        await asyncio.to_thread(
+            self._client.put_object,
+            self._bucket, key, data, len(content),
             content_type=content_type,
         )
 
     async def get(self, key: str) -> bytes:
-        response = self._client.get_object(self._bucket, key)
-        try:
-            return response.read()
-        finally:
-            response.close()
-            response.release_conn()
+        def _get():
+            response = self._client.get_object(self._bucket, key)
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+        return await asyncio.to_thread(_get)
 
     async def list(self, prefix: str) -> list[dict]:
-        objects = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
-        return [
-            {
-                "key": obj.object_name,
-                "size": obj.size or 0,
-                "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
-            }
-            for obj in objects
-        ]
+        def _list():
+            objects = self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+            return [
+                {
+                    "key": obj.object_name,
+                    "size": obj.size or 0,
+                    "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
+                }
+                for obj in objects
+            ]
+        return await asyncio.to_thread(_list)
 
     async def delete(self, key: str) -> None:
-        self._client.remove_object(self._bucket, key)
+        await asyncio.to_thread(self._client.remove_object, self._bucket, key)
 
     async def get_presigned_url(self, key: str, expires: int = 3600) -> str:
         from datetime import timedelta
-        return self._client.presigned_get_object(
-            self._bucket, key, expires=timedelta(seconds=expires)
+        return await asyncio.to_thread(
+            self._client.presigned_get_object,
+            self._bucket, key, expires=timedelta(seconds=expires),
         )
 
 
@@ -132,6 +141,48 @@ class SupabaseStore(ObjectStore):
 
 
 # ---------------------------------------------------------------------------
+# Local filesystem backend
+# ---------------------------------------------------------------------------
+
+class LocalStore(ObjectStore):
+    """Reads/writes files directly from APPLICANT_DIR on the local filesystem."""
+
+    def __init__(self):
+        raw = os.environ.get("APPLICANT_DIR", "")
+        self._root = Path(raw.strip('"').strip("'"))
+
+    async def put(self, key: str, content: bytes, content_type: str) -> None:
+        path = self._root / key
+        await asyncio.to_thread(lambda: (path.parent.mkdir(parents=True, exist_ok=True), path.write_bytes(content)))
+
+    async def get(self, key: str) -> bytes:
+        return await asyncio.to_thread((self._root / key).read_bytes)
+
+    async def list(self, prefix: str) -> list[dict]:
+        base = self._root / prefix
+        if not base.exists():
+            return []
+        def _scan():
+            results = []
+            root = self._root
+            target = self._root / prefix
+            if target.is_file():
+                return [{"key": prefix, "size": target.stat().st_size}]
+            for p in sorted(target.rglob("*")):
+                if p.is_file():
+                    results.append({"key": str(p.relative_to(root)), "size": p.stat().st_size})
+            return results
+        return await asyncio.to_thread(_scan)
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread((self._root / key).unlink)
+
+    async def get_presigned_url(self, key: str, expires: int = 3600) -> str:
+        # Local mode has no presigning — return the API path so callers still get a usable URL.
+        return f"/api/file?path={quote(key)}"
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -141,9 +192,13 @@ _store: ObjectStore | None = None
 def make_store() -> ObjectStore:
     global _store
     if _store is None:
-        backend = os.environ.get("OBJECT_STORE_BACKEND", "minio").lower()
-        if backend == "supabase":
-            _store = SupabaseStore()
+        data_backend = os.environ.get("DATA_BACKEND", "local").lower()
+        if data_backend == "ob1":
+            object_backend = os.environ.get("OBJECT_STORE_BACKEND", "minio").lower()
+            if object_backend == "supabase":
+                _store = SupabaseStore()
+            else:
+                _store = MinioStore()
         else:
-            _store = MinioStore()
+            _store = LocalStore()
     return _store

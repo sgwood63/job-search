@@ -114,7 +114,7 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 
 The applicant content system (APPLICANT_DIR) is being migrated to an OB1 Kubernetes deployment. When fully active, all applicant files live in the object store (MinIO or Supabase) and structured data lives in OB1 PostgreSQL. The `open-brain` MCP server provides access to both.
 
-**OB1 is configured when:** `OB1_MCP_URL` is set in `.env`. When configured, **all APPLICANT file operations must use OB1 MCP tools** — direct `$APPLICANT_DIR` file reads and writes are forbidden. See `memory/feedback_ob1_integration.md` for the full rule, MCP tool mapping, and session-start check protocol.
+**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, **all APPLICANT file operations must use OB1 MCP tools** — direct `$APPLICANT_DIR` file reads and writes are forbidden. See `memory/feedback_ob1_integration.md` for the full rule, MCP tool mapping, and session-start check protocol.
 
 Port-forwards needed for both MCP servers (nginx Ingress routes them; no port-forward needed when Ingress is up):
 ```bash
@@ -142,7 +142,7 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 **Session start — DO NOT ASK, JUST DO:**
 
 At the start of every session, automatically run the `/context` workflow once before responding to the first user request:
-1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is configured (`OB1_MCP_URL` set)
+1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is configured (`DATA_BACKEND=ob1`)
 2. If OB1 is configured: verify OB1 MCP tools appear in the session's deferred tool list (`mcp__job_search__*` or `mcp__open_brain__*`). If they do NOT appear → **hard stop**: tell the user "OB1 is configured but MCP tools are not connected. Please restart Claude Code, then re-run `/context`." Do not proceed to read applicant files.
 3. Read `applicant.md` — via `get_file('applicant.md')` if OB1 configured, else `$APPLICANT_DIR/applicant.md`
 4. Get pipeline — if OB1 configured: `get_pipeline()` + `get_overdue_followups()`; else read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count
