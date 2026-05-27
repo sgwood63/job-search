@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-search-configmap
+  namespace: openbrain
+data:
+  # PostgreSQL — cluster-internal DNS (different from localhost used in .env)
+  DB_HOST: "openbrain-db.openbrain.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "openbrain"
+  DB_USER: "postgres"
+
+  # MinIO — cluster-internal DNS
+  OBJECT_STORE_BACKEND: "minio"
+  MINIO_ENDPOINT: "minio.openbrain.svc.cluster.local:9000"
+  MINIO_BUCKET: "job-search"
+  MINIO_SECURE: "false"
+
+  PORT: "8001"

@@ -349,7 +349,7 @@ def migrate_applications(cur):
                 (company_name, co_slug)
             )
             cur.execute("SELECT id FROM js_companies WHERE slug = %s", (co_slug,))
-            company_id = cur.fetchone()[0]
+            company_id = cur.fetchone()["id"]
 
             # Resolve profile_id
             profile_id = None
@@ -357,7 +357,7 @@ def migrate_applications(cur):
                 ps = slug(profile_slug_raw)
                 cur.execute("SELECT id FROM js_profiles WHERE slug = %s", (ps,))
                 row_p = cur.fetchone()
-                profile_id = row_p[0] if row_p else None
+                profile_id = row_p["id"] if row_p else None
 
             # Follow-up date: applied + 14 days
             follow_up = None
@@ -437,7 +437,7 @@ def migrate_contacts(cur):
                     )
                     cur.execute("SELECT id FROM js_companies WHERE slug = %s", (cs,))
                     r = cur.fetchone()
-                    company_id = r[0] if r else None
+                    company_id = r["id"] if r else None
 
                 cur.execute(
                     """INSERT INTO js_contacts (name, company_id, title, relationship_type, notes)
@@ -468,7 +468,7 @@ def migrate_search_runs(cur):
             if not DRY_RUN:
                 cur.execute("SELECT id FROM js_profiles WHERE slug = %s", (slug(profile_slug),))
                 prow = cur.fetchone()
-                profile_id = prow[0] if prow else None
+                profile_id = prow["id"] if prow else None
 
                 cur.execute(
                     """INSERT INTO js_search_runs

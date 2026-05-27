@@ -16,6 +16,10 @@ base-documents/linkedin-job-listing-page.html
 .env
 .env-backup
 
+# MCP server config — contains real access keys, never commit
+# Copy from .mcp.json.example and fill in real values
+.mcp.json
+
 # Authenticated browser sessions (per-user, never commit)
 .auth/
 

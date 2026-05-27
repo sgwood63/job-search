@@ -1,0 +1,79 @@
+---
+# Job Search MCP Service
+# Separate Deployment in the openbrain namespace — shares the same PostgreSQL
+# instance as Open Brain but runs as an independent process on port 8001.
+#
+# Prerequisites:
+#   1. openbrain StatefulSet is running (provides the DB)
+#   2. openbrain-db-service.yml has been applied (exposes port 5432)
+#   3. minio.yml has been applied and the job-search bucket created
+#   4. job-search-schema.sql has been applied to the openbrain database
+#   5. Docker image job-search-mcp:latest is available on the cluster
+#   6. bash scripts/k8s-apply-env.sh has been run (creates job-search-secret and job-search-llm-config from .env)
+#   7. job-search-configmap.yml has been applied
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-search-mcp
+  namespace: openbrain
+  labels:
+    app: job-search-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: job-search-mcp
+  template:
+    metadata:
+      labels:
+        app: job-search-mcp
+    spec:
+      containers:
+        - name: job-search-mcp
+          image: job-search-mcp:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+              name: http
+          envFrom:
+            # Non-sensitive static config: cluster DNS names, ports
+            - configMapRef:
+                name: job-search-configmap
+            # LLM API config: EMBEDDING_API_BASE, EMBEDDING_MODEL, CHAT_API_BASE, CHAT_MODEL
+            # Created/updated by: bash scripts/k8s-apply-env.sh
+            - configMapRef:
+                name: job-search-llm-config
+            # Sensitive credentials: DB_PASSWORD, MCP_ACCESS_KEY, MINIO_ACCESS_KEY,
+            # MINIO_SECRET_KEY, EMBEDDING_API_KEY, CHAT_API_KEY
+            # Created by: bash scripts/k8s-apply-env.sh
+            - secretRef:
+                name: job-search-secret
+
+          readinessProbe:
+            tcpSocket:
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-search-mcp
+  namespace: openbrain
+spec:
+  selector:
+    app: job-search-mcp
+  ports:
+    - protocol: TCP
+      port: 8001
+      targetPort: http
+      name: mcp
+  type: ClusterIP

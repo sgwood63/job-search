@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS js_files (
   bucket       text        NOT NULL DEFAULT 'job-search',
   content_type text        NOT NULL,         -- 'text/markdown', 'application/pdf', etc.
   file_size    int,
-  thought_id   uuid        REFERENCES thoughts(id) ON DELETE SET NULL,  -- semantic ref for text files
+  thought_id   bigint      REFERENCES thoughts(id) ON DELETE SET NULL,  -- semantic ref for text files
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS js_experience (
                                   )),
   description         text,
   achievements        jsonb,      -- array of {bullet: text, profile_tags: text[], verified: bool}
-  thought_id          uuid        REFERENCES thoughts(id) ON DELETE SET NULL,
+  thought_id          bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
   sort_order          int         NOT NULL DEFAULT 0,  -- controls resume ordering (ascending)
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS js_applications (
   applied_date      date,
   follow_up_date    date,
   priority          int         NOT NULL DEFAULT 2 CHECK (priority IN (1, 2, 3)),  -- 1=low 2=normal 3=high
-  jd_thought_id     uuid        REFERENCES thoughts(id) ON DELETE SET NULL,
-  notes_thought_id  uuid        REFERENCES thoughts(id) ON DELETE SET NULL,
+  jd_thought_id     bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
+  notes_thought_id  bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
   resume_key        text,       -- js_files.storage_key for the resume PDF
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS js_interviews (
   pre_notes         text,       -- preparation notes written before the call
   post_notes        text,       -- debrief notes written after the call
   rating            int         CHECK (rating BETWEEN 1 AND 5),  -- self-assessment
-  thought_id        uuid        REFERENCES thoughts(id) ON DELETE SET NULL,
+  thought_id        bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS js_contacts (
   last_contact_at   date,
   follow_up_date    date,
   notes             text,
-  thought_id        uuid        REFERENCES thoughts(id) ON DELETE SET NULL,
+  thought_id        bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS js_search_runs (
   fit_count           int         NOT NULL DEFAULT 0,
   run_at              timestamptz NOT NULL DEFAULT now(),
   summary_key         text,       -- js_files.storage_key for the per-run summary .md
-  summary_thought_id  uuid        REFERENCES thoughts(id) ON DELETE SET NULL
+  summary_thought_id  bigint      REFERENCES thoughts(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS js_search_runs_profile_idx ON js_search_runs(profile_id);
 CREATE INDEX IF NOT EXISTS js_search_runs_run_at_idx  ON js_search_runs(run_at DESC);

@@ -1,13 +1,7 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: minio-secret
-  namespace: openbrain
-type: Opaque
-stringData:
-  access-key: CHANGEME_MINIO_ACCESS_KEY
-  secret-key: CHANGEME_MINIO_SECRET_KEY
 ---
+# Prerequisites:
+#   bash scripts/k8s-apply-env.sh   — creates minio-secret from .env
+#   kubectl apply -f k8s/minio-configmap.yml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,20 +24,14 @@ spec:
           image: minio/minio:latest
           args:
             - server
-            - /data
-            - --console-address
-            - ":9001"
-          env:
-            - name: MINIO_ROOT_USER
-              valueFrom:
-                secretKeyRef:
-                  name: minio-secret
-                  key: access-key
-            - name: MINIO_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: minio-secret
-                  key: secret-key
+          envFrom:
+            # Non-sensitive server config: MINIO_VOLUMES, MINIO_CONSOLE_ADDRESS
+            - configMapRef:
+                name: minio-configmap
+            # Sensitive credentials: MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+            # Created by: bash scripts/k8s-apply-env.sh
+            - secretRef:
+                name: minio-secret
           ports:
             - name: s3
               containerPort: 9000

@@ -114,7 +114,15 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 
 The applicant content system (APPLICANT_DIR) is being migrated to an OB1 Kubernetes deployment. When fully active, all applicant files live in the object store (MinIO or Supabase) and structured data lives in OB1 PostgreSQL. The `open-brain` MCP server provides access to both.
 
-**OB1 is active when:** `OB1_MCP_URL` is set in `.env`, K8s port-forwards are running (`kubectl -n openbrain port-forward svc/openbrain 8000:8000 5432:5432 &`), and the migration script has run (`python scripts/migrate-to-ob1.py`).
+**OB1 is active when:** `OB1_MCP_URL` is set in `.env`, K8s port-forwards are running, and the migration script has run (`python scripts/migrate-to-ob1.py`).
+
+Port-forwards needed for both MCP servers:
+```bash
+kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
+kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
+```
+
+MCP servers are registered in `.mcp.json` (gitignored). Copy `.mcp.json.example` and fill in your access keys if the file doesn't exist yet.
 
 **When OB1 is active, use these tools instead of local file operations:**
 - Reading applicant files: `get_file('applicant.md')`, `get_file('memory/APPLICANT-MEMORY.md')`, etc.

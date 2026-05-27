@@ -1,10 +1,7 @@
 /**
  * Job Search MCP Tools for OB1
  *
- * Merge this file into OB1/integrations/kubernetes-deployment/index.ts.
- * Add the object store client initialisation before the Hono app, and
- * register each tool with server.tool(...) alongside the existing OB1 tools.
- *
+ * Imported by job-search-server.ts (the sidecar entry point).
  * Prerequisites: job-search-schema.sql applied to the OB1 Postgres instance.
  */
 
@@ -72,17 +69,13 @@ function isTextType(contentType: string): boolean {
   return contentType.startsWith("text/") || contentType === "application/json";
 }
 
-// Capture a thought and return its UUID (wraps existing OB1 capture logic).
-// Replace this stub with a call to the real OB1 capture function in index.ts.
-async function captureThought(
-  pool: unknown,
-  content: string,
-  metadata: Record<string, unknown>
-): Promise<string> {
-  // TODO: integrate with OB1's existing capture_thought implementation in index.ts
-  // e.g.: return await ob1CaptureThought(pool, content, metadata);
-  throw new Error("captureThought: wire up to OB1 capture implementation in index.ts");
-}
+export type CaptureThoughtFn = (content: string, metadata: Record<string, unknown>) => Promise<string>;
+export type SearchThoughtsFn = (
+  query: string,
+  limit: number,
+  filter: Record<string, unknown>,
+) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; similarity: number; created_at: string }>>;
+export type JobSearchCallbacks = { captureThought?: CaptureThoughtFn; searchThoughts?: SearchThoughtsFn };
 
 // ---------------------------------------------------------------------------
 // FILE TOOLS
@@ -92,7 +85,7 @@ async function captureThought(
  * upload_file
  * Dual-persist: write to object store + upsert js_files + optionally capture thought.
  */
-export function registerUploadFileTool(server: unknown, pool: unknown) {
+export function registerUploadFileTool(server: unknown, pool: unknown, captureThoughtFn?: CaptureThoughtFn) {
   (server as any).tool(
     "upload_file",
     "Upload a file to the object store and record it in OB1. " +
@@ -120,9 +113,9 @@ export function registerUploadFileTool(server: unknown, pool: unknown) {
 
       // 2. Capture semantic thought for text content
       let thoughtId: string | null = null;
-      if (!binary && isTextType(content_type) && content.length > 50) {
+      if (!binary && isTextType(content_type) && content.length > 50 && captureThoughtFn) {
         try {
-          thoughtId = await captureThought(pool, content, {
+          thoughtId = await captureThoughtFn(content, {
             type: "file",
             storage_key: key,
             content_type,
@@ -685,7 +678,7 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
 /**
  * search_applications_semantic
  */
-export function registerSearchApplicationsSemanticTool(server: unknown, pool: unknown) {
+export function registerSearchApplicationsSemanticTool(server: unknown, pool: unknown, searchThoughtsFn?: SearchThoughtsFn) {
   (server as any).tool(
     "search_applications_semantic",
     "Semantic search across all application notes, JDs, and research using pgvector.",
@@ -694,16 +687,21 @@ export function registerSearchApplicationsSemanticTool(server: unknown, pool: un
       limit: z.number().int().min(1).max(20).default(5),
     },
     async ({ query, limit }: { query: string; limit: number }) => {
-      // Delegate to OB1's existing search_thoughts implementation.
-      // The results will include thoughts tagged with type=application-notes, type=jd, etc.
-      // TODO: call the real OB1 search implementation with metadata filter:
-      //   { type: { $in: ['application-notes', 'jd', 'company-research'] } }
-      return {
-        content: [{
-          type: "text",
-          text: "search_applications_semantic: wire up to OB1 match_thoughts() in index.ts with metadata filter",
-        }],
-      };
+      if (!searchThoughtsFn) {
+        return { content: [{ type: "text", text: "search_applications_semantic: searchThoughts callback not configured" }] };
+      }
+      try {
+        const results = await searchThoughtsFn(query, limit, { source: "job-search-mcp" });
+        if (!results.length) {
+          return { content: [{ type: "text", text: `No application content found matching "${query}".` }] };
+        }
+        const formatted = results.map((r, i) =>
+          `--- ${i + 1} (${(r.similarity * 100).toFixed(1)}% match) ---\n${r.content}`
+        ).join("\n\n");
+        return { content: [{ type: "text", text: formatted }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
     }
   );
 }
@@ -712,9 +710,11 @@ export function registerSearchApplicationsSemanticTool(server: unknown, pool: un
 // Registration helper — call from index.ts main()
 // ---------------------------------------------------------------------------
 
-export function registerJobSearchTools(server: unknown, pool: unknown) {
+export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
+  const { captureThought, searchThoughts } = callbacks;
+
   // File tools
-  registerUploadFileTool(server, pool);
+  registerUploadFileTool(server, pool, captureThought);
   registerGetFileTool(server);
   registerGetFileUrlTool(server);
   registerListFilesTool(server, pool);
@@ -731,5 +731,5 @@ export function registerJobSearchTools(server: unknown, pool: unknown) {
   registerGetContactsTool(server, pool);
   registerUpsertCompanyTool(server, pool);
   registerLogSearchRunTool(server, pool);
-  registerSearchApplicationsSemanticTool(server, pool);
+  registerSearchApplicationsSemanticTool(server, pool, searchThoughts);
 }
