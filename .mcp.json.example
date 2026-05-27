@@ -1,11 +1,13 @@
 {
   "mcpServers": {
     "open-brain": {
-      "url": "http://localhost/ob1",
+      "type": "http",
+      "url": "http://localhost/ob1/mcp",
       "headers": { "x-brain-key": "YOUR_OB1_MCP_ACCESS_KEY" }
     },
     "job-search": {
-      "url": "http://localhost/job-search",
+      "type": "http",
+      "url": "http://localhost/job-search/mcp",
       "headers": { "x-brain-key": "YOUR_JOB_SEARCH_MCP_ACCESS_KEY" }
     }
   }

@@ -114,16 +114,22 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create configmap openbrain-conf
 echo "openbrain-configmap updated in openbrain namespace."
 
 # Generate .mcp.json for Claude Code — auth keys live in .env, not committed.
+# "type": "http" is required for Claude Code to recognize the Streamable HTTP transport.
+# Append /mcp to the base URLs defined in .env to reach the MCP endpoint.
 MCP_JSON="$SCRIPT_DIR/../.mcp.json"
+OB1_BASE="${OB1_MCP_URL:-http://localhost/ob1}"
+JS_BASE="${JOB_SEARCH_MCP_URL:-http://localhost/job-search}"
 cat > "$MCP_JSON" <<EOF
 {
   "mcpServers": {
     "open-brain": {
-      "url": "${OB1_MCP_URL:-http://localhost/ob1}",
+      "type": "http",
+      "url": "${OB1_BASE}/mcp",
       "headers": { "x-brain-key": "$OB1_MCP_KEY" }
     },
     "job-search": {
-      "url": "${JOB_SEARCH_MCP_URL:-http://localhost/job-search}",
+      "type": "http",
+      "url": "${JS_BASE}/mcp",
       "headers": { "x-brain-key": "$JOB_SEARCH_MCP_KEY" }
     }
   }

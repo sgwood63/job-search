@@ -26,6 +26,9 @@ base-documents/linkedin-job-listing-page.html
 # Auto-memory duplicate (canonical copy lives in memory/)
 /MEMORY.md
 
+# Python virtualenv
+.venv/
+
 # macOS
 .DS_Store
 **/.DS_Store

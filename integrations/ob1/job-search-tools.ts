@@ -50,8 +50,13 @@ const s3 = makeS3Client();
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function streamToBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
-  const reader = stream.getReader();
+async function streamToBytes(stream: unknown): Promise<Uint8Array> {
+  // AWS SDK v3 npm body in Deno: use transformToByteArray() (SDK v3.x built-in)
+  if (typeof (stream as any).transformToByteArray === "function") {
+    return (stream as any).transformToByteArray();
+  }
+  // Fallback: Web API ReadableStream
+  const reader = (stream as ReadableStream<Uint8Array>).getReader();
   const chunks: Uint8Array[] = [];
   while (true) {
     const { done, value } = await reader.read();
@@ -126,7 +131,7 @@ export function registerUploadFileTool(server: unknown, pool: unknown, captureTh
       // 3. Upsert js_files record
       const client = await (pool as any).connect();
       try {
-        await client.query(
+        await client.queryObject(
           `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (storage_key) DO UPDATE SET
@@ -207,7 +212,7 @@ export function registerListFilesTool(server: unknown, pool: unknown) {
     async ({ prefix }: { prefix: string }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `SELECT storage_key, content_type, file_size, updated_at
            FROM js_files
            WHERE storage_key LIKE $1
@@ -244,7 +249,7 @@ export function registerDeleteFileTool(server: unknown, pool: unknown) {
       await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
       const client = await (pool as any).connect();
       try {
-        await client.query("DELETE FROM js_files WHERE storage_key = $1", [key]);
+        await client.queryObject("DELETE FROM js_files WHERE storage_key = $1", [key]);
       } finally {
         client.release();
       }
@@ -295,7 +300,7 @@ export function registerGetPipelineTool(server: unknown, pool: unknown) {
           ORDER BY a.priority DESC, a.follow_up_date ASC NULLS LAST, a.created_at DESC
           LIMIT $${p}`;
 
-        const { rows } = await client.query(sql, params);
+        const { rows } = await client.queryObject(sql, params);
         return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
       } finally {
         client.release();
@@ -316,7 +321,7 @@ export function registerGetApplicationTool(server: unknown, pool: unknown) {
       const client = await (pool as any).connect();
       try {
         const isUuid = /^[0-9a-f-]{36}$/.test(identifier);
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `SELECT a.*, COALESCE(c.name, a.company_name_raw) AS company_name,
                   c.industry, c.remote_policy, p.slug AS profile_slug, p.display_name AS profile_name
            FROM js_applications a
@@ -332,13 +337,13 @@ export function registerGetApplicationTool(server: unknown, pool: unknown) {
         const app = rows[0];
 
         // List associated files
-        const { rows: files } = await client.query(
+        const { rows: files } = await client.queryObject(
           "SELECT storage_key, content_type, file_size FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
           [(app.folder_prefix ?? "") + "%"]
         );
 
         // List interviews
-        const { rows: interviews } = await client.query(
+        const { rows: interviews } = await client.queryObject(
           "SELECT stage, scheduled_at, completed_at, rating FROM js_interviews WHERE application_id = $1 ORDER BY created_at",
           [app.id]
         );
@@ -389,7 +394,7 @@ export function registerUpdateApplicationStatusTool(server: unknown, pool: unkno
         if (applied_date !== undefined) { sets.push(`applied_date = $${p++}`); params.push(applied_date); }
         else if (status === "applied") { sets.push(`applied_date = COALESCE(applied_date, now()::date)`); }
 
-        const { rowCount } = await client.query(
+        const { rowCount } = await client.queryObject(
           `UPDATE js_applications SET ${sets.join(", ")} WHERE id = $1`,
           params
         );
@@ -423,14 +428,14 @@ export function registerLogInterviewTool(server: unknown, pool: unknown) {
     }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `INSERT INTO js_interviews (application_id, stage, scheduled_at, interviewer_name, interviewer_title, pre_notes)
            VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING id`,
           [args.application_id, args.stage, args.scheduled_at ?? null,
            args.interviewer_name ?? null, args.interviewer_title ?? null, args.pre_notes ?? null]
         );
-        await client.query(
+        await client.queryObject(
           "UPDATE js_applications SET status = 'interview-scheduled', updated_at = now() WHERE id = $1 AND status NOT IN ('interviewed','offer','closed')",
           [args.application_id]
         );
@@ -459,13 +464,13 @@ export function registerCompleteInterviewTool(server: unknown, pool: unknown) {
     }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `UPDATE js_interviews SET post_notes = $2, rating = $3, completed_at = now(), updated_at = now()
            WHERE id = $1 RETURNING application_id`,
           [interview_id, post_notes, rating ?? null]
         );
         if (!rows.length) return { content: [{ type: "text", text: `Interview not found: ${interview_id}` }] };
-        await client.query(
+        await client.queryObject(
           "UPDATE js_applications SET status = 'interviewed', updated_at = now() WHERE id = $1",
           [rows[0].application_id]
         );
@@ -488,7 +493,7 @@ export function registerGetOverdueFollowupsTool(server: unknown, pool: unknown) 
     async () => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `SELECT a.id, COALESCE(c.name, a.company_name_raw) AS company,
                   a.role_title, a.status, a.follow_up_date,
                   (now()::date - a.follow_up_date) AS days_overdue
@@ -531,13 +536,13 @@ export function registerAddContactTool(server: unknown, pool: unknown) {
         // Resolve company_id if provided
         let companyId: string | null = null;
         if (args.company_name) {
-          const { rows } = await client.query(
+          const { rows } = await client.queryObject(
             "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) LIMIT 1",
             [args.company_name]
           );
           companyId = rows[0]?.id ?? null;
         }
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `INSERT INTO js_contacts (name, company_id, title, email, linkedin_url, relationship_type, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
           [args.name, companyId, args.title ?? null, args.email ?? null,
@@ -562,7 +567,7 @@ export function registerGetContactsTool(server: unknown, pool: unknown) {
     async ({ company }: { company?: string }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `SELECT ct.name, ct.title, ct.relationship_type, ct.email, ct.linkedin_url,
                   ct.notes, ct.last_contact_at, ct.follow_up_date,
                   COALESCE(c.name, '') AS company_name
@@ -603,7 +608,7 @@ export function registerUpsertCompanyTool(server: unknown, pool: unknown) {
     }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows } = await client.query(
+        const { rows } = await client.queryObject(
           `INSERT INTO js_companies (name, slug, industry, size_range, remote_policy, website, domain_tags, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (slug) DO UPDATE SET
@@ -651,11 +656,11 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
     }) => {
       const client = await (pool as any).connect();
       try {
-        const { rows: pRows } = await client.query(
+        const { rows: pRows } = await client.queryObject(
           "SELECT id FROM js_profiles WHERE slug = $1", [args.profile_slug]
         );
         const profileId = pRows[0]?.id ?? null;
-        await client.query(
+        await client.queryObject(
           `INSERT INTO js_search_runs
              (profile_id, query, pages_fetched, total_results, new_after_dedup, screened, fit_count, summary_key)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -706,6 +711,70 @@ export function registerSearchApplicationsSemanticTool(server: unknown, pool: un
   );
 }
 
+/**
+ * create_application
+ * Create a new application record in the pipeline. Returns the new application UUID.
+ */
+export function registerCreateApplicationTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "create_application",
+    "Create a new job application record in the pipeline. Returns the new application UUID for use with update_application_status and log_interview.",
+    {
+      company_name: z.string().describe("Company name — looked up in js_companies; stored as company_name_raw if not found"),
+      role_title: z.string(),
+      folder_prefix: z.string().describe("Object store folder prefix, e.g. 'applications/2026-05-27-co-role/'"),
+      profile_slug: z.string().optional().describe("Profile slug, e.g. 'ai-governance-se' — looked up in js_profiles"),
+      source_url: z.string().optional(),
+      status: z.string().default("resume-ready").describe("Initial status, e.g. 'resume-ready', 'applied', 'pending-review'"),
+      priority: z.number().int().min(1).max(3).default(1),
+      status_detail: z.string().optional(),
+    },
+    async (args: {
+      company_name: string; role_title: string; folder_prefix: string;
+      profile_slug?: string; source_url?: string; status: string;
+      priority: number; status_detail?: string;
+    }) => {
+      const client = await (pool as any).connect();
+      try {
+        // Resolve company_id
+        const { rows: co } = await client.queryObject<{ id: string }>(
+          "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) OR slug = LOWER($1) LIMIT 1",
+          [args.company_name]
+        );
+        const companyId = co[0]?.id ?? null;
+
+        // Resolve profile_id
+        let profileId: string | null = null;
+        if (args.profile_slug) {
+          const { rows: pr } = await client.queryObject<{ id: string }>(
+            "SELECT id FROM js_profiles WHERE slug = $1 LIMIT 1",
+            [args.profile_slug]
+          );
+          profileId = pr[0]?.id ?? null;
+        }
+
+        const { rows } = await client.queryObject<{ id: string }>(
+          `INSERT INTO js_applications
+             (company_id, company_name_raw, role_title, profile_id, folder_prefix,
+              source_url, status, status_detail, priority)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id::text AS id`,
+          [companyId, args.company_name, args.role_title, profileId, args.folder_prefix,
+           args.source_url ?? null, args.status, args.status_detail ?? null, args.priority]
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Application created: ${args.company_name} / ${args.role_title} → ${rows[0].id}`,
+          }],
+        };
+      } finally {
+        client.release();
+      }
+    }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Registration helper — call from index.ts main()
 // ---------------------------------------------------------------------------
@@ -723,6 +792,7 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   // State tools
   registerGetPipelineTool(server, pool);
   registerGetApplicationTool(server, pool);
+  registerCreateApplicationTool(server, pool);
   registerUpdateApplicationStatusTool(server, pool);
   registerLogInterviewTool(server, pool);
   registerCompleteInterviewTool(server, pool);
