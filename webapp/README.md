@@ -168,3 +168,64 @@ OB1 mode response:
 ```
 
 If `store` or `db` returns `"error"` in OB1 mode, check that the PostgreSQL and MinIO port-forwards are active and the `.env` credentials are correct.
+
+## Testing
+
+### Backend (pytest)
+
+The backend test suite requires the `.venv` virtual environment.
+
+**Install test dependencies (first time only):**
+```bash
+cd webapp/backend
+source .venv/bin/activate
+pip install -r tests/requirements-test.txt   # pytest, pytest-asyncio, httpx
+```
+
+**Run all tests:**
+```bash
+cd webapp/backend
+source .venv/bin/activate
+pytest
+```
+
+**Run a specific file or test:**
+```bash
+pytest tests/test_api.py
+pytest tests/test_api.py::test_health_ok
+pytest -v   # verbose output
+```
+
+What's covered:
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_api.py` | 30+ | Path validation helpers, all REST endpoints (health, tracker, file CRUD, applications, setup-status, docs allowlist) |
+| `test_storage.py` | 12 | LocalStore async CRUD, list, delete, presigned URLs, factory singleton |
+| `test_tracker.py` | 20+ | `slugify()`, `parse_table()`, `match_folder()`, `parse_tracker()` (full markdown pipeline) |
+
+Tests use a temporary directory for `APPLICANT_DIR` — no real applicant data is touched. `DATA_BACKEND=local` is set automatically by test fixtures; no OB1 services are needed.
+
+### Frontend (Vitest)
+
+No extra setup needed — Vitest and the testing libraries are in `devDependencies` and installed by `npm install`.
+
+**Run all tests once:**
+```bash
+cd webapp/frontend
+npm test
+```
+
+**Run in watch mode (re-runs on file save):**
+```bash
+npm run test:watch
+```
+
+What's covered:
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `api.test.ts` | 5 suites | Fetch wrapper functions (tracker, getFile, putFile, fileUrl, setupStatus) — correct URLs, headers, and error handling |
+| `TrackerView.test.tsx` | 6 | Component rendering, loading state, section headers, count badges, error display |
+
+No browser or backend required — jsdom provides a DOM environment and MSW (Mock Service Worker) intercepts fetch calls. No `.env` needed.

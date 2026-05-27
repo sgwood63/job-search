@@ -5,6 +5,7 @@
 - [DEV_MODE — Modifying the System](#dev_mode--modifying-the-system)
 - [Two-Repo Architecture](#two-repo-architecture)
 - [OB1 Kubernetes Deployment](#ob1-kubernetes-deployment)
+- [Webapp](#webapp)
 - [Slash Command Architecture](#slash-command-architecture)
 - [Hook System](#hook-system)
 - [Memory System](#memory-system)
@@ -197,6 +198,14 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `integrations/ob1/tests/test-deployment.sh` | 19-assertion deployment verification suite |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
+
+---
+
+## Webapp
+
+The local browser webapp (`webapp/`) provides a React + FastAPI UI for browsing and editing applicant data. It supports both `local` and `ob1` data modes (selected by `DATA_BACKEND` in `.env`).
+
+See [webapp/README.md](webapp/README.md) for prerequisites, configuration, launch instructions, API endpoints, and how to run the backend (pytest) and frontend (Vitest) test suites.
 
 ---
 
