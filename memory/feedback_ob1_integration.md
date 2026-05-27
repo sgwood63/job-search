@@ -36,3 +36,31 @@ If OB1 is configured but tools are **NOT** in the deferred list → **hard stop*
 ## File key convention
 
 Object store keys mirror former local paths relative to `$APPLICANT_DIR`. Example: `applications/2026-05-15-co-role/notes.md` in OB1 = `$APPLICANT_DIR/applications/2026-05-15-co-role/notes.md` on disk.
+
+## Session start check (corrected)
+
+OB1 requires **both** MCP servers to be connected. Presence of `mcp__open_brain__*` alone is insufficient — `upload_file`, `get_file`, `get_pipeline`, and all file/pipeline operations live in the job-search server (`mcp__job_search__*`).
+
+If `mcp__job_search__*` tools are absent at session start → **hard stop**. Tell the user:
+
+> "OB1 is configured but job-search MCP tools are not connected. File reads, file writes, and pipeline operations are unavailable. Please restart Claude Code, then re-run `/context`."
+
+No fallback, no curl workaround. If the tools are missing, we don't have a system.
+
+**Why:** A past incident (2026-05-27) showed that when the job-search MCP session handshake fails, the session proceeded without the tools and fell back to writing files directly to GDrive and MinIO — both forbidden. GDrive writes create silent drift. Direct MinIO writes bypass `js_files`, making files invisible in the webapp.
+
+## Binary file uploads (PDFs)
+
+`upload_file` accepts binary content as base64 with `binary: true`:
+
+```
+upload_file(key, base64_content, content_type='application/pdf', binary=True)
+```
+
+A 75KB PDF encodes to ~102KB base64 — well within MCP limits. There is no file size reason to bypass this tool for typical resumes.
+
+If `upload_file` fails or times out: **hard stop**. Do NOT fall back to GDrive or direct MinIO. Report the failure to the user and let them decide how to recover.
+
+The two permanently forbidden fallbacks, regardless of the reason:
+- Writing to `$APPLICANT_DIR` (GDrive) — creates silent drift with OB1 as authoritative store
+- Writing to MinIO directly (Python, mc CLI) — bypasses `js_files`, file becomes invisible in webapp
