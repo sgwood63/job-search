@@ -11,25 +11,37 @@ This directory contains the files needed to deploy the job search system as a co
 - Semantic search across all content via **pgvector** (OB1's `thoughts` table, tagged `source: job-search-mcp`)
 - The job-search-mcp service runs as a separate Kubernetes Deployment, leaving the OB1 image untouched
 
+## Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| OB1 repo (local clone) | Required to build `openbrain-mcp-server:latest`. Set `OB1_REPO_PATH` in `.env` to the clone path. The image is built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/`. |
+| kubectl | Kubernetes CLI |
+| helm | For nginx Ingress Controller installation |
+| Docker | Image builds; Docker Desktop provides a local k8s cluster |
+| Python 3 + venv | MinIO bucket creation and migration (`pip install psycopg2-binary minio`) |
+
 ## Directory Layout
 
 ```
 integrations/ob1/
 ├── README.md                       (this file)
 ├── job-search-schema.sql           (9 SQL tables — run once against OB1 Postgres)
-├── job-search-tools.ts             (16 MCP tool implementations)
+├── job-search-tools.ts             (17 MCP tool implementations)
 ├── job-search-server.ts            (job-search-mcp entry point — Deno HTTP server)
 ├── deno.json                       (import map for job-search-mcp)
 ├── Dockerfile                      (builds the job-search-mcp image)
-└── k8s/
-    ├── openbrain.yml               (OB1 StatefulSet — job-search-managed; use instead of OB1 repo's copy)
-    ├── openbrain-db-service.yml    (exposes OB1 PostgreSQL on port 5432 for job-search-mcp access)
-    ├── ingress.yml                 (nginx Ingress — routes /ob1, /job-search, /minio paths)
-    ├── minio-configmap.yml         (non-sensitive MinIO server config)
-    ├── minio.yml                   (MinIO Deployment + ClusterIP Service)
-    ├── minio-s3-nodeport.yml       (NodePort Service — exposes MinIO S3 API at localhost:30900)
-    ├── job-search-configmap.yml    (non-sensitive config: cluster DNS, model names, ports)
-    └── job-search.yml              (job-search-mcp Deployment + ClusterIP Service)
+├── k8s/
+│   ├── openbrain.yml               (OB1 StatefulSet — job-search-managed; use instead of OB1 repo's copy)
+│   ├── openbrain-db-service.yml    (exposes OB1 PostgreSQL on port 5432 for job-search-mcp access)
+│   ├── ingress.yml                 (nginx Ingress — routes /ob1, /job-search, /minio paths)
+│   ├── minio-configmap.yml         (non-sensitive MinIO server config)
+│   ├── minio.yml                   (MinIO Deployment + ClusterIP Service)
+│   ├── minio-s3-nodeport.yml       (NodePort Service — exposes MinIO S3 API at localhost:30900)
+│   ├── job-search-configmap.yml    (non-sensitive config: cluster DNS, model names, ports)
+│   └── job-search.yml              (job-search-mcp Deployment + ClusterIP Service)
+└── tests/
+    └── test-deployment.sh          (deployment verification — 19 assertions)
 ```
 
 ## Setup Order
@@ -58,6 +70,17 @@ bash scripts/k8s-apply-env.sh
 ```
 
 This creates `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, and `job-search-llm-config` in the `openbrain` namespace from your `.env` values. Re-run after any credential or config change (takes effect on next pod restart).
+
+### 1b. Python virtual environment
+
+Required for MinIO bucket creation (step 7) and migration (step 10). Create once:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --quiet psycopg2-binary minio
+python3 -c "import minio, psycopg2; print('deps OK')"
+```
 
 ### 2. Install nginx Ingress Controller (one-time, per cluster)
 
@@ -164,6 +187,20 @@ kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f 
    open http://localhost/minio
    ```
 
+   **Option C — Python (using `.venv` from step 1b):**
+   ```bash
+   source .venv/bin/activate && source .env
+   python3 -c "
+   from minio import Minio; import os
+   c = Minio(os.environ['MINIO_ENDPOINT'], os.environ['MINIO_ACCESS_KEY'], os.environ['MINIO_SECRET_KEY'], secure=False)
+   if not c.bucket_exists(os.environ['MINIO_BUCKET']):
+       c.make_bucket(os.environ['MINIO_BUCKET'])
+       print('bucket created')
+   else:
+       print('already exists')
+   "
+   ```
+
 ### 8. Build and deploy job-search-mcp
 
 1. Apply the ConfigMap:
@@ -205,25 +242,46 @@ kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f 
 
 `.mcp.json` is generated automatically by `bash scripts/k8s-apply-env.sh` (step 1) — no manual editing required. It is gitignored; the file is recreated from `.env` each time you run the script.
 
-Both servers authenticate via the `x-brain-key` request header. After the file is written, restart Claude Code (or reload the VS Code window) for the MCP servers to register.
+Both servers use the **Streamable HTTP** MCP transport. Claude Code requires `"type": "http"` in `.mcp.json` and the URL must point to the `/mcp` endpoint. Authentication is via `x-brain-key` header. After the file is written, restart Claude Code (or reload the VS Code window) for the MCP servers to register.
 
-**Verify connectivity** before running migration:
+**Verify connectivity** before running migration (tool count: OB1 ≥ 1, job-search = 17):
 
 ```bash
 source .env
-curl -s -H "x-brain-key: $OB1_MCP_KEY" http://localhost/ob1
-curl -s -H "x-brain-key: $JOB_SEARCH_MCP_KEY" http://localhost/job-search
-# Expected: 406 Not Acceptable (servers are up; MCP clients provide the SSE Accept header)
+
+# OB1 MCP — list tools
+curl -s "$OB1_MCP_URL/mcp" \
+  -H "x-brain-key: $OB1_MCP_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
+  | grep '^data:' | head -1 | python3 -m json.tool | grep '"name"' | wc -l
+
+# job-search MCP — expect 17
+curl -s "$JOB_SEARCH_MCP_URL/mcp" \
+  -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
+  | grep '^data:' | head -1 | python3 -m json.tool | grep '"name"' | wc -l
+
 # If 401: key mismatch — re-run bash scripts/k8s-apply-env.sh
 ```
 
 ### 10. Run migration
 
-Migrate existing local files to OB1:
+Migrate existing local applicant files to OB1. The migration script connects directly to `localhost:5432` — a port-forward is required while it runs:
 
 ```bash
-pip install psycopg2-binary minio
-python scripts/migrate-to-ob1.py
+# Open port-forward in background
+kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
+PF_PID=$!
+
+source .venv/bin/activate && source .env
+python scripts/migrate-to-ob1.py --dry-run   # preview — check for parse errors first
+python scripts/migrate-to-ob1.py             # full run
+
+kill $PF_PID   # clean up port-forward
 ```
 
 ## Accessing Services Locally
@@ -232,11 +290,35 @@ No port-forwarding required. Services are permanently accessible once the Ingres
 
 | Service | URL | Notes |
 |---|---|---|
-| OB1 MCP | `http://localhost/ob1` | Used by Claude Code `.mcp.json` |
-| job-search MCP | `http://localhost/job-search` | Used by Claude Code `.mcp.json` |
+| OB1 MCP | `http://localhost/ob1/mcp` | Used by Claude Code `.mcp.json`; base path `/ob1` returns 401 |
+| job-search MCP | `http://localhost/job-search/mcp` | Used by Claude Code `.mcp.json`; base path `/job-search` returns 401 |
 | MinIO console | `http://localhost/minio` | Web UI — bucket management |
 | MinIO S3 API | `http://localhost:30900` | S3 SDK / `mc` access (NodePort — fixed) |
-| PostgreSQL | cluster-internal only | Use `kubectl port-forward svc/openbrain-db 5432:5432` on demand |
+| PostgreSQL | cluster-internal only | Use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand |
+
+## Verify Deployment
+
+Run the full test suite (19 assertions: namespace, secrets, pods, Postgres, 9 js_* tables, MinIO bucket, ingress, both MCP servers, migration data, and functional tool round-trips):
+
+```bash
+bash integrations/ob1/tests/test-deployment.sh
+```
+
+Run a single test by name:
+
+```bash
+bash integrations/ob1/tests/test-deployment.sh test_js_tables
+```
+
+Non-default base URL (minikube, k3d, cloud):
+
+```bash
+K8S_BASE_URL=http://$(minikube ip) bash integrations/ob1/tests/test-deployment.sh
+```
+
+Exit 0 = all assertions pass. Exit 1 = one or more failures (check the color-coded output).
+
+---
 
 ## Environment Variables
 
