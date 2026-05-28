@@ -294,6 +294,77 @@ export function registerDeleteFileTool(server: unknown, pool: unknown) {
   );
 }
 
+/**
+ * delete_application
+ */
+export function registerDeleteApplicationTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "delete_application",
+    "Fully delete an application: removes all object store files, js_files records, thoughts, interviews, and the js_applications row(s).",
+    { folder_prefix: z.string().describe("Object store folder prefix, e.g. 'applications/2026-01-01-co-role/'") },
+    async ({ folder_prefix }: { folder_prefix: string }) => {
+      const prefix = folder_prefix.endsWith("/") ? folder_prefix : folder_prefix + "/";
+      const client = await (pool as any).connect();
+      let filesDeleted = 0, thoughtsDeleted = 0, appsDeleted = 0;
+      try {
+        // 1. Collect thought IDs from all matching js_applications rows
+        const appRows = await client.queryObject(
+          `SELECT id, jd_thought_id, notes_thought_id FROM js_applications WHERE folder_prefix = $1`,
+          [prefix]
+        );
+        if ((appRows.rows as any[]).length === 0) {
+          return { content: [{ type: "text", text: `No application found with folder_prefix ${prefix}` }] };
+        }
+        const appThoughtIds: bigint[] = (appRows.rows as any[])
+          .flatMap((r: any) => [r.jd_thought_id, r.notes_thought_id])
+          .filter(Boolean);
+
+        // 2. Delete js_files records, collect their thought IDs
+        const filesResult = await client.queryObject(
+          `DELETE FROM js_files WHERE storage_key LIKE $1 RETURNING storage_key, thought_id`,
+          [prefix + "%"]
+        );
+        const fileRows = filesResult.rows as any[];
+        filesDeleted = fileRows.length;
+        const fileThoughtIds: bigint[] = fileRows.map((r: any) => r.thought_id).filter(Boolean);
+        const s3Keys: string[] = fileRows.map((r: any) => r.storage_key);
+
+        // 3. Delete S3 objects (also list to catch any orphaned keys not in js_files)
+        const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+        const s3Extra = (listed.Contents ?? [])
+          .map((o: any) => o.Key as string)
+          .filter((k: string) => !s3Keys.includes(k));
+        for (const key of [...s3Keys, ...s3Extra]) {
+          await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+        }
+
+        // 4. Delete all collected thoughts (best-effort)
+        const allThoughtIds = [...new Set([...fileThoughtIds, ...appThoughtIds])];
+        for (const tid of allThoughtIds) {
+          try {
+            await client.queryObject(`DELETE FROM thoughts WHERE id = $1`, [tid]);
+            thoughtsDeleted++;
+          } catch { /* best-effort */ }
+        }
+
+        // 5. Delete all js_applications rows (cascades js_interviews)
+        const del = await client.queryObject(
+          `DELETE FROM js_applications WHERE folder_prefix = $1`, [prefix]
+        );
+        appsDeleted = (del as any).rowCount ?? 0;
+      } finally {
+        client.release();
+      }
+      return {
+        content: [{
+          type: "text",
+          text: `Deleted application ${prefix}: ${appsDeleted} app row(s), ${filesDeleted} files, ${thoughtsDeleted} thoughts removed.`
+        }]
+      };
+    }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // STATE TOOLS
 // ---------------------------------------------------------------------------
@@ -824,6 +895,7 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerGetFileUrlTool(server);
   registerListFilesTool(server, pool);
   registerDeleteFileTool(server, pool);
+  registerDeleteApplicationTool(server, pool);
 
   // State tools
   registerGetPipelineTool(server, pool);
