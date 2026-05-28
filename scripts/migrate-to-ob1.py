@@ -62,6 +62,8 @@ parser = argparse.ArgumentParser(description="Migrate APPLICANT_DIR to OB1")
 parser.add_argument("--dry-run", action="store_true", help="Print what would happen, no writes")
 parser.add_argument("--skip-files", action="store_true", help="Skip object store upload (SQL migration only)")
 parser.add_argument("--only-sql", action="store_true", help="Alias for --skip-files")
+parser.add_argument("--repair-folder-prefix", action="store_true",
+                    help="Fix folder_prefix mismatches in js_applications using js_files as ground truth")
 args = parser.parse_args()
 
 DRY_RUN = args.dry_run
@@ -332,11 +334,29 @@ def migrate_applications(cur):
         source_url = col(row, "source", "") or col(row, "url", "")
         status_detail = col(row, "status detail", "") or col(row, "notes", "")
 
-        # Derive folder_prefix from date + company + role
         folder_date = applied_date.strftime("%Y-%m-%d") if applied_date else "2026-01-01"
         company_slug = slug(company_name) if company_name else "unknown"
         role_slug = slug(role) if role else "role"
-        folder_prefix = f"applications/{folder_date}-{company_slug}-{role_slug}/"
+        computed = f"{folder_date}-{company_slug}-{role_slug}"
+
+        # Use actual folder from disk to avoid slugification mismatches between
+        # tracker data and the name Claude chose when creating the folder.
+        apps_dir = APPLICANT_DIR / "applications"
+        date_co_prefix = f"{folder_date}-{company_slug}"
+        matches: list = []
+        if apps_dir.is_dir():
+            matches = [d.name for d in apps_dir.iterdir()
+                       if d.is_dir() and d.name.startswith(date_co_prefix)]
+        if len(matches) == 1:
+            folder_prefix = f"applications/{matches[0]}/"
+        elif len(matches) > 1:
+            best = min(matches, key=lambda m: abs(len(m) - len(computed)))
+            folder_prefix = f"applications/{best}/"
+            log(f"WARNING: multiple folder matches for {company_name}/{role}, using {best}")
+        else:
+            folder_prefix = f"applications/{computed}/"
+            if apps_dir.is_dir():
+                log(f"WARNING: no folder found for {company_name}/{role}, using computed prefix")
 
         co_slug = slug(company_name) if company_name else "unknown"
 
@@ -556,7 +576,66 @@ def migrate_files(cur, upload_fn):
     print(f"  Uploaded: {count} files, {errors} errors")
 
 # ---------------------------------------------------------------------------
-# Main
+# Repair: fix folder_prefix mismatches
+# ---------------------------------------------------------------------------
+def repair_folder_prefix(cur):
+    print("\n[REPAIR] Fixing folder_prefix mismatches against js_files …")
+
+    cur.execute("""
+        SELECT DISTINCT regexp_replace(storage_key, '(applications/[^/]+/).*', '\\1') AS folder
+        FROM js_files
+        WHERE storage_key LIKE 'applications/%'
+    """)
+    actual_folders = {r["folder"] for r in cur.fetchall()}
+    log(f"Found {len(actual_folders)} actual application folders in js_files")
+
+    cur.execute("SELECT id, folder_prefix FROM js_applications WHERE folder_prefix IS NOT NULL")
+    repaired, skipped, unmatched = 0, 0, 0
+    for row in cur.fetchall():
+        fp = row["folder_prefix"]
+        if fp in actual_folders:
+            skipped += 1
+            continue
+
+        inner = fp.removeprefix("applications/").rstrip("/")
+        parts = inner.split("-")
+        if len(parts) < 4:
+            log(f"SKIP: can't parse prefix {fp!r}")
+            continue
+        search_prefix = f"applications/{parts[0]}-{parts[1]}-{parts[2]}-{parts[3]}"
+
+        matches = [f for f in actual_folders if f.startswith(search_prefix)]
+        if len(matches) == 1:
+            best = matches[0]
+        elif len(matches) > 1:
+            # Use token overlap to pick the best match
+            computed_tokens = set(inner.split("-"))
+            scored = [
+                (len(computed_tokens & set(m.removeprefix("applications/").rstrip("/").split("-"))), m)
+                for m in matches
+            ]
+            max_score = max(s for s, _ in scored)
+            best_matches = [m for s, m in scored if s == max_score]
+            if len(best_matches) == 1:
+                best = best_matches[0]
+            else:
+                log(f"WARNING: ambiguous matches for {fp!r}: {best_matches}")
+                unmatched += 1
+                continue
+        else:
+            log(f"WARNING: no match for {fp!r} (search prefix: {search_prefix!r})")
+            unmatched += 1
+            continue
+
+        if not DRY_RUN:
+            cur.execute("UPDATE js_applications SET folder_prefix = %s WHERE id = %s",
+                        (best, row["id"]))
+        log(f"repaired: {fp!r} → {best!r}")
+        repaired += 1
+
+    print(f"  Repaired: {repaired}, already correct: {skipped}, unresolved: {unmatched}")
+
+
 # ---------------------------------------------------------------------------
 def main():
     print("=" * 60)
@@ -574,6 +653,20 @@ def main():
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         else:
             cur = None  # type: ignore
+
+        if args.repair_folder_prefix:
+            if DRY_RUN:
+                # For dry-run repair we still need a read-only cursor
+                conn = get_db()
+                conn.autocommit = True
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            repair_folder_prefix(cur)
+            if not DRY_RUN and conn:
+                conn.commit()
+                print("\n✓ Repair committed.")
+            else:
+                print("\n✓ Dry run complete — no writes made.")
+            return
 
         migrate_applicant(cur)
         migrate_profiles(cur)
