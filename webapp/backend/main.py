@@ -763,7 +763,24 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
             if 'session_id' in obj and not session.claude_session_id:
                 session.claude_session_id = obj['session_id']
 
-            if obj.get('type') == 'assistant':
+            if obj.get('type') == 'user':
+                # Tool results arrive as user messages; detect MCP connectivity failures
+                for block in obj.get('message', {}).get('content', []):
+                    if block.get('type') == 'tool_result' and block.get('is_error'):
+                        err_text = str(block.get('content', ''))
+                        if any(tok in err_text for tok in ('MCP', 'connect', 'ECONNREFUSED', 'ENOTFOUND')):
+                            session.status = 'closed'
+                            _broadcast(session, {
+                                'type': 'session_error',
+                                'content': (
+                                    'MCP server connection was lost mid-session. '
+                                    'This session has been closed — start a new session to continue.'
+                                ),
+                            })
+                            if proc is not None:
+                                proc.terminate()
+                            return
+            elif obj.get('type') == 'assistant':
                 content_blocks = obj.get('message', {}).get('content', [])
                 current_text = ''.join(
                     b.get('text', '') for b in content_blocks if b.get('type') == 'text'
@@ -926,17 +943,23 @@ async def session_ws(websocket: WebSocket, session_id: str):
                 continue
             if msg.get('type') == 'input' and session.status != 'closed':
                 text = msg.get('data', '')
-                if text and session.status != 'executing':
-                    clean_text = text.strip()
-                    user_msg = {'role': 'user', 'content': clean_text, 'ts': time.time()}
-                    session.messages_structured.append(user_msg)
-                    _broadcast(session, {'type': 'user_message', 'content': clean_text})
-                    t = threading.Thread(
-                        target=_run_message_thread,
-                        args=(session, clean_text),
-                        daemon=True,
-                    )
-                    t.start()
+                if text:
+                    if session.status == 'executing':
+                        await websocket.send_text(json.dumps({
+                            'type': 'error',
+                            'content': 'Still processing the previous message — please wait.',
+                        }))
+                    else:
+                        clean_text = text.strip()
+                        user_msg = {'role': 'user', 'content': clean_text, 'ts': time.time()}
+                        session.messages_structured.append(user_msg)
+                        _broadcast(session, {'type': 'user_message', 'content': clean_text})
+                        t = threading.Thread(
+                            target=_run_message_thread,
+                            args=(session, clean_text),
+                            daemon=True,
+                        )
+                        t.start()
     except WebSocketDisconnect:
         pass
     finally:
