@@ -32,6 +32,8 @@ APPLICANT_DIR = Path(_applicant_raw.strip('"').strip("'")) if _applicant_raw els
 
 DATA_BACKEND = os.environ.get('DATA_BACKEND', 'local').lower()
 
+CLAUDE_BINARY = os.environ.get('CLAUDE_BINARY', 'claude')
+
 DOCS_ALLOWLIST = {
     'README.md', 'USER-GUIDE.md', 'QUICK-START.md',
     'applicant-setup.md', 'DEVELOPER-README.md',
@@ -690,7 +692,7 @@ def _broadcast(session: ChatSession, msg: dict) -> None:
 def _run_message_thread(session: ChatSession, message: str) -> None:
     """Spawn `claude -p --output-format stream-json` for one user message, stream chunks."""
     cmd = [
-        'claude', '-p',
+        CLAUDE_BINARY, '-p',
         '--dangerously-skip-permissions',
         '--output-format', 'stream-json',
         '--verbose',

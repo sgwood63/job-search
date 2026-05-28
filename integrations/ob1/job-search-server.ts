@@ -198,7 +198,7 @@ registerJobSearchTools(server, pool, { captureThought, searchThoughts });
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, x-brain-key, Accept, Mcp-Session-Id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-brain-key, accept, mcp-session-id, mcp-protocol-version, last-event-id",
 };
 
 const JSON_RPC_UNAUTHORIZED_CODE = -32001;
@@ -235,7 +235,8 @@ app.all("*", async (c) => {
     }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
   }
 
-  // Fix: patch missing Accept header (required by StreamableHTTPTransport)
+  // Fix: patch missing or incomplete Accept header (StreamableHTTPTransport requires both
+  // application/json and text/event-stream). Fires for any client that doesn't include SSE.
   if (!c.req.header("accept")?.includes("text/event-stream")) {
     const headers = new Headers(c.req.raw.headers);
     headers.set("Accept", "application/json, text/event-stream");

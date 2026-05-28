@@ -143,12 +143,11 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 
 At the start of every session, automatically run the `/context` workflow once before responding to the first user request:
 1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is configured (`DATA_BACKEND=ob1`)
-2. If OB1 is configured: verify OB1 MCP tools appear in the session's deferred tool list (`mcp__job_search__*` or `mcp__open_brain__*`). If they do NOT appear → **hard stop**: tell the user "OB1 is configured but MCP tools are not connected. Please restart Claude Code, then re-run `/context`." Do not proceed to read applicant files.
-3. Read `applicant.md` — via `get_file('applicant.md')` if OB1 configured, else `$APPLICANT_DIR/applicant.md`
-4. Get pipeline — if OB1 configured: `get_pipeline()` + `get_overdue_followups()`; else read `$APPLICANT_DIR/application-tracker.md` — flag past-due follow-ups, active interviews, Priority ⭐️⭐️⭐️ items, and pending-review count
-5. Read `memory/APPLICANT-MEMORY.md` — via `get_file('memory/APPLICANT-MEMORY.md')` if OB1 configured, else `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
-6. Read `$APP_DIR/memory/MEMORY.md`
-7. Output a session briefing (10 lines max): active pipeline count, pending-review count, past-due follow-ups, most urgent next action, OB1 mode status, confirm `$APPLICANT_DIR` resolved, and DEV_MODE status per the fork below. End with: "Context loaded. Ready."
+2. If OB1 is configured: verify `mcp__job_search__*` tools appear in the deferred tool list. If absent → **hard stop**: "OB1 is configured but job-search MCP tools are not connected. Please restart Claude Code, then re-run `/context`."
+3. In parallel, load: `applicant.md` + `memory/APPLICANT-MEMORY.md` — via `get_file()` if OB1, else direct reads from `$APPLICANT_DIR`
+4. Output a session briefing (10 lines max): applicant identity confirmed, OB1/local mode, `$APPLICANT_DIR` resolved, DEV_MODE status. End with: "Context loaded. Ready."
+
+**Pipeline is not loaded at session start.** Run `/status` to see active applications, overdue follow-ups, and pipeline counts.
 
 **DEV_MODE=false (default):** State: "DEV_MODE=false — APP_DIR is read-only." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules.
 
