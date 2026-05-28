@@ -601,5 +601,15 @@ def main():
         if conn:
             conn.close()
 
+    # Step 10: backfill thought embeddings for all uploaded files
+    print("\n[10] Running thought backfill …")
+    cmd = [sys.executable, str(Path(__file__).parent / "backfill-thoughts.py")]
+    if DRY_RUN:
+        cmd.append("--dry-run")
+    if SKIP_FILES:
+        # Files weren't uploaded so nothing to embed; just wire FK columns
+        cmd.append("--only-fk")
+    subprocess.run(cmd, check=True)
+
 if __name__ == "__main__":
     main()

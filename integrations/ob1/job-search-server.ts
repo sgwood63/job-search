@@ -66,6 +66,27 @@ async function getEmbedding(text: string): Promise<number[]> {
   return d.data[0].embedding;
 }
 
+const MAX_EMBED_CHARS = 25_000; // ~6,000 tokens — safely under text-embedding-3-small's 8,191 limit
+
+async function summarizeForEmbedding(content: string): Promise<string> {
+  const r = await fetch(`${CHAT_API_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${CHAT_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: CHAT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "Summarize this document in 3-5 sentences for semantic search indexing. Focus on what it contains and why someone would search for it.",
+        },
+        { role: "user", content: content.slice(0, 80_000) },
+      ],
+    }),
+  });
+  const d = await r.json();
+  return d.choices[0].message.content as string;
+}
+
 async function extractMetadata(text: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${CHAT_API_BASE}/chat/completions`, {
     method: "POST",
@@ -102,11 +123,13 @@ async function captureThought(
   content: string,
   metadata: Record<string, unknown>,
 ): Promise<string> {
+  const large = content.length > MAX_EMBED_CHARS;
+  const embedText = large ? await summarizeForEmbedding(content) : content;
   const [embedding, extracted] = await Promise.all([
-    getEmbedding(content),
-    extractMetadata(content),
+    getEmbedding(embedText),
+    extractMetadata(embedText),
   ]);
-  const meta = { ...extracted, ...metadata, source: "job-search-mcp" };
+  const meta = { ...extracted, ...metadata, source: "job-search-mcp", ...(large && { summarized: true }) };
   const embStr = `[${embedding.join(",")}]`;
   const client = await pool.connect();
   try {

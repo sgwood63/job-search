@@ -108,6 +108,20 @@ export function registerUploadFileTool(server: unknown, pool: unknown, captureTh
         ? Uint8Array.from(atob(content), c => c.charCodeAt(0))
         : new TextEncoder().encode(content);
 
+      // 0. Look up any existing thought_id so we can delete it after overwrite
+      let oldThoughtId: string | null = null;
+      {
+        const c = await (pool as any).connect();
+        try {
+          const r = await c.queryObject(
+            `SELECT thought_id FROM js_files WHERE storage_key = $1`, [key]
+          );
+          oldThoughtId = (r.rows[0] as any)?.thought_id ?? null;
+        } finally {
+          c.release();
+        }
+      }
+
       // 1. Write to object store
       await s3.send(new PutObjectCommand({
         Bucket: BUCKET,
@@ -129,21 +143,32 @@ export function registerUploadFileTool(server: unknown, pool: unknown, captureTh
       }
 
       // 3. Upsert js_files record
-      const client = await (pool as any).connect();
-      try {
-        await client.queryObject(
-          `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (storage_key) DO UPDATE SET
-             bucket = EXCLUDED.bucket,
-             content_type = EXCLUDED.content_type,
-             file_size = EXCLUDED.file_size,
-             thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
-             updated_at = now()`,
-          [key, BUCKET, content_type, bytes.length, thoughtId]
-        );
-      } finally {
-        client.release();
+      {
+        const c = await (pool as any).connect();
+        try {
+          await c.queryObject(
+            `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (storage_key) DO UPDATE SET
+               bucket = EXCLUDED.bucket,
+               content_type = EXCLUDED.content_type,
+               file_size = EXCLUDED.file_size,
+               thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
+               updated_at = now()`,
+            [key, BUCKET, content_type, bytes.length, thoughtId]
+          );
+        } finally {
+          c.release();
+        }
+      }
+
+      // 4. Delete orphaned thought from the previous version (best-effort)
+      if (oldThoughtId && thoughtId && oldThoughtId !== thoughtId) {
+        const c = await (pool as any).connect();
+        try {
+          await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [oldThoughtId]);
+        } catch { /* best-effort */ }
+        finally { c.release(); }
       }
 
       return { content: [{ type: "text", text: `Uploaded: ${key} (${bytes.length} bytes)` }] };
@@ -248,10 +273,21 @@ export function registerDeleteFileTool(server: unknown, pool: unknown) {
     async ({ key }: { key: string }) => {
       await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
       const client = await (pool as any).connect();
+      let thoughtId: string | null = null;
       try {
-        await client.queryObject("DELETE FROM js_files WHERE storage_key = $1", [key]);
+        const r = await client.queryObject(
+          `DELETE FROM js_files WHERE storage_key = $1 RETURNING thought_id::text AS thought_id`, [key]
+        );
+        thoughtId = (r.rows[0] as any)?.thought_id ?? null;
       } finally {
         client.release();
+      }
+      if (thoughtId) {
+        const c = await (pool as any).connect();
+        try {
+          await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [thoughtId]);
+        } catch { /* best-effort */ }
+        finally { c.release(); }
       }
       return { content: [{ type: "text", text: `Deleted: ${key}` }] };
     }
