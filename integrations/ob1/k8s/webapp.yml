@@ -1,0 +1,106 @@
+---
+# Job Search Webapp
+# Deployment in the openbrain namespace with a claude-runner sidecar.
+# The webapp delegates claude subprocess calls to the sidecar at localhost:8090,
+# enabling future independent scaling of the runner.
+#
+# Prerequisites:
+#   1. openbrain StatefulSet is running (provides PostgreSQL)
+#   2. openbrain-db-service.yml has been applied (exposes port 5432)
+#   3. minio.yml has been applied and the job-search bucket exists
+#   4. job-search-schema.sql has been applied to the openbrain database
+#   5. bash scripts/k8s-apply-env.sh has been run (creates webapp-secret)
+#   6. webapp-configmap.yml has been applied
+#   7. Docker images are available on the cluster:
+#        docker build -f webapp/Dockerfile -t job-search-webapp:latest .
+#        docker build -f webapp/runner/Dockerfile webapp/runner/ -t job-search-claude-runner:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-search-webapp
+  namespace: openbrain
+  labels:
+    app: job-search-webapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: job-search-webapp
+  template:
+    metadata:
+      labels:
+        app: job-search-webapp
+    spec:
+      containers:
+        # ── Webapp container ──────────────────────────────────────────────
+        - name: webapp
+          image: job-search-webapp:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            # Non-sensitive static config: cluster DNS names, DATA_BACKEND, paths
+            - configMapRef:
+                name: webapp-configmap
+            # Sensitive credentials: DB_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
+            # ANTHROPIC_API_KEY (required for chat sessions)
+            # Created/updated by: bash scripts/k8s-apply-env.sh
+            - secretRef:
+                name: webapp-secret
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+        # ── Claude runner sidecar ─────────────────────────────────────────
+        # Receives POST /run from webapp, spawns claude subprocess, streams NDJSON back.
+        # Webapp routes here via CLAUDE_RUNNER_URL=http://localhost:8090 (set in configmap).
+        - name: claude-runner
+          image: job-search-claude-runner:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+              name: runner
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: webapp-secret
+                  key: ANTHROPIC_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-search-webapp
+  namespace: openbrain
+spec:
+  selector:
+    app: job-search-webapp
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: http
+      name: http
+  type: ClusterIP

@@ -108,7 +108,8 @@ $APP_DIR/
         ├── job-search-tools.ts      # 17 MCP tool implementations (Deno)
         ├── job-search-server.ts     # MCP HTTP server entry point (Deno/Hono)
         ├── Dockerfile               # Builds job-search-mcp image
-        ├── k8s/                     # 8 Kubernetes manifests
+        ├── docker-compose.yml       # OB1 data services (postgres + minio)
+        ├── k8s/                     # Kubernetes manifests
         └── tests/
             └── test-deployment.sh  # 19-assertion deployment verification suite
 ```
@@ -203,9 +204,66 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 
 ## Webapp
 
-The local browser webapp (`webapp/`) provides a React + FastAPI UI for browsing and editing applicant data. It supports both `local` and `ob1` data modes (selected by `DATA_BACKEND` in `.env`).
+The browser webapp (`webapp/`) provides a React + FastAPI UI for browsing and editing applicant data. It supports both `local` and `ob1` data modes (selected by `DATA_BACKEND` in `.env`).
 
-See [webapp/README.md](webapp/README.md) for prerequisites, configuration, launch instructions, API endpoints, and how to run the backend (pytest) and frontend (Vitest) test suites.
+See [webapp/README.md](webapp/README.md) for prerequisites, configuration, launch instructions, API endpoints, and test suites.
+
+### Containerization
+
+Two Docker images are built from the repo root:
+
+| Image | Dockerfile | Purpose |
+|-------|-----------|---------|
+| `job-search-webapp:latest` | `webapp/Dockerfile` | FastAPI backend + compiled React frontend |
+| `job-search-claude-runner:latest` | `webapp/runner/Dockerfile` | Claude subprocess sidecar |
+
+**Multi-stage build** (`webapp/Dockerfile`): Stage 1 (`node:20-slim`) builds the React frontend and installs the `claude` binary via npm. Stage 2 (`python:3.11-slim`) copies the binary and runs uvicorn. Both stages use Debian so the binary is glibc-compatible.
+
+**Claude runner** (`webapp/runner/`): A thin FastAPI sidecar that wraps `claude` subprocess calls. The webapp routes to it when `CLAUDE_RUNNER_URL` is set (always set in K8s via `webapp-configmap`; unset in docker-compose, where the webapp uses its built-in binary). The runner exposes `POST /run` — accepts `{args, cwd, message}`, streams NDJSON back verbatim. This separates the subprocess boundary without changing the wire protocol.
+
+### K8s webapp deployment
+
+Deploys alongside the existing OB1 services in the `openbrain` namespace. The pod has two containers (`webapp` + `claude-runner` sidecar).
+
+```bash
+docker build -f webapp/Dockerfile -t job-search-webapp:latest .
+docker build -f webapp/runner/Dockerfile webapp/runner/ -t job-search-claude-runner:latest
+bash scripts/k8s-apply-env.sh          # creates webapp-secret
+kubectl apply -f integrations/ob1/k8s/webapp-configmap.yml
+kubectl apply -f integrations/ob1/k8s/webapp.yml
+kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
+```
+
+Access at `http://localhost:30800`. Requires `ANTHROPIC_API_KEY` in `.env` (no OAuth in containers) for chat sessions.
+
+### docker-compose
+
+Two compose files, combine with `-f` flags:
+
+| File | Contents |
+|------|---------|
+| `webapp/docker-compose.yml` | Webapp service only |
+| `integrations/ob1/docker-compose.yml` | PostgreSQL + MinIO + openbrain MCP + job-search-mcp |
+
+```bash
+# Webapp only (local mode)
+docker compose -f webapp/docker-compose.yml up
+
+# Full OB1 stack (webapp + all 4 OB1 services)
+docker compose \
+  -f webapp/docker-compose.yml \
+  -f integrations/ob1/docker-compose.yml up
+```
+
+For OB1 compose mode, set these in `.env` before running (values differ from K8s defaults):
+```
+DATA_BACKEND=ob1
+DB_HOST=postgres
+MINIO_ENDPOINT=minio:9000
+OB1_MCP_URL=http://localhost:8080
+JOB_SEARCH_MCP_URL=http://localhost:8081
+```
+Then re-run `bash scripts/k8s-apply-env.sh` to regenerate `.mcp.json` with the compose-mode URLs.
 
 ---
 

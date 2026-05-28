@@ -1,0 +1,20 @@
+---
+# NodePort service for local access to the webapp without port-forwarding.
+# Access at http://localhost:30800 once the deployment is running.
+#
+# Apply: kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-search-webapp-nodeport
+  namespace: openbrain
+spec:
+  selector:
+    app: job-search-webapp
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+      nodePort: 30800
+  type: NodePort

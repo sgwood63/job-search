@@ -33,6 +33,7 @@ APPLICANT_DIR = Path(_applicant_raw.strip('"').strip("'")) if _applicant_raw els
 DATA_BACKEND = os.environ.get('DATA_BACKEND', 'local').lower()
 
 CLAUDE_BINARY = os.environ.get('CLAUDE_BINARY', 'claude')
+CLAUDE_RUNNER_URL = os.environ.get('CLAUDE_RUNNER_URL', '').rstrip('/')
 
 DOCS_ALLOWLIST = {
     'README.md', 'USER-GUIDE.md', 'QUICK-START.md',
@@ -689,8 +690,29 @@ def _broadcast(session: ChatSession, msg: dict) -> None:
             session.clients.remove(ws)
 
 
+def _stream_via_runner(cmd: list, message: str):
+    """Call the claude-runner sidecar and yield NDJSON lines from its streaming response."""
+    import http.client
+    import urllib.parse
+    parsed = urllib.parse.urlparse(CLAUDE_RUNNER_URL)
+    body = json.dumps({'args': cmd, 'cwd': str(APP_DIR), 'message': message}).encode()
+    conn = http.client.HTTPConnection(parsed.netloc, timeout=300)
+    try:
+        conn.request('POST', (parsed.path or '') + '/run', body,
+                     {'Content-Type': 'application/json'})
+        resp = conn.getresponse()
+        for raw in resp:
+            yield raw.decode('utf-8')
+    finally:
+        conn.close()
+
+
 def _run_message_thread(session: ChatSession, message: str) -> None:
-    """Spawn `claude -p --output-format stream-json` for one user message, stream chunks."""
+    """Spawn `claude -p --output-format stream-json` for one user message, stream chunks.
+
+    When CLAUDE_RUNNER_URL is set, delegates subprocess management to the
+    claude-runner sidecar (http://localhost:8090) instead of spawning locally.
+    """
     cmd = [
         CLAUDE_BINARY, '-p',
         '--dangerously-skip-permissions',
@@ -706,24 +728,29 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
     session.status = 'executing'
     _broadcast(session, {'type': 'status', 'status': 'executing'})
 
+    proc = None
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            cwd=str(APP_DIR),
-            env={**os.environ},
-        )
-        session.current_proc = proc
-        proc.stdin.write(message)
-        proc.stdin.close()
+        if CLAUDE_RUNNER_URL:
+            lines = _stream_via_runner(cmd, message)
+        else:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                cwd=str(APP_DIR),
+                env={**os.environ},
+            )
+            session.current_proc = proc
+            proc.stdin.write(message)
+            proc.stdin.close()
+            lines = proc.stdout
 
         prev_text = ''
         last_saved_text = None
 
-        for raw_line in proc.stdout:
+        for raw_line in lines:
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -760,7 +787,8 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
                     prev_text = current_text
                     _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
 
-        proc.wait()
+        if proc is not None:
+            proc.wait()
     except Exception:
         pass
 

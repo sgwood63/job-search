@@ -31,6 +31,7 @@ integrations/ob1/
 ├── job-search-server.ts            (job-search-mcp entry point — Deno HTTP server)
 ├── deno.json                       (import map for job-search-mcp)
 ├── Dockerfile                      (builds the job-search-mcp image)
+├── docker-compose.yml              (all 4 OB1 services — K8s-free alternative)
 ├── k8s/
 │   ├── openbrain.yml               (OB1 StatefulSet — job-search-managed; use instead of OB1 repo's copy)
 │   ├── openbrain-db-service.yml    (exposes OB1 PostgreSQL on port 5432 for job-search-mcp access)
@@ -278,6 +279,66 @@ python scripts/migrate-to-ob1.py --dry-run   # preview — check for parse error
 python scripts/migrate-to-ob1.py             # full run
 ```
 
+## Docker Compose Alternative
+
+`integrations/ob1/docker-compose.yml` runs the same 4 services (postgres, minio, openbrain MCP, job-search-mcp) without a Kubernetes cluster. Use this for lighter local development or when Docker Desktop K8s is unavailable.
+
+### Prerequisites
+
+- `openbrain-mcp-server:latest` must be pre-built from `$OB1_REPO_PATH` (same as K8s step 3):
+
+  ```bash
+  docker build -t openbrain-mcp-server:latest \
+    "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
+  ```
+
+### `.env` Overrides for Compose Mode
+
+These values differ from K8s defaults — update `.env` before running:
+
+```bash
+DATA_BACKEND=ob1
+DB_HOST=postgres              # compose service name (not localhost or cluster DNS)
+MINIO_ENDPOINT=minio:9000     # compose service name (not localhost:30900)
+OB1_MCP_URL=http://localhost:8080     # direct port (not /ob1 Ingress path)
+JOB_SEARCH_MCP_URL=http://localhost:8081
+```
+
+Then regenerate `.mcp.json`:
+
+```bash
+bash scripts/k8s-apply-env.sh
+```
+
+### Running
+
+```bash
+# OB1 services only
+docker compose -f integrations/ob1/docker-compose.yml up -d
+
+# Apply schema once (first run only)
+docker compose -f integrations/ob1/docker-compose.yml exec postgres \
+  psql -U postgres -d openbrain < integrations/ob1/job-search-schema.sql
+
+# Full stack with webapp
+docker compose \
+  -f webapp/docker-compose.yml \
+  -f integrations/ob1/docker-compose.yml up -d
+```
+
+### Service Access (compose mode)
+
+| Service | URL | Notes |
+|---|---|---|
+| OB1 MCP | `http://localhost:8080/mcp` | Used by Claude Code `.mcp.json` |
+| job-search MCP | `http://localhost:8081/mcp` | Used by Claude Code `.mcp.json` |
+| MinIO S3 API | `http://localhost:9000` | S3 SDK access |
+| MinIO console | `http://localhost:9001` | Web UI — bucket management |
+| PostgreSQL | `localhost:5432` | Direct DB access (no port-forward needed) |
+| Webapp (if combined) | `http://localhost:8000` | React + FastAPI |
+
+---
+
 ## Accessing Services Locally
 
 Most services are permanently accessible once the Ingress controller and manifests are applied. PostgreSQL requires a persistent port-forward that must be running whenever the webapp or any tool that connects directly to the database is active.
@@ -348,9 +409,9 @@ The OB1 + job-search vars needed:
 | `DB_NAME` | job-search-server.ts | `openbrain` |
 | `DB_USER` | job-search-server.ts | `postgres` |
 | `DB_PASSWORD` | job-search-server.ts, k8s Secret | |
-| `OB1_MCP_URL` | Claude Code `.mcp.json` | `http://localhost/ob1` (via Ingress) |
+| `OB1_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/ob1` (via Ingress) · Compose: `http://localhost:8080` |
 | `OB1_MCP_KEY` | Claude Code `.mcp.json` | Auth header for OB1 MCP |
-| `JOB_SEARCH_MCP_URL` | Claude Code `.mcp.json` | `http://localhost/job-search` (via Ingress) |
+| `JOB_SEARCH_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/job-search` (via Ingress) · Compose: `http://localhost:8081` |
 | `JOB_SEARCH_MCP_KEY` | k8s Secret → `MCP_ACCESS_KEY` | Auth header for job-search MCP |
 | `LLM_API_KEY` | k8s Secret → `EMBEDDING_API_KEY`, `CHAT_API_KEY`; also patches `openbrain-secret` for OB1 | OpenRouter or OpenAI key |
 | `EMBEDDING_API_BASE` | `job-search-llm-config` ConfigMap → job-search-mcp | Default: `https://openrouter.ai/api/v1`; OpenAI: `https://api.openai.com/v1` |

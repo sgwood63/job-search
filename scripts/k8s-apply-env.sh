@@ -6,6 +6,7 @@
 #   minio-secret             — MinIO credentials
 #   job-search-secret        — DB password, job-search MCP key, MinIO keys, LLM API keys
 #   job-search-llm-config    — LLM API base URLs and model names for job-search-mcp (ConfigMap)
+#   webapp-secret            — DB password, MinIO keys, ANTHROPIC_API_KEY for webapp + runner
 #
 # Safe to re-run — uses --dry-run=client | kubectl apply for all resources — no delete/recreate.
 # Run after any .env credential or config change before redeploying affected pods.
@@ -112,6 +113,17 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create configmap openbrain-conf
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
 echo "openbrain-configmap updated in openbrain namespace."
+
+kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic webapp-secret \
+  --namespace openbrain \
+  --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+  --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
+  --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
+  --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
+  --dry-run=client -o yaml \
+  | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
+
+echo "webapp-secret updated in openbrain namespace."
 
 # Generate .mcp.json for Claude Code — auth keys live in .env, not committed.
 # "type": "http" is required for Claude Code to recognize the Streamable HTTP transport.

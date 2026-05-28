@@ -55,7 +55,7 @@ Applicant data is kept out of git to protect personal information and keep the p
 - **New to the system?** Start with [QUICK-START.md](QUICK-START.md).
 - **Day-to-day usage?** See [USER-GUIDE.md](USER-GUIDE.md) — workflows, commands, and examples.
 - **Modifying the system?** See [DEVELOPER-README.md](DEVELOPER-README.md) — architecture, DEV_MODE, hooks, scripts, and settings.
-- **Kubernetes/OB1 deployment?** See [integrations/ob1/README.md](integrations/ob1/README.md) — replaces local file storage with MinIO + PostgreSQL on a local k8s cluster.
+- **OB1 deployment?** See [integrations/ob1/README.md](integrations/ob1/README.md) — replaces local file storage with MinIO + PostgreSQL. Runs as a Kubernetes deployment (Docker Desktop) or via `docker compose -f integrations/ob1/docker-compose.yml up` (no cluster required).
 
 ---
 

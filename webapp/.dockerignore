@@ -1,0 +1,35 @@
+# Dependencies (rebuilt inside container)
+webapp/frontend/node_modules/
+webapp/frontend/dist/
+
+# Python artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+webapp/backend/.pytest_cache/
+webapp/backend/htmlcov/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+**/.auth/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Infra (not needed in webapp image)
+integrations/
+.claude/
+scripts/
+
+# Generated files
+**/*.pdf
+**/*.log
+
+# Test artifacts
+webapp/backend/tests/
+webapp/frontend/src/__tests__/

@@ -115,6 +115,77 @@ cd ../backend && uvicorn main:app --host 0.0.0.0 --port 8000
 
 Open [http://localhost:8000](http://localhost:8000).
 
+## Launch — Docker
+
+Containerized alternatives to `start.sh`. `ANTHROPIC_API_KEY` must be set in `.env` for chat sessions (no OAuth in containers).
+
+### Webapp only (local mode)
+
+Mounts `APPLICANT_DIR` read-only into the container. Reads files directly from disk.
+
+```bash
+docker compose -f webapp/docker-compose.yml up
+```
+
+Access at [http://localhost:8000](http://localhost:8000).
+
+### Full OB1 stack (webapp + PostgreSQL + MinIO + MCP servers)
+
+Spins up the webapp alongside all 4 OB1 services (postgres, minio, openbrain MCP, job-search-mcp).
+**Before running**, update `.env` — compose uses different hostnames and ports than K8s:
+
+```
+DATA_BACKEND=ob1
+DB_HOST=postgres              # compose service name
+MINIO_ENDPOINT=minio:9000     # compose service name
+OB1_MCP_URL=http://localhost:8080     # direct port (not /ob1 Ingress path)
+JOB_SEARCH_MCP_URL=http://localhost:8081
+```
+
+Pre-build the openbrain MCP image (if not already done):
+```bash
+docker build -t openbrain-mcp-server:latest \
+  "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
+```
+
+```bash
+docker compose \
+  -f webapp/docker-compose.yml \
+  -f integrations/ob1/docker-compose.yml up
+```
+
+Apply the schema once after first launch:
+```bash
+docker compose -f integrations/ob1/docker-compose.yml exec postgres \
+  psql -U postgres -d openbrain < integrations/ob1/job-search-schema.sql
+```
+
+Regenerate `.mcp.json` so Claude Code can reach the MCP servers at their compose ports:
+```bash
+bash scripts/k8s-apply-env.sh
+```
+
+### K8s deployment
+
+Run the webapp alongside the existing OB1 services in the `openbrain` namespace. Access at [http://localhost:30800](http://localhost:30800).
+
+```bash
+# Build images
+docker build -f webapp/Dockerfile -t job-search-webapp:latest .
+docker build -f webapp/runner/Dockerfile webapp/runner/ -t job-search-claude-runner:latest
+
+# Apply manifests (run k8s-apply-env.sh first if not already done)
+bash scripts/k8s-apply-env.sh
+kubectl apply -f integrations/ob1/k8s/webapp-configmap.yml
+kubectl apply -f integrations/ob1/k8s/webapp.yml
+kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
+
+# Verify (pod shows 2/2 containers: webapp + claude-runner)
+kubectl get pods -n openbrain -l app=job-search-webapp
+```
+
+The K8s pod runs a **claude-runner sidecar** alongside the webapp. The webapp routes subprocess calls to `http://localhost:8090` (runner) instead of spawning `claude` directly — this isolates the process boundary and enables future independent scaling. Set `CLAUDE_RUNNER_URL=""` in the configmap to revert to direct subprocess mode.
+
 ## Features
 
 | View | Local mode | OB1 mode |

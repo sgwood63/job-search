@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-configmap
+  namespace: openbrain
+data:
+  # Data backend — OB1 mode (PostgreSQL + MinIO) when running in cluster
+  DATA_BACKEND: "ob1"
+
+  # PostgreSQL — cluster-internal DNS (different from localhost used in .env)
+  DB_HOST: "openbrain-db.openbrain.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "openbrain"
+  DB_USER: "postgres"
+
+  # MinIO — cluster-internal DNS
+  OBJECT_STORE_BACKEND: "minio"
+  MINIO_ENDPOINT: "minio.openbrain.svc.cluster.local:9000"
+  MINIO_BUCKET: "job-search"
+  MINIO_SECURE: "false"
+
+  # App paths inside container
+  APP_DIR: "/app"
+  CLAUDE_BINARY: "/usr/local/bin/claude"   # fallback when runner is unavailable
+
+  # Claude runner sidecar — webapp delegates subprocess calls here
+  CLAUDE_RUNNER_URL: "http://localhost:8090"
