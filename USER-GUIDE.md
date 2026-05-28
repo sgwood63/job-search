@@ -58,6 +58,8 @@ cd webapp
 ./start.sh
 ```
 
+`start.sh` checks that the resolved Claude Code binary is version 2.1.152 or later before starting. If it's too old, it prints the required upgrade command and exits. Set `CLAUDE_BINARY` in `.env` to pin to a specific binary path (e.g. the VS Code extension's bundled binary); defaults to `claude` in PATH.
+
 Or start the two processes separately:
 
 ```bash

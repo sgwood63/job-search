@@ -13,6 +13,7 @@ The backend supports two data modes, selected by `DATA_BACKEND` in `.env`:
 
 - Python 3.8+ and Node.js + npm
 - Project `.env` file at the repo root (created by `bash scripts/setup.sh`)
+- **Claude Code 2.1.152+** — required for the chat sessions the webapp spawns. `bash webapp/start.sh` checks the version and fails fast if the binary is below this. Set `CLAUDE_BINARY` in `.env` to pin to a specific path (e.g. the VS Code extension binary); defaults to the system `claude` in PATH.
 - **Local mode:** `APPLICANT_DIR` must be set and the directory must exist
 - **OB1 mode:** OB1 services must be running and reachable (see OB1 section below)
 
@@ -28,6 +29,7 @@ The backend loads all configuration from the `.env` file at the project root.
 | `APP_DIR` | Path to this repo |
 | `APPLICANT_DIR` | Path to applicant data directory (required for local mode) |
 | `DEV_MODE` | `true` = APP_DIR file edits allowed; `false` (default) = read-only |
+| `CLAUDE_BINARY` | Path to the Claude Code binary for chat sessions (default: `claude` in PATH). Must be 2.1.152+. |
 
 ### OB1 mode — PostgreSQL
 
