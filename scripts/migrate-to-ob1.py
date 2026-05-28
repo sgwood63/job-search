@@ -604,29 +604,58 @@ def repair_folder_prefix(cur):
             continue
         search_prefix = f"applications/{parts[0]}-{parts[1]}-{parts[2]}-{parts[3]}"
 
+        def pick_best(candidates: list, computed_inner: str) -> "str | None":
+            """Return best candidate by token overlap, then fewest-extra-tokens tiebreak."""
+            if len(candidates) == 1:
+                return candidates[0]
+            computed_tokens = set(computed_inner.split("-"))
+            # Primary: maximize token overlap
+            scored = [
+                (len(computed_tokens & set(m.removeprefix("applications/").rstrip("/").split("-"))), m)
+                for m in candidates
+            ]
+            max_overlap = max(s for s, _ in scored)
+            finalists = [m for s, m in scored if s == max_overlap]
+            if len(finalists) == 1:
+                return finalists[0]
+            # Tiebreak: fewest extra tokens in the actual folder (prefer shorter match)
+            scored2 = [
+                (len(set(m.removeprefix("applications/").rstrip("/").split("-")) - computed_tokens), m)
+                for m in finalists
+            ]
+            min_extra = min(s for s, _ in scored2)
+            winners = [m for s, m in scored2 if s == min_extra]
+            return winners[0] if len(winners) == 1 else None
+
         matches = [f for f in actual_folders if f.startswith(search_prefix)]
         if len(matches) == 1:
             best = matches[0]
         elif len(matches) > 1:
-            # Use token overlap to pick the best match
-            computed_tokens = set(inner.split("-"))
-            scored = [
-                (len(computed_tokens & set(m.removeprefix("applications/").rstrip("/").split("-"))), m)
-                for m in matches
-            ]
-            max_score = max(s for s, _ in scored)
-            best_matches = [m for s, m in scored if s == max_score]
-            if len(best_matches) == 1:
-                best = best_matches[0]
+            winner = pick_best(matches, inner)
+            if winner:
+                best = winner
             else:
-                log(f"WARNING: ambiguous matches for {fp!r}: {best_matches}")
+                log(f"WARNING: ambiguous matches for {fp!r}: {matches}")
                 unmatched += 1
                 continue
         else:
-            # Date may differ between tracker applied_date and folder creation date.
-            # Fall back to a date-agnostic search using just the company token.
+            # Pass 2: date-agnostic search by company token (handles date mismatches).
             company_token = parts[3]
             date_agnostic = [f for f in actual_folders if company_token in f]
+            if len(date_agnostic) == 0:
+                # Pass 3: company token not found (e.g. typo). Scan APPLICANT_DIR by
+                # date prefix and intersect with js_files to find the actual folder.
+                date_prefix = f"{parts[0]}-{parts[1]}-{parts[2]}"
+                apps_dir = APPLICANT_DIR / "applications"
+                if apps_dir.is_dir():
+                    local_by_date = [
+                        f"applications/{d.name}/"
+                        for d in apps_dir.iterdir()
+                        if d.is_dir() and d.name.startswith(date_prefix)
+                    ]
+                    date_agnostic = [f for f in local_by_date if f in actual_folders]
+
+            # Evaluate whatever date_agnostic now contains (pass 2 or pass 3 result).
             if len(date_agnostic) == 0:
                 log(f"WARNING: no match for {fp!r} (company token: {company_token!r})")
                 unmatched += 1
@@ -634,17 +663,11 @@ def repair_folder_prefix(cur):
             elif len(date_agnostic) == 1:
                 best = date_agnostic[0]
             else:
-                computed_tokens = set(inner.split("-"))
-                scored = [
-                    (len(computed_tokens & set(m.removeprefix("applications/").rstrip("/").split("-"))), m)
-                    for m in date_agnostic
-                ]
-                max_score = max(s for s, _ in scored)
-                best_matches = [m for s, m in scored if s == max_score]
-                if len(best_matches) == 1:
-                    best = best_matches[0]
+                winner = pick_best(date_agnostic, inner)
+                if winner:
+                    best = winner
                 else:
-                    log(f"WARNING: ambiguous date-agnostic matches for {fp!r}: {best_matches}")
+                    log(f"WARNING: ambiguous date-agnostic matches for {fp!r}: {date_agnostic}")
                     unmatched += 1
                     continue
 
