@@ -23,15 +23,17 @@ If OB1 is configured but tools are **NOT** in the deferred list → **hard stop*
 
 ## MCP tool mapping (APPLICANT_DIR → OB1)
 
-| Operation | Local (fallback only) | OB1 (when configured) |
-|---|---|---|
-| Read applicant file | `Read($APPLICANT_DIR/<key>)` | `get_file('<key>')` |
-| Write applicant file | `Write($APPLICANT_DIR/<key>)` | `upload_file('<key>', content)` |
-| Read pipeline | Read `application-tracker.md` | `get_pipeline()` |
-| Update application status | Edit tracker | `update_application_status()` |
-| Get overdue follow-ups | Parse tracker | `get_overdue_followups()` |
-| Company/contact tracking | Edit tracker notes | `upsert_company()`, `add_contact()` |
-| Semantic search | grep | `search_applications_semantic(query)` |
+| Operation | Local (fallback only) | OB1 (when configured) | When |
+|---|---|---|---|
+| Read applicant file | `Read($APPLICANT_DIR/<key>)` | `get_file('<key>')` | On demand |
+| Write applicant file | `Write($APPLICANT_DIR/<key>)` | `upload_file('<key>', content)` | On write |
+| Read pipeline | Read `application-tracker.md` | `get_pipeline()` | `/status` or pipeline commands only — **not at session start** |
+| Update application status | Edit tracker | `update_application_status()` | On status change |
+| Get overdue follow-ups | Parse tracker | `get_overdue_followups()` | `/status` only — **not at session start** |
+| Company/contact tracking | Edit tracker notes | `upsert_company()`, `add_contact()` | On JD processing |
+| Semantic search | grep | `search_applications_semantic(query)` | On demand |
+
+**Session start loads only:** `applicant.md` + `memory/APPLICANT-MEMORY.md` (in parallel). Pipeline and overdue follow-ups are deferred to `/status` and application workflow commands.
 
 ## File key convention
 
