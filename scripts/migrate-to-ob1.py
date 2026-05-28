@@ -623,9 +623,30 @@ def repair_folder_prefix(cur):
                 unmatched += 1
                 continue
         else:
-            log(f"WARNING: no match for {fp!r} (search prefix: {search_prefix!r})")
-            unmatched += 1
-            continue
+            # Date may differ between tracker applied_date and folder creation date.
+            # Fall back to a date-agnostic search using just the company token.
+            company_token = parts[3]
+            date_agnostic = [f for f in actual_folders if company_token in f]
+            if len(date_agnostic) == 0:
+                log(f"WARNING: no match for {fp!r} (company token: {company_token!r})")
+                unmatched += 1
+                continue
+            elif len(date_agnostic) == 1:
+                best = date_agnostic[0]
+            else:
+                computed_tokens = set(inner.split("-"))
+                scored = [
+                    (len(computed_tokens & set(m.removeprefix("applications/").rstrip("/").split("-"))), m)
+                    for m in date_agnostic
+                ]
+                max_score = max(s for s, _ in scored)
+                best_matches = [m for s, m in scored if s == max_score]
+                if len(best_matches) == 1:
+                    best = best_matches[0]
+                else:
+                    log(f"WARNING: ambiguous date-agnostic matches for {fp!r}: {best_matches}")
+                    unmatched += 1
+                    continue
 
         if not DRY_RUN:
             cur.execute("UPDATE js_applications SET folder_prefix = %s WHERE id = %s",
