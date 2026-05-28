@@ -222,9 +222,9 @@ async def get_tracker():
             'applied_date': r['applied_date'].isoformat() if r['applied_date'] else '',
             'follow_up_date': r['follow_up_date'].isoformat() if r['follow_up_date'] else '',
             'next_interview_at': r['next_interview_at'].isoformat() if r['next_interview_at'] else '',
-            'priority': r['priority'],
+            'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(r['priority'], ''),
             'source_url': r['source_url'] or '',
-            'folder': r['folder_prefix'] or '',
+            'folder': (r['folder_prefix'] or '').removeprefix('applications/').rstrip('/'),
         }
         if r['status'] == 'closed':
             closed.append(entry)
@@ -325,7 +325,7 @@ async def get_applications():
         )
     return [
         {
-            'name': r['folder_prefix'].rstrip('/').split('/')[-1],
+            'name': r['folder_prefix'].removeprefix('applications/').rstrip('/'),
             'path': r['folder_prefix'].rstrip('/'),
         }
         for r in rows

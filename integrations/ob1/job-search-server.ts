@@ -172,13 +172,60 @@ registerJobSearchTools(server, pool, { captureThought, searchThoughts });
 
 // --- Hono App with Auth ---
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, x-brain-key, Accept, Mcp-Session-Id",
+};
+
+const JSON_RPC_UNAUTHORIZED_CODE = -32001;
+const UNAUTHORIZED_MESSAGE = "Unauthorized: missing or invalid authentication.";
+
+function extractJsonRpcId(bodyText: string | null): string | number | null {
+  if (!bodyText) return null;
+  try {
+    const parsed = JSON.parse(bodyText);
+    if (parsed && typeof parsed === "object" && "id" in parsed) {
+      const id = (parsed as { id: unknown }).id;
+      if (typeof id === "string" || typeof id === "number" || id === null) return id;
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
 const app = new Hono();
+
+// CORS preflight — required for Electron-based clients (Claude Code, Claude Desktop)
+app.options("*", (c) => c.text("ok", 200, corsHeaders));
 
 app.all("*", async (c) => {
   const provided = c.req.header("x-brain-key") || new URL(c.req.url).searchParams.get("key");
   if (!provided || provided !== MCP_ACCESS_KEY) {
-    return c.json({ error: "Invalid or missing access key" }, 401);
+    // Return JSON-RPC 2.0 error envelope (HTTP 200) instead of bare HTTP 401.
+    // Strict MCP hosts treat 4xx as transport-level failures and tear the connection down.
+    const bodyText = c.req.method !== "GET" ? await c.req.text().catch(() => null) : null;
+    const id = extractJsonRpcId(bodyText);
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: JSON_RPC_UNAUTHORIZED_CODE, message: UNAUTHORIZED_MESSAGE },
+      id,
+    }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
   }
+
+  // Fix: patch missing Accept header (required by StreamableHTTPTransport)
+  if (!c.req.header("accept")?.includes("text/event-stream")) {
+    const headers = new Headers(c.req.raw.headers);
+    headers.set("Accept", "application/json, text/event-stream");
+    const patched = new Request(c.req.raw.url, {
+      method: c.req.raw.method,
+      headers,
+      body: c.req.raw.body,
+      // @ts-ignore -- duplex required for streaming body in Deno
+      duplex: "half",
+    });
+    Object.defineProperty(c.req, "raw", { value: patched, writable: true });
+  }
+
   const transport = new StreamableHTTPTransport();
   await server.connect(transport);
   return transport.handleRequest(c);

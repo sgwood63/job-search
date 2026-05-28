@@ -354,14 +354,15 @@ export default function ChatPanel() {
           )}
 
           {/* Messages */}
-          <ChatMessages messages={messages} streamingContent={streamingContent} executing={executing} sessionReady={sessionReady} />
+          <ChatMessages messages={messages} streamingContent={streamingContent} executing={executing} sessionReady={sessionReady || !activeSessionId} />
 
           {/* Input */}
           <ChatInput
             onSend={handleSend}
-            disabled={isClosed || !sessionReady}
+            disabled={isClosed || (!!activeSessionId && !sessionReady)}
             placeholder={
               isClosed ? 'Session closed' :
+              !activeSessionId ? 'Message… (Enter to send)' :
               !sessionReady ? 'Session starting…' :
               'Message… (Enter to send)'
             }
