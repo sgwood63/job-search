@@ -15,7 +15,7 @@ name: job-search-webapp
 #   DB_HOST=postgres
 #   MINIO_ENDPOINT=minio:9000
 #
-# ANTHROPIC_API_KEY must be set in .env for chat sessions (no OAuth in containers).
+# ANTHROPIC_API_DEPLOYMENT_KEY must be set in .env for chat sessions (no OAuth in containers).
 
 services:
   webapp:
@@ -31,6 +31,8 @@ services:
       # Override path-dependent vars that differ between host and container
       APP_DIR: /app
       APPLICANT_DIR: /applicant   # ignored when DATA_BACKEND=ob1
+      DEV_MODE: "false"           # APP_DIR is always read-only in container
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_DEPLOYMENT_KEY:-}  # use deployment key, not personal OAuth key
     volumes:
       # Local mode: mount APPLICANT_DIR read-only
       # OB1 mode: this mount is ignored (webapp reads from PostgreSQL/MinIO)

@@ -1,8 +1,11 @@
 import asyncio
+import glob
 import json
 import mimetypes
 import os
 import re
+import select
+import shutil
 import subprocess
 import threading
 import time
@@ -707,14 +710,56 @@ def _stream_via_runner(cmd: list, message: str):
         conn.close()
 
 
+def _resolve_claude_binary() -> str:
+    """Return the best available Claude binary path.
+
+    When CLAUDE_RUNNER_URL is set (container/runner mode), the cmd is forwarded
+    to the runner sidecar which executes it inside its own container — never
+    send a local VS Code extension path there.
+
+    Local mode priority:
+      1. CLAUDE_BINARY env var if set and the file exists (explicit pin / fallback)
+      2. Latest VS Code extension binary, auto-discovered by semver
+      3. System PATH 'claude'
+    """
+    load_dotenv(env_path, override=True)
+    explicit = os.environ.get('CLAUDE_BINARY', '')
+
+    if CLAUDE_RUNNER_URL:
+        return explicit or 'claude'
+
+    if explicit and os.path.isfile(explicit):
+        return explicit
+
+    candidates = glob.glob(os.path.expanduser(
+        '~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude'
+    ))
+    if candidates:
+        def _ver(path: str):
+            m = re.search(r'claude-code-(\d+)\.(\d+)\.(\d+)', path)
+            return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (0, 0, 0)
+        candidates.sort(key=_ver, reverse=True)
+        return candidates[0]
+
+    return shutil.which('claude') or 'claude'
+
+
 def _run_message_thread(session: ChatSession, message: str) -> None:
     """Spawn `claude -p --output-format stream-json` for one user message, stream chunks.
 
     When CLAUDE_RUNNER_URL is set, delegates subprocess management to the
     claude-runner sidecar (http://localhost:8090) instead of spawning locally.
     """
+    binary = _resolve_claude_binary()
+    if not shutil.which(binary) and not os.path.isfile(binary):
+        session.status = 'waiting'
+        _broadcast(session, {
+            'type': 'session_error',
+            'content': 'Claude binary not found. Install Claude Code or set CLAUDE_BINARY in .env.',
+        })
+        return
     cmd = [
-        CLAUDE_BINARY, '-p',
+        binary, '-p',
         '--dangerously-skip-permissions',
         '--output-format', 'stream-json',
         '--verbose',
@@ -750,7 +795,36 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
         prev_text = ''
         last_saved_text = None
 
-        for raw_line in lines:
+        def _iter_lines():
+            """Yield lines from stdout; exits promptly when proc is done.
+
+            Grandchildren spawned by Claude Code (e.g. Stop hook subprocesses) can
+            inherit the write end of the pipe and keep it open after Claude exits.
+            Using select with a short timeout lets us break out once proc.poll()
+            returns non-None and no new data arrives, instead of hanging forever.
+            """
+            if proc is None:
+                yield from lines
+                return
+            DRAIN_TIMEOUT = 3.0   # seconds to wait for trailing output after proc exits
+            POLL_INTERVAL = 1.0   # seconds between select calls while proc is alive
+            while True:
+                exited = proc.poll() is not None
+                timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
+                try:
+                    ready, _, _ = select.select([proc.stdout], [], [], timeout)
+                except Exception:
+                    break
+                if ready:
+                    line = proc.stdout.readline()
+                    if line:
+                        yield line
+                    else:
+                        break  # EOF
+                elif exited:
+                    break  # proc done, no more output
+
+        for raw_line in _iter_lines():
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -779,6 +853,7 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
                             })
                             if proc is not None:
                                 proc.terminate()
+                            session.current_proc = None
                             return
             elif obj.get('type') == 'assistant':
                 content_blocks = obj.get('message', {}).get('content', [])

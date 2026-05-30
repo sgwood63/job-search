@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS js_applications (
                                 CHECK (status IN (
                                   'pending-review', 'resume-ready', 'applied',
                                   'interview-scheduled', 'interviewed', 'exercise',
-                                  'offer', 'closed'
+                                  'offer', 'closed', 'not-interested'
                                 )),
   status_detail     text,       -- e.g. 'Rejected after phone screen'
   applied_date      date,

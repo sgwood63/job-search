@@ -61,10 +61,12 @@ OB1 services must be running and reachable:
 - PostgreSQL at `DB_HOST:DB_PORT`
 - MinIO at `MINIO_ENDPOINT` or Supabase Storage
 
-Port-forwards if using local K8s:
+For a full OB1 setup walkthrough (compose or K8s), see [DEPLOYMENT.md](../DEPLOYMENT.md).
+
+Port-forwards if using local K8s (on demand — nginx Ingress handles MCP traffic without port-forwards):
 ```bash
-kubectl port-forward -n openbrain svc/openbrain 5432:5432 &
-kubectl port-forward -n openbrain svc/minio 30900:9000 &
+kubectl port-forward -n openbrain svc/openbrain-db 5432:5432 &  # PostgreSQL admin access
+kubectl port-forward -n openbrain svc/minio 30900:9000 &         # MinIO S3 API (alternative to NodePort)
 ```
 
 In development, Vite proxies all `/api/*` requests to `http://localhost:8000` — no additional network configuration needed.
@@ -117,7 +119,7 @@ Open [http://localhost:8000](http://localhost:8000).
 
 ## Launch — Docker
 
-Containerized alternatives to `start.sh`. `ANTHROPIC_API_KEY` must be set in `.env` for chat sessions (no OAuth in containers).
+Containerized alternatives to `start.sh`. `ANTHROPIC_API_DEPLOYMENT_KEY` must be set in `.env` for chat sessions (no OAuth in containers).
 
 ### Webapp only (local mode)
 
@@ -184,7 +186,7 @@ kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
 kubectl get pods -n openbrain -l app=job-search-webapp
 ```
 
-The K8s pod runs a **claude-runner sidecar** alongside the webapp. The webapp routes subprocess calls to `http://localhost:8090` (runner) instead of spawning `claude` directly — this isolates the process boundary and enables future independent scaling. Set `CLAUDE_RUNNER_URL=""` in the configmap to revert to direct subprocess mode.
+The K8s pod runs an init container and two app containers. The init container seeds a shared `app-dir` emptyDir from the webapp image so both containers see the same project files (CLAUDE.md, memory/, scripts/, .mcp.json). The webapp entrypoint writes `/app/.env` and `/app/.mcp.json` from env vars before starting uvicorn. The **claude-runner sidecar** receives `POST /run` from the webapp and spawns `claude` subprocesses against `/app` — this isolates the subprocess boundary and enables future independent scaling. The runner binary lives at `/runner/runner.py` to avoid being shadowed by the `/app` mount. Set `CLAUDE_RUNNER_URL=""` in the configmap to revert to direct subprocess mode.
 
 ## Features
 

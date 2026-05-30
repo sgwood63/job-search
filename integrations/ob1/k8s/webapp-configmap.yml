@@ -22,6 +22,13 @@ data:
   # App paths inside container
   APP_DIR: "/app"
   CLAUDE_BINARY: "/usr/local/bin/claude"   # fallback when runner is unavailable
+  DEV_MODE: "false"                        # APP_DIR is always read-only in container
+  PLAYWRIGHT_PYTHON: "python3"
 
   # Claude runner sidecar — webapp delegates subprocess calls here
   CLAUDE_RUNNER_URL: "http://localhost:8090"
+
+  # MCP server URLs (cluster-internal DNS, direct-to-service — no Ingress prefix)
+  # Ingress strips /ob1 and /job-search prefixes before forwarding; bypass it in-cluster.
+  OB1_MCP_URL: "http://openbrain.openbrain.svc.cluster.local:8000/mcp"
+  JOB_SEARCH_MCP_URL: "http://job-search-mcp.openbrain.svc.cluster.local:8001/mcp"

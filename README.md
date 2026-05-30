@@ -29,8 +29,9 @@ One setup: you describe your background, experience, and goals once. After that,
 |---|---|
 | [Claude Code](https://claude.ai/code) | The CLI that runs all AI-assisted steps. Install via the desktop app or `npm install -g @anthropic-ai/claude-code`. |
 | Anthropic API key | Required if not using Claude Code OAuth. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
-| Claude Haiku | Used for JD screening (fast, low-cost). Requires API access. |
-| Claude Sonnet | Used for resume and document generation (quality). Requires API access. |
+| `ANTHROPIC_API_DEPLOYMENT_KEY` | **Container deployments only** (webapp docker-compose, K8s OB1 stack). OAuth does not work inside Docker — set this separately in `.env`. Not needed for local Claude Code sessions. |
+| Claude Haiku | Used for JD screening (fast, low-cost). Included with Pro subscription or API key. |
+| Claude Sonnet | Used for resume and document generation (quality). Included with Pro subscription or API key. |
 | pandoc + Playwright + poppler | PDF generation. Installed/detected by `scripts/setup.sh`. |
 
 ---
@@ -55,7 +56,8 @@ Applicant data is kept out of git to protect personal information and keep the p
 - **New to the system?** Start with [QUICK-START.md](QUICK-START.md).
 - **Day-to-day usage?** See [USER-GUIDE.md](USER-GUIDE.md) — workflows, commands, and examples.
 - **Modifying the system?** See [DEVELOPER-README.md](DEVELOPER-README.md) — architecture, DEV_MODE, hooks, scripts, and settings.
-- **OB1 deployment?** See [integrations/ob1/README.md](integrations/ob1/README.md) — replaces local file storage with MinIO + PostgreSQL. Runs as a Kubernetes deployment (Docker Desktop) or via `docker compose -f integrations/ob1/docker-compose.yml up` (no cluster required).
+- **Choosing a deployment model?** See [DEPLOYMENT.md](DEPLOYMENT.md) — explains the five deployment dimensions (data backend, OB1 infrastructure, app driver, webapp location) and provides end-to-end instructions for each tested configuration.
+- **OB1 deployment?** See [integrations/ob1/README.md](integrations/ob1/README.md) — full K8s manifest reference. For a higher-level walkthrough including Docker Compose and decision guidance, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 

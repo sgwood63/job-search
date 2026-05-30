@@ -25,10 +25,19 @@ FROM python:3.11-slim
 # Copy claude binary from builder
 COPY --from=builder /usr/local/bin/claude /usr/local/bin/claude
 
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]"
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-COPY runner.py /app/runner.py
-WORKDIR /app
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" playwright && \
+    playwright install --with-deps chromium && \
+    chmod -R o+rx /opt/playwright
+
+ENV PLAYWRIGHT_PYTHON=python3
+
+# runner.py lives in /runner so an emptyDir mount at /app (shared with webapp)
+# doesn't overlay it. Claude subprocesses use /app as cwd and find the project
+# files (CLAUDE.md, .mcp.json, etc.) seeded there by the init container.
+COPY runner.py /runner/runner.py
+WORKDIR /runner
 
 EXPOSE 8090
 

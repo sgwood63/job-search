@@ -2,6 +2,8 @@
 
 Job search extension for OB1 — manages all applicant content in Kubernetes.
 
+For a higher-level overview of all deployment options (local, Docker Compose, K8s, OB1 default deployment) and a decision guide, see [DEPLOYMENT.md](../../DEPLOYMENT.md).
+
 ## What This Is
 
 This directory contains the files needed to deploy the job search system as a companion service alongside a local Kubernetes deployment of OB1 (Open Brain). After setup:
@@ -49,9 +51,10 @@ integrations/ob1/
 
 ### 1. Configure `.env`
 
-Copy the template and fill in all OB1 credentials before running any commands below:
+Copy the template from the **repo root** and fill in all OB1 credentials before running any commands below:
 
 ```bash
+# Run from the repo root ($APP_DIR), not from integrations/ob1/
 cp .env.example .env
 # Edit .env — update or confirm variable settings from .env.example
 ```
@@ -425,7 +428,7 @@ The OB1 + job-search vars needed:
 
 **`job-search-llm-config` ConfigMap** holds the 4 LLM API settings (`EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `CHAT_API_BASE`, `CHAT_MODEL`) and is also created/updated by `bash scripts/k8s-apply-env.sh`. Defaults to OpenRouter; override in `.env` for OpenAI or another provider. Re-running the script after any change takes effect on the next pod restart.
 
-**`openbrain-secret`** is created/updated by `bash scripts/k8s-apply-env.sh` with all 4 keys the OB1 StatefulSet needs: `postgres-password` ($DB_PASSWORD), `mcp-access-key` ($OB1_MCP_KEY), `embedding-api-key` ($LLM_API_KEY), `chat-api-key` ($LLM_API_KEY). Do not apply the OB1 repo's `secrets.yml` — it contains hardcoded values.
+**`openbrain-secret`** is created/updated by `bash scripts/k8s-apply-env.sh` with all 4 keys the OB1 StatefulSet needs: `postgres-password` (`$DB_PASSWORD`), `mcp-access-key` (`$OB1_MCP_KEY`), `embedding-api-key` (`$LLM_API_KEY`), `chat-api-key` (`$LLM_API_KEY`). Do not apply the OB1 repo's `secrets.yml` — it contains hardcoded values.
 
 **`openbrain-configmap`** is created/updated by `bash scripts/k8s-apply-env.sh` with all non-sensitive OB1 config: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `CHAT_API_BASE`, `CHAT_MODEL`. The OB1 mcp-server container consumes these via `envFrom`, overriding any hardcoded values in `openbrain.yml`.
 

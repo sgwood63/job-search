@@ -32,6 +32,25 @@ spec:
       labels:
         app: job-search-webapp
     spec:
+      # ── Init container ────────────────────────────────────────────────────
+      # Seeds the shared app-dir emptyDir from the webapp image so both the
+      # webapp and the claude-runner see identical project files (CLAUDE.md,
+      # memory/, .claude/, scripts/, templates/, etc.). The webapp entrypoint
+      # then writes .mcp.json into this shared volume before uvicorn starts.
+      initContainers:
+        - name: init-app-dir
+          image: job-search-webapp:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              cp -rp /app/. /shared-app/
+              chmod -R g+rwX /shared-app
+          volumeMounts:
+            - name: app-dir
+              mountPath: /shared-app
+
       containers:
         # ── Webapp container ──────────────────────────────────────────────
         - name: webapp
@@ -45,10 +64,13 @@ spec:
             - configMapRef:
                 name: webapp-configmap
             # Sensitive credentials: DB_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
-            # ANTHROPIC_API_KEY (required for chat sessions)
+            # ANTHROPIC_API_KEY, OB1_MCP_KEY, JOB_SEARCH_MCP_KEY
             # Created/updated by: bash scripts/k8s-apply-env.sh
             - secretRef:
                 name: webapp-secret
+          volumeMounts:
+            - name: app-dir
+              mountPath: /app
           readinessProbe:
             tcpSocket:
               port: 8000
@@ -64,18 +86,27 @@ spec:
         # ── Claude runner sidecar ─────────────────────────────────────────
         # Receives POST /run from webapp, spawns claude subprocess, streams NDJSON back.
         # Webapp routes here via CLAUDE_RUNNER_URL=http://localhost:8090 (set in configmap).
+        # Mounts the same app-dir volume at /app so claude sees CLAUDE.md and .mcp.json.
         - name: claude-runner
           image: job-search-claude-runner:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
           ports:
             - containerPort: 8090
               name: runner
           env:
+            - name: HOME
+              value: /tmp
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: webapp-secret
                   key: ANTHROPIC_API_KEY
+          volumeMounts:
+            - name: app-dir
+              mountPath: /app
           readinessProbe:
             httpGet:
               path: /health
@@ -88,6 +119,10 @@ spec:
               memory: 128Mi
             limits:
               memory: 512Mi
+
+      volumes:
+        - name: app-dir
+          emptyDir: {}
 
 ---
 apiVersion: v1

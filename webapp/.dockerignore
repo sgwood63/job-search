@@ -23,8 +23,13 @@ webapp/backend/htmlcov/
 
 # Infra (not needed in webapp image)
 integrations/
-.claude/
-scripts/
+
+# Local Claude Code overrides — not for container use
+.claude/settings.local.json
+.claude/settings.local.template.json
+
+# MCP secrets — provide at runtime via env vars; only example baked in
+.mcp.json
 
 # Generated files
 **/*.pdf

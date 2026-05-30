@@ -48,7 +48,7 @@ export function useSessionContext() {
 }
 
 const WS_BASE = typeof window !== 'undefined'
-  ? `ws://${window.location.hostname}:8000`
+  ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
   : 'ws://localhost:8000'
 
 let _msgCounter = 0

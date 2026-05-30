@@ -6,7 +6,7 @@
 #                          kubectl apply -f integrations/ob1/k8s/webapp.yml
 #
 # All configuration is injected at runtime — no secrets in this file.
-# ANTHROPIC_API_KEY is required for chat sessions (no OAuth in containers).
+# ANTHROPIC_API_DEPLOYMENT_KEY is required for chat sessions (no OAuth in containers).
 
 # ---------------------------------------------------------------------------
 # Stage 1: Build frontend + install claude binary
@@ -36,6 +36,12 @@ COPY --from=builder /usr/local/bin/claude /usr/local/bin/claude
 COPY webapp/backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
+# Install Playwright browser binary and system dependencies (libnss3, libatk-bridge2.0-0, etc.)
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN playwright install --with-deps chromium
+
+ENV PLAYWRIGHT_PYTHON=python3
+
 # Set up repo layout so APP_DIR defaults to /app:
 #   main.py is at /app/webapp/backend/main.py
 #   Path(__file__).parent.parent.parent → /app
@@ -51,6 +57,22 @@ COPY --from=builder /build/dist webapp/frontend/dist/
 # Copy repo-level docs served by the DOCS_ALLOWLIST endpoints
 COPY README.md USER-GUIDE.md QUICK-START.md applicant-setup.md DEVELOPER-README.md ./
 
+# Copy Claude Code rules — required for claude binary to operate correctly inside container.
+# CLAUDE.md is auto-loaded at session start; memory/ and .claude/ provide feedback rules,
+# slash commands, and project settings. scripts/ and templates/ are used by fetch-jd.py,
+# generate-pdf.py, and resume CSS rendering.
+COPY CLAUDE.md workflow.md ./
+COPY memory/ memory/
+COPY .claude/settings.json .claude/settings.json
+COPY .claude/commands/ .claude/commands/
+COPY .mcp.json.example .mcp.json.example
+COPY scripts/ scripts/
+COPY templates/ templates/
+
+# Entrypoint generates /app/.mcp.json from env vars before starting uvicorn.
+COPY webapp/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Defaults — override via env vars or env_file at runtime
 ENV CLAUDE_BINARY=/usr/local/bin/claude
 ENV DATA_BACKEND=local
@@ -58,4 +80,4 @@ ENV DATA_BACKEND=local
 EXPOSE 8000
 
 WORKDIR /app/webapp/backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/entrypoint.sh"]

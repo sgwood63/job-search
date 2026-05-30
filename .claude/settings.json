@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash /Users/shermanwood/Documents/Job-Search-2026/scripts/status-line.sh",
+    "command": "bash scripts/status-line.sh",
     "refreshInterval": 300
   },
   "hooks": {

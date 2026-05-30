@@ -4,7 +4,7 @@
 
 **Prerequisite:** `scripts/setup.sh` must have been run first (creates directories, `.env`, and stub files).
 
-**OB1 note:** If OB1 is deployed and active (see `integrations/ob1/README.md`), after each phase that writes files to `$APPLICANT_DIR`, also call `upload_file(key, content, content_type)` via the open-brain MCP for every file created. For the SQL tables (js_applicant, js_profiles, js_experience), use the OB1 MCP state tools or run `python scripts/migrate-to-ob1.py --only-sql` after setup completes to seed the database. If OB1 is not yet deployed, run the migration script once it is.
+**OB1 note:** If OB1 is active (`DATA_BACKEND=ob1` in `.env`), use `upload_file(key, content, content_type)` **exclusively** for every file created during setup — do not write to `$APPLICANT_DIR` directly. Direct writes to `$APPLICANT_DIR` are forbidden when OB1 is configured (see CLAUDE.md § OB1 Integration). For the SQL tables (js_applicant, js_profiles, js_experience), use the OB1 MCP state tools or run `python scripts/migrate-to-ob1.py --only-sql` after setup completes to seed the database. If OB1 is not yet deployed, write files to `$APPLICANT_DIR` as normal and run the migration script once OB1 is up.
 
 Open a Claude Code session in the `$APP_DIR` repo directory and say:
 
@@ -74,7 +74,7 @@ After the interview, generate the following files. Do not fabricate — use only
 ### `$APPLICANT_DIR/applicant.md`
 Contact info, location preferences, role preferences, and deal-breakers, goals. This is the file Claude checks on every JD screen.
 
-### `$APPLICANT_DIR/profiles/[profile-name].md` (one per profile)
+### `$APPLICANT_DIR/profiles/[profile-name]/[profile-name].md` (one per profile, in its own subdirectory)
 
 Strategy document per role type:
 - What makes the applicant strong for this profile
@@ -86,7 +86,7 @@ Strategy document per role type:
 - Where the role is typically posted: like LinkedIn, Indeed, Greenhouse, Lever, Built In, niche boards
   - Search keywords and filters that work best for the profile specific to the posting site
 
-### `$APPLICANT_DIR/profiles/[profile-name]-CONTENT.md` (one per profile)
+### `$APPLICANT_DIR/profiles/[profile-name]/[profile-name]-CONTENT.md` (one per profile)
 Pre-compiled resume content library:
 - Opening summaries per profile
 - Achievement bullets organized by role, ready to pull from
@@ -119,9 +119,6 @@ Canonical achievement set organized by role (most-recent first), scored against 
 5. After all roles, include an **Achievement Completeness by Profile** summary table
 
 This file replaces per-application resume extraction. All resume generation draws from it.
-
-### `$APPLICANT_DIR/base-documents/resume-content-guidance.md`
-Format rules per profile: 1-page vs. 2-page, section structure, what to include/exclude, tone.
 
 ### Session summary document
 Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md` with: date, session type, summary of what was discussed and decided, and files updated. This is the canonical session log.

@@ -154,6 +154,8 @@ $APPLICANT_DIR/
 
 ## OB1 Kubernetes Deployment
 
+For a user-facing comparison of all deployment modes and end-to-end setup instructions (local, Docker Compose, K8s, OB1 default), see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path. Instead of flat files synced via Google Drive/OneDrive/etc., all applicant content lives in a local Kubernetes cluster:
 
 - **MinIO** — object store for all files (notes, JDs, PDFs, profiles)
@@ -204,6 +206,8 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 
 ## Webapp
 
+For deployment options (local launch, Docker Compose, K8s) and a comparison of all modes, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 The browser webapp (`webapp/`) provides a React + FastAPI UI for browsing and editing applicant data. It supports both `local` and `ob1` data modes (selected by `DATA_BACKEND` in `.env`).
 
 See [webapp/README.md](webapp/README.md) for prerequisites, configuration, launch instructions, API endpoints, and test suites.
@@ -219,11 +223,15 @@ Two Docker images are built from the repo root:
 
 **Multi-stage build** (`webapp/Dockerfile`): Stage 1 (`node:20-slim`) builds the React frontend and installs the `claude` binary via npm. Stage 2 (`python:3.11-slim`) copies the binary and runs uvicorn. Both stages use Debian so the binary is glibc-compatible.
 
-**Claude runner** (`webapp/runner/`): A thin FastAPI sidecar that wraps `claude` subprocess calls. The webapp routes to it when `CLAUDE_RUNNER_URL` is set (always set in K8s via `webapp-configmap`; unset in docker-compose, where the webapp uses its built-in binary). The runner exposes `POST /run` — accepts `{args, cwd, message}`, streams NDJSON back verbatim. This separates the subprocess boundary without changing the wire protocol.
+**Claude runner** (`webapp/runner/`): A thin FastAPI sidecar that wraps `claude` subprocess calls. The webapp routes to it when `CLAUDE_RUNNER_URL` is set (always set in K8s via `webapp-configmap`; unset in docker-compose, where the webapp uses its built-in binary). The runner exposes `POST /run` — accepts `{args, cwd, message}`, streams NDJSON back verbatim. This separates the subprocess boundary without changing the wire protocol. The runner binary lives at `/runner/runner.py` (not `/app`) so an emptyDir mount at `/app` can't overlay it.
 
 ### K8s webapp deployment
 
-Deploys alongside the existing OB1 services in the `openbrain` namespace. The pod has two containers (`webapp` + `claude-runner` sidecar).
+Deploys alongside the existing OB1 services in the `openbrain` namespace. The pod runs an init container + two app containers:
+
+- **init-app-dir**: copies `/app` from the webapp image into a shared `app-dir` emptyDir so both the webapp and the runner see identical project files (CLAUDE.md, memory/, scripts/, etc.)
+- **webapp**: mounts `app-dir` at `/app`; entrypoint writes `/app/.env` and `/app/.mcp.json` from env vars, then starts uvicorn
+- **claude-runner**: mounts `app-dir` at `/app` so the `claude` subprocess finds CLAUDE.md and .mcp.json; runner binary lives at `/runner/` to avoid mount overlay
 
 ```bash
 docker build -f webapp/Dockerfile -t job-search-webapp:latest .
@@ -234,7 +242,7 @@ kubectl apply -f integrations/ob1/k8s/webapp.yml
 kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
 ```
 
-Access at `http://localhost:30800`. Requires `ANTHROPIC_API_KEY` in `.env` (no OAuth in containers) for chat sessions.
+Access at `http://localhost:30800`. Requires `ANTHROPIC_API_DEPLOYMENT_KEY` in `.env` (no OAuth in containers) for chat sessions.
 
 ### docker-compose
 
