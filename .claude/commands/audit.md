@@ -1,9 +1,17 @@
 Audit an application folder for completeness before recording a submission.
 
-**Usage:** `/audit [folder-name]`
-If no folder name is given, list all folders in `$APPLICANT_DIR/applications/` and ask which to audit.
+Read `$APP_DIR/.env` and check `DATA_BACKEND`. Set `OB1_MODE = (DATA_BACKEND == "ob1")`.
 
-For the specified folder at `$APPLICANT_DIR/applications/[folder-name]/`:
+**Usage:** `/audit [folder-name]`
+If no folder name is given:
+- **OB1**: call `get_pipeline(status=null)` and list the `folder_prefix` values; present them and ask which to audit.
+- **Local**: list all folders in `$APPLICANT_DIR/applications/` and ask which to audit.
+
+For the specified folder (key prefix `applications/[folder-name]/` in OB1, or `$APPLICANT_DIR/applications/[folder-name]/` locally):
+
+Read folder files:
+- **OB1**: `get_file('applications/[folder-name]/job-description.md')`, `get_file('applications/[folder-name]/notes.md')`; use `list_files('applications/[folder-name]/')` to check for resume files.
+- **Local**: read directly from `$APPLICANT_DIR/applications/[folder-name]/`.
 
 **Required — FAIL if missing:**
 - [ ] `job-description.md` exists with a non-empty JD Analysis section
@@ -18,7 +26,7 @@ For the specified folder at `$APPLICANT_DIR/applications/[folder-name]/`:
 - [ ] PDF page count verified — run: `pdfinfo [file.pdf] | grep Pages`
 
 **Tracker check:**
-- [ ] Company appears in `$APPLICANT_DIR/application-tracker.md` Active Applications table
-- [ ] Status is not already "Applied" (would be a duplicate submission)
+- **OB1**: call `get_pipeline(status=null)` and confirm an application row exists with matching `folder_prefix`; check that its status is not already `applied`.
+- **Local**: confirm company appears in `$APPLICANT_DIR/application-tracker.md` Active Applications table and status is not already "Applied".
 
 **Output:** PASS or FAIL with specific missing items called out. If PASS, print the exact tracker row to add or update for this submission.

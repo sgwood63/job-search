@@ -14,9 +14,13 @@ This document describes the full automated pipeline that runs when a job descrip
 4. Exit code 3 (job closed): the posting is no longer available or the position has been filled.
    - Search `$APPLICANT_DIR/applications/` for an existing folder whose slug matches this company and role (fuzzy: lowercase folder name contains the company name and a fragment of the role title)
    - **If an existing application IS found:**
-     - Update `notes.md`: set `**Status:**` to `Closed` and `**Status Detail:**` to `Closed — position no longer available (YYYY-MM-DD)`
-     - Append to the `## Application Log` section: `YYYY-MM-DD — Position confirmed closed/no longer available via URL fetch`
-     - Update `application-tracker.md`: move the row from Active Applications to the Rejected/Closed section; set `Status` to `Closed` and `Status Detail` to `Position closed (YYYY-MM-DD)`; set Date to today
+     - Update `notes.md` — use first available:
+       - **OB1 active**: `get_file('applications/<folder>/notes.md')` → update Status/Status Detail and append to Application Log in memory → `upload_file('applications/<folder>/notes.md', <updated_content>, 'text/markdown')`
+       - **Fallback**: edit `$APPLICANT_DIR/applications/<folder>/notes.md` directly
+     - Set `**Status:**` to `Closed` and `**Status Detail:**` to `Closed — position no longer available (YYYY-MM-DD)`; append to `## Application Log`: `YYYY-MM-DD — Position confirmed closed/no longer available via URL fetch`
+     - Update tracker — use first available:
+       - **OB1 active**: `update_application_status(id, 'closed', 'Position closed (YYYY-MM-DD)', null)`
+       - **Fallback**: move the row in `$APPLICANT_DIR/application-tracker.md` from Active Applications to the Rejected/Closed section; set `Status` to `Closed` and `Status Detail` to `Position closed (YYYY-MM-DD)`; set Date to today
      - Inform the user: "This job posting is no longer available. Application [folder] status updated to Closed."
    - **If no existing application is found:**
      - Inform the user: "This job posting is no longer available — position appears closed or filled. No further processing."
@@ -38,23 +42,30 @@ Spawn a Haiku agent to:
 
 ## Step 3 — Create Application Folder (every JD, fit or no-fit)
 
-Folder: `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/`
+Folder slug: `YYYY-MM-DD-company-role` — lowercase, spaces → hyphens, special characters removed.
 
-Save the following:
+Files to compose:
 - `job-description.md` — full JD text plus extracted key info (company, role, location, travel, comp, requirements)
-- Original JD content as a separate file named `jd-<company>-<role-title>.[ext]` (lowercase, spaces → hyphens, special characters removed):
-  - **URL source:** `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-<company>-<role>.md" "<url>"`
-  - **PDF source:** copy the original PDF to `$FOLDER/jd-<company>-<role>.pdf`
-  - **Pasted text:** save verbatim to `$FOLDER/jd-<company>-<role>.md`
-- In `notes.md` JD Analysis section: record the full source URL (if URL-sourced) and the original filename saved
+- `jd-<company>-<role-title>.[ext]` — original JD content verbatim:
+  - **URL source:** fetch via `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out - "<url>"` (capture stdout)
+  - **PDF source:** use the original PDF bytes
+  - **Pasted text:** the verbatim pasted content
+- In `notes.md` JD Analysis section: record the full source URL (if URL-sourced) and the original filename
 
-**OB1 dual persistence (when open-brain MCP is connected):** After writing all files to the local folder, sync to OB1:
+**Save per DATA_BACKEND:**
+
+**OB1 active** (`DATA_BACKEND=ob1`) — write directly to object store, no local folder:
 1. `upsert_company(name, slug)` — create or confirm company record in `js_companies`
-2. Insert application: a row in `js_applications` with `company_id`, `role_title`, `profile_id`, `source_url`, `folder_prefix = 'applications/YYYY-MM-DD-company-role/'`, `status = 'pending-review'` (no-fit) or `'resume-ready'` (fit)
-3. `upload_file('applications/YYYY-MM-DD-company-role/job-description.md', content, 'text/markdown')` — writes to object store + `js_files`
-4. `upload_file('applications/YYYY-MM-DD-company-role/jd-<company>-<role>.md', content, 'text/markdown')` (or `.pdf`)
+2. `create_application(company_name, role_title, folder_prefix='applications/YYYY-MM-DD-company-role/', profile_slug, source_url, status='pending-review')` → saves UUID for later status updates
+3. `upload_file('applications/YYYY-MM-DD-company-role/job-description.md', content, 'text/markdown')`
+4. `upload_file('applications/YYYY-MM-DD-company-role/jd-<company>-<role>.md', content, 'text/markdown')` (or `'application/pdf'` for PDF source)
 5. `upload_file('applications/YYYY-MM-DD-company-role/notes.md', content, 'text/markdown')`
-6. For the resume (fit applications only): `upload_file('applications/YYYY-MM-DD-company-role/[Name_Role].pdf', bytes, 'application/pdf')` and set `js_applications.resume_key`
+
+**Fallback** (local) — write to local folder:
+1. `mkdir "$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/"`
+2. Write `job-description.md`, `jd-<company>-<role>.[ext]`, and `notes.md` to that folder
+   - For URL source: use `--md-out "$FOLDER/jd-<company>-<role>.md"` flag to write the jd file directly via fetch-jd.py
+   - For PDF source: copy the original PDF to `$FOLDER/jd-<company>-<role>.pdf`
 
 ---
 
@@ -157,7 +168,9 @@ Verify every role to be included in this resume has a `**Role Classification:**`
 
 **Phase 1 — Draft, evaluate, and present for review (stop here, wait for approval):**
 
-1. Write the resume `.md` file
+1. Write the resume `.md` file — use first available:
+   - **OB1 active**: compose content in memory; `upload_file('applications/<folder>/<Name_Role>.md', content, 'text/markdown')`; also write a local copy to `/tmp/<Name_Role>.md` for the PDF pipeline
+   - **Fallback**: write to `$RESUME_MD`
 2. **Verification gate** — run a coverage check against job-description.md:
    - Extract every stated requirement (Required and Preferred separately)
    - Score each Required item: **MET** (a specific bullet addresses it), **PARTIAL** (mentioned but not specific), or **GAP** (not addressed)
@@ -189,12 +202,12 @@ For 1-page resumes, add `--css="$APP_DIR/templates/one-page-override.css"` to th
 
 Output: date in header (right), page number in footer (center), no filename or filepath anywhere.
 
-**OB1 sync after PDF generation (when open-brain MCP is connected):**
-After the PDF is generated and page count verified, call:
-- `upload_file('applications/[folder]/[Name_Role].pdf', <pdf_bytes>, 'application/pdf')` — stores in object store + `js_files`
-- `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)` — sets `resume_key` on the `js_applications` row
+**After PDF generation and page count verification:**
 
-The resume `.md` should also be uploaded: `upload_file('applications/[folder]/[Name_Role].md', content, 'text/markdown')`.
+- **OB1 active**: `upload_file('applications/[folder]/[Name_Role].pdf', <pdf_bytes>, 'application/pdf')`; `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)`. Do NOT copy the PDF to `$APPLICANT_DIR` — OB1 is the store of record; the `/tmp` copy can be deleted.
+- **Fallback**: PDF is already at `$RESUME_PDF`; update `application-tracker.md` status to `Resume Ready`.
+
+In both modes: read the PDF bytes from the generated file path for the `upload_file` call if OB1 is active.
 
 ### Required Resume Sections (every resume)
 

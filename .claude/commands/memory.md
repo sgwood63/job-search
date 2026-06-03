@@ -23,7 +23,9 @@ Find the matching file in `$APP_DIR/memory/` or `$APPLICANT_DIR/memory/` and dis
 1. Ask: "What changed this session that should be remembered?"
 2. Wait for the user's answer.
 3. Determine which memory file(s) to update based on the answer — process rules go in `$APP_DIR/memory/`, applicant-specific context in `$APPLICANT_DIR/memory/`.
-4. Update the file(s).
+4. Update the file(s):
+   - `$APP_DIR/memory/` files: always written locally via Edit/Write tool (these are git-tracked tooling files, not subject to DATA_BACKEND).
+   - `$APPLICANT_DIR/memory/` files: check `DATA_BACKEND` in `.env`. If `ob1`, use `upload_file('memory/<filename>', content, 'text/markdown')` instead of writing locally.
 5. For `$APP_DIR/memory/` changes, run the memory sync:
 ```bash
 source "$APP_DIR/.env"
@@ -38,3 +40,5 @@ cp "$APP_DIR/memory/"*.md "$CLAUDE_MEM"
 
 **`/memory add [topic]`:**
 Create a new feedback file in `$APP_DIR/memory/` using the naming pattern `feedback_[topic].md` or `project_[topic].md`. Write the correct frontmatter (name, description, type) and content. After writing, add it to the index in `$APP_DIR/memory/MEMORY.md`, then run the sync from `/memory update` step 5.
+
+For applicant-specific memory topics (personal constraints, preferences, role rules) that belong in `$APPLICANT_DIR/memory/`, check `DATA_BACKEND` first: if `ob1`, use `upload_file('memory/<filename>', content, 'text/markdown')`; otherwise write locally to `$APPLICANT_DIR/memory/<filename>`.
