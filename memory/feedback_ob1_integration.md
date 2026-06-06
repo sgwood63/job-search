@@ -69,34 +69,30 @@ The two permanently forbidden fallbacks, regardless of the reason:
 
 ## PDF generation workflow in OB1 mode
 
-PDF generation (pandoc + Playwright/Chromium) is a **Mac-only capability** — K8s containers do not have Chromium. This is acceptable because resume generation is always user-interactive (CLI or webapp, never K8s jobs).
+PDF generation (pandoc + Playwright/Chromium) works in **all three contexts** — CLI, webapp subprocess, and K8s claude-runner sidecar. Both container images install Playwright + Chromium (`RUN playwright install --with-deps chromium`). `$PLAYWRIGHT_PYTHON` resolves correctly in each context:
+- Mac (CLI/webapp): set to Anaconda path in `.env`
+- K8s (webapp container + claude-runner sidecar): `python3` — set in `webapp-configmap.yml`
 
-**Generate to `/tmp`, not to `$APPLICANT_DIR`.** After generation, upload to OB1.
+`curl http://127.0.0.1:8000/api/upload` also works in all three contexts:
+- Mac CLI/webapp subprocess: hits local uvicorn on port 8000
+- K8s claude-runner sidecar: hits the webapp container at port 8000 — both containers are in the same pod and share the network namespace
 
-**Upload options by context:**
+**Generate to `/tmp`, not to `$APPLICANT_DIR`.** After generation, upload to OB1 via the webapp endpoint.
 
-| Context | Upload method |
-|---|---|
-| CLI (Mac) or Webapp subprocess | `curl -X POST "http://127.0.0.1:8000/api/upload?dir=<folder>" -F "file=@$TMP_PDF"` — webapp handles MinIO + js_files |
-| K8s pod | PDF generation not applicable; for other binary files use `upload_file` MCP with `binary=true` |
-| Any context (portable) | `upload_file` MCP with `binary=true` + base64 content — works wherever MCP is connected |
-
-**Note:** `curl http://127.0.0.1:8000/api/upload` is NOT portable to K8s — in a pod, localhost:8000 is the pod's own loopback, not the Mac webapp. Only use it from CLI/webapp contexts.
-
-**Correct Mac sequence:**
+**Correct sequence (works in all three contexts):**
 ```bash
-source "$APP_DIR/.env"
+# $APP_DIR, $PLAYWRIGHT_PYTHON are context-specific but always set correctly
 TMP_HTML="/tmp/resume.html"
 TMP_PDF="/tmp/resume.pdf"
 FOLDER="applications/<folder>"
 
-# 1. Write .md to tmp (content fetched from OB1 via get_file)
+# 1. .md must come from OB1 (get_file) — write content to $TMP_MD before this
 pandoc "$TMP_MD" -o "$TMP_HTML" --css="$APP_DIR/templates/resume.css" --standalone
 "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$TMP_HTML" "$TMP_PDF"
 rm "$TMP_HTML"
 pdfinfo "$TMP_PDF" | grep Pages
 
-# 2. Upload to OB1 (Mac/webapp context only)
+# 2. Upload to OB1 via webapp (writes both MinIO + js_files)
 curl -s -X POST "http://127.0.0.1:8000/api/upload?dir=$FOLDER" -F "file=@$TMP_PDF"
 rm "$TMP_PDF"
 ```
@@ -108,8 +104,4 @@ Before touching local APPLICANT_DIR files, check what is stale:
 2. Verify OB1 state with `list_files` — sizes and timestamps tell you what's current
 3. Never read local APPLICANT_DIR to "check" — trust the MCP tool return values
 
-If .md uploaded successfully (MCP returned size) but webapp shows old PDF: the PDF was not uploaded to OB1. Upload it via `curl http://127.0.0.1:8000/api/upload` (Mac/webapp) or `upload_file` MCP (any context) — do NOT write files to local APPLICANT_DIR as a workaround.
-
-## Portable file upload rule
-
-`upload_file` MCP is the only upload path that works in all three contexts (CLI, webapp subprocess, K8s). The webapp `/api/upload` curl works on Mac only. Use MCP for anything that needs to run in K8s.
+If .md uploaded successfully (MCP returned size) but webapp shows old PDF: the PDF was not uploaded to OB1. Upload it via `curl http://127.0.0.1:8000/api/upload` — do NOT write files to local APPLICANT_DIR as a workaround.
