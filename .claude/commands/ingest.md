@@ -10,11 +10,26 @@ Available profiles: discovered at runtime from $APPLICANT_DIR/profiles/ subdirec
 
 ---
 
+CONTENTS
+    Step 1 — Load context (applicant.md, profiles, env vars)
+    Step 2 — Initialize counters
+    Step 3 — Two-phase execution
+        Phase 3-FETCH — paginate all sub-queries, build batch file
+        Phase 3-PROCESS — per job: fetch JD → screen (Haiku) → write files
+            3c. Extract apply links
+            3d. Fetch real JD
+            3e. Failure handling (no URL / fetch failed)
+            3f. Screen on real JD (Haiku agent, JSON output)
+            3g. Write application files (job-description.md, jd-*.md, search-result.json, notes.md)
+    Step 4 — Write summary file + log to CSV
+    Step 5 — Report
+    RULES
+
 EXECUTION STEPS — run in order without asking for confirmation
 
 **Step 1 — Load context**
 - Read `$APP_DIR/.env`, resolve `$APP_DIR`, `$APPLICANT_DIR`, `SEARCHAPI_KEY`, `SEARCH_TARGET_FITS` (default 10), `SEARCH_BATCH_SIZE` (default 10)
-- Read `DATA_BACKEND` from `.env` (default: `local`). Set `OB1_MODE = (DATA_BACKEND == "ob1")`. When OB1_MODE=true, all applicant file reads and writes must use OB1 MCP tools (`get_file`, `upload_file`, `create_application`, etc.) — direct `$APPLICANT_DIR` operations are forbidden. OB1 MCP availability was verified at session start — do not re-check here.
+- Read `DATA_BACKEND` from `.env` (default: `local`). Apply routing rule per `memory/feedback_ob1_integration.md` for every APPLICANT file operation in this command.
 - Parse invocation arguments: if `--fits N` was provided, override `SEARCH_TARGET_FITS` with N; if `--batch N` was provided, override `SEARCH_BATCH_SIZE` with N
 - Load `applicant.md` for location/comp hard-stops:
   - OB1: `get_file('applicant.md')`
@@ -305,6 +320,9 @@ Omit section if no required qualifications are stated.>
 ```
 
 **`jd-<company>-<role>.md`** content:
+
+> **HARD RULE:** Write `full_jd_content` VERBATIM — character-for-character. Do NOT summarize, extract, reformat, or paraphrase any part of it. No bullets, no headers, no edits. This is the archival raw source; `job-description.md` is the structured extraction. They are different files serving different purposes. Treat this like copying binary content.
+
 The full, verbatim markdown content of the retrieved JD — no summarization, no editing, no truncation. Prepend with:
 ```
 **Source:** <fetch_url> (fetched via <"WebFetch" if WebFetch succeeded | "fetch-jd.py --md-out" if script succeeded>)

@@ -24,7 +24,7 @@ This document covers system architecture, DEV_MODE operation, hook configuration
 
 ## DEV_MODE — Modifying the System
 
-`$APP_DIR` is read-only by default. A `PreToolUse` hook (`scripts/check-dev-mode.sh`) intercepts every `Write` and `Edit` call to files inside `$APP_DIR` and blocks them when `DEV_MODE=false`.
+`$APP_DIR` is read-only by default. A `PreToolUse` hook (`scripts/check-dev-mode.sh`) intercepts every `Write` and `Edit` call to files inside `$APP_DIR` and blocks them when `DEV_MODE=false`. The same hook also blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`, enforcing MCP-only access to applicant data.
 
 **To enable APP_DIR editing:**
 1. Open `.env` and set `DEV_MODE="true"` — no restart needed
@@ -93,7 +93,7 @@ $APP_DIR/
 │   ├── k8s-apply-env.sh         # Creates k8s Secrets/ConfigMaps + generates .mcp.json (OB1)
 │   ├── migrate-to-ob1.py        # Migrates local APPLICANT_DIR to OB1 (MinIO + Postgres)
 │   ├── check-md-hygiene.sh      # Pre-commit hook: no personal names or hard-coded paths
-│   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes when DEV_MODE=false
+│   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes (DEV_MODE) + APPLICANT_DIR writes (OB1)
 │   ├── install-hooks.sh         # Installs git hooks into .git/hooks/
 │   ├── sync-memory.sh           # Commits memory/ and copies to ~/.claude/
 │   ├── status-line.sh           # Dynamic status bar for Claude Code VS Code extension
@@ -305,7 +305,9 @@ Hooks are configured in `.claude/settings.json` under the `hooks` key.
 
 ### PreToolUse — DEV_MODE gate
 
-Runs `scripts/check-dev-mode.sh` before every `Write` or `Edit` tool call. If the target path is inside `$APP_DIR` and `DEV_MODE=false`, the hook exits non-zero and blocks the operation.
+Runs `scripts/check-dev-mode.sh` before every `Write` or `Edit` tool call. Two rules enforced:
+- If target path is inside `$APP_DIR` and `DEV_MODE=false` → blocked (set `DEV_MODE=true` to enable)
+- If target path is inside `$APPLICANT_DIR` and `DATA_BACKEND=ob1` → blocked (use `upload_file()` MCP tool instead)
 
 The script reads `DEV_MODE` from `.env` on every invocation — toggling the value mid-session takes effect immediately.
 

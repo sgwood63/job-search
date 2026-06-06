@@ -114,28 +114,15 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 
 ## OB1 Integration
 
-The applicant content system (APPLICANT_DIR) is being migrated to an OB1 Kubernetes deployment. When fully active, all applicant files live in the object store (MinIO or Supabase) and structured data lives in OB1 PostgreSQL. The `open-brain` MCP server provides access to both.
+**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, all APPLICANT file operations must use OB1 MCP tools — direct `$APPLICANT_DIR` reads and writes are forbidden. For the canonical routing rule, MCP tool mapping table, and hard-stop protocol, see `memory/feedback_ob1_integration.md`.
 
-**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, **all APPLICANT file operations must use OB1 MCP tools** — direct `$APPLICANT_DIR` file reads and writes are forbidden. See `memory/feedback_ob1_integration.md` for the full rule, MCP tool mapping, and session-start check protocol.
-
-Port-forwards needed for both MCP servers (nginx Ingress routes them; no port-forward needed when Ingress is up):
+Port-forwards (nginx Ingress routes them; no port-forward needed when Ingress is up):
 ```bash
 kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
 kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
 ```
 
 MCP servers are registered in `.mcp.json` (gitignored). Copy `.mcp.json.example` and fill in your access keys if the file doesn't exist yet.
-
-**When OB1 is configured, use these tools for all APPLICANT operations:**
-- Reading applicant files: `get_file('applicant.md')`, `get_file('memory/APPLICANT-MEMORY.md')`, etc.
-- Writing files: `upload_file(key, content, content_type)` — handles dual persistence to object store + `js_files` + optional thought capture
-- Pipeline state: `get_pipeline()`, `update_application_status()`, `log_interview()`, `get_overdue_followups()`
-- Company/contact tracking: `upsert_company()`, `add_contact()`, `get_contacts()`
-- Semantic search: `search_applications_semantic(query)` — full-text + vector search over notes/JDs
-
-**No silent fallback:** If OB1 is configured but MCP tools are not connected, that is a hard stop — do not fall back to GDrive. Tell the user to restart the session. See `memory/feedback_ob1_integration.md`.
-
-**File key convention:** Object store keys mirror the former local paths relative to APPLICANT_DIR. `applications/2026-05-15-co-role/notes.md` in the object store corresponds to `$APPLICANT_DIR/applications/2026-05-15-co-role/notes.md` on disk.
 
 ## Session Strategy
 

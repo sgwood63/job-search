@@ -10,7 +10,7 @@ EXECUTION STEPS — run in order without asking for confirmation
 
 **Step 1 — Load context**
 - Read `$APP_DIR/.env`, resolve `$APP_DIR`, `$APPLICANT_DIR`, `PLAYWRIGHT_PYTHON`
-- Read `DATA_BACKEND` from `.env` (default: `local`). Set `OB1_MODE = (DATA_BACKEND == "ob1")`. When OB1_MODE=true, all applicant file reads and writes must use OB1 MCP tools (`get_file`, `upload_file`, `create_application`, etc.) — direct `$APPLICANT_DIR` operations are forbidden. OB1 MCP availability was verified at session start — do not re-check here.
+- Read `DATA_BACKEND` from `.env` (default: `local`). Apply routing rule per `memory/feedback_ob1_integration.md` for every APPLICANT file operation in this command.
 - Parse invocation arguments: if `--max-pages N` was provided, pass it to the fetch script.
 - Load `applicant.md` for location/comp hard-stops:
   - OB1: `get_file('applicant.md')`
@@ -267,6 +267,9 @@ Omit this section if the full JD contains no company description.>
 ```
 
 **`jd-<company>-<role>.md`** content:
+
+> **HARD RULE:** Write `full_jd_content` VERBATIM — character-for-character. Do NOT summarize, extract, reformat, or paraphrase any part of it. No bullets, no headers, no edits. This is the archival raw source; `job-description.md` is the structured extraction. They are different files serving different purposes. Treat this like copying binary content.
+
 Full verbatim markdown of the fetched JD, prepended with:
 ```
 **Source:** <apply_link> (fetched via <"WebFetch" | "fetch-jd.py --md-out">)

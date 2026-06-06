@@ -127,14 +127,12 @@ Install once with `bash scripts/install-hooks.sh`. Runs automatically on every `
 
 ## check-dev-mode.sh
 
-PreToolUse hook that blocks Claude's Write and Edit tools from modifying files in `$APP_DIR` when `DEV_MODE=false`.
+PreToolUse hook that enforces two write-protection rules on every Write and Edit tool call:
 
-Registered in `.claude/settings.json` under `PreToolUse` for the `Write` and `Edit` tool matchers. Reads `DEV_MODE` from `.env` on every call — no session restart needed when toggling.
+1. **APP_DIR protection:** Blocks writes to `$APP_DIR` when `DEV_MODE=false`. To enable: set `DEV_MODE="true"` in `.env`, proceed, then set it back to `"false"`.
+2. **APPLICANT_DIR protection (OB1 mode):** Blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`. Use `upload_file()` MCP tool instead.
 
-**To enable APP_DIR editing:**
-1. In `.env`, set `DEV_MODE="true"`
-2. Ask Claude to proceed (reply "continue" if it paused waiting)
-3. When done, set `DEV_MODE="false"` again
+Registered in `.claude/settings.json` under `PreToolUse` for the `Write` and `Edit` tool matchers. Reads `.env` on every call — no session restart needed when toggling.
 
 ---
 

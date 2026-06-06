@@ -4,7 +4,7 @@
 
 **Prerequisite:** `scripts/setup.sh` must have been run first (creates directories, `.env`, and stub files).
 
-**OB1 note:** If OB1 is active (`DATA_BACKEND=ob1` in `.env`), use `upload_file(key, content, content_type)` **exclusively** for every file created during setup — do not write to `$APPLICANT_DIR` directly. Direct writes to `$APPLICANT_DIR` are forbidden when OB1 is configured (see CLAUDE.md § OB1 Integration). For the SQL tables (js_applicant, js_profiles, js_experience), use the OB1 MCP state tools or run `python scripts/migrate-to-ob1.py --only-sql` after setup completes to seed the database. If OB1 is not yet deployed, write files to `$APPLICANT_DIR` as normal and run the migration script once OB1 is up.
+**OB1 note:** If OB1 is active (`DATA_BACKEND=ob1` in `.env`), use `upload_file(key, content, content_type)` **exclusively** for every file created during setup — do not write to `$APPLICANT_DIR` directly. See `memory/feedback_ob1_integration.md` for the canonical routing rule. For the SQL tables (js_applicant, js_profiles, js_experience), use the OB1 MCP state tools or run `python scripts/migrate-to-ob1.py --only-sql` after setup completes to seed the database. If OB1 is not yet deployed, write files to `$APPLICANT_DIR` as normal and run the migration script once OB1 is up.
 
 Open a Claude Code session in the `$APP_DIR` repo directory and say:
 

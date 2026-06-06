@@ -787,6 +787,17 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
         cmd += ['--permission-mode', 'plan']
     if session.claude_session_id:
         cmd += ['--resume', session.claude_session_id]
+    if DATA_BACKEND == 'ob1':
+        cmd += [
+            '--append-system-prompt',
+            (
+                'CRITICAL: You are running inside the job search webapp. '
+                'DATA_BACKEND is ob1. All applicant data reads and writes MUST '
+                'use MCP tools (get_file, upload_file, get_pipeline, update_application_status, etc.). '
+                'Never access PostgreSQL directly. Never write files to APPLICANT_DIR. '
+                'If MCP tools are unavailable, stop and report the error — do not fall back to local files or direct DB access.'
+            ),
+        ]
 
     session.status = 'executing'
     _broadcast(session, {'type': 'status', 'status': 'executing'})
