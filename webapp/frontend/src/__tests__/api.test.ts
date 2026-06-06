@@ -18,7 +18,7 @@ beforeEach(() => {
 
 describe('api.tracker', () => {
   it('calls GET /api/tracker and returns parsed JSON', async () => {
-    const payload = { active: [], phase_d: [], closed: [] }
+    const payload = { rows: [] }
     vi.stubGlobal('fetch', mockFetch(payload))
 
     const result = await api.tracker()

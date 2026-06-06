@@ -110,6 +110,7 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
 | `/ingest [profile]` | Search Google Jobs via SearchAPI for a profile; save fit jobs for review; writes per-run summary with all fit + no-fit results |
+| `/linkedin-ingest [--max-pages N]` | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs for review |
 
 ## OB1 Integration
 

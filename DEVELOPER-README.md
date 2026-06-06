@@ -289,6 +289,7 @@ Commands are defined as Markdown files in `$APP_DIR/.claude/commands/`. Claude C
 | `commands/interview.md` | `/interview` |
 | `commands/memory.md` | `/memory` |
 | `commands/ingest.md` | `/ingest` |
+| `commands/linkedin-ingest.md` | `/linkedin-ingest` |
 
 **To add a command:** Create a new `.md` file in `.claude/commands/`. The file's content is the instruction Claude receives when the command is invoked. Takes effect at the next session — no restart needed.
 

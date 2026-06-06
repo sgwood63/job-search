@@ -168,13 +168,19 @@ spec:
               memory: 512Mi
 
       volumes:
-        - name: db-data
-          hostPath:
-            path: /var/openbrain/db
-            type: DirectoryOrCreate
         - name: init-sql
           configMap:
             name: openbrain-init-sql
+
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hostpath
+        resources:
+          requests:
+            storage: 5Gi
 
 ---
 apiVersion: v1

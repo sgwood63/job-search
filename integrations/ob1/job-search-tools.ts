@@ -377,21 +377,42 @@ export function registerGetPipelineTool(server: unknown, pool: unknown) {
     "get_pipeline",
     "List applications with optional filters. Returns pipeline state from js_applications.",
     {
-      status: z.string().optional().describe("Filter by status, e.g. 'applied'"),
-      priority: z.number().int().min(1).max(3).optional(),
+      status: z.string().optional().describe("Filter by a single status, e.g. 'applied' (use statuses[] for multi)"),
+      statuses: z.array(z.string()).optional().describe("Filter by multiple statuses (OR), e.g. ['applied','interview-scheduled']"),
+      company: z.string().optional().describe("Case-insensitive substring match on company name"),
+      role: z.string().optional().describe("Case-insensitive substring match on role title"),
+      profile: z.string().optional().describe("Filter by profile slug, e.g. 'presales-se'"),
+      priority: z.number().int().min(1).max(3).optional().describe("Exact priority level (1=low, 2=normal, 3=high)"),
+      min_priority: z.number().int().min(1).max(3).optional().describe("Return apps with priority >= this value (2=any starred, 3=highest only)"),
       due_before: z.string().optional().describe("ISO date — return apps with follow_up_date before this"),
       limit: z.number().int().min(1).max(200).default(50),
     },
-    async ({ status, priority, due_before, limit }: {
-      status?: string; priority?: number; due_before?: string; limit: number
+    async ({ status, statuses, company, role, profile, priority, min_priority, due_before, limit }: {
+      status?: string; statuses?: string[]; company?: string; role?: string;
+      profile?: string; priority?: number; min_priority?: number; due_before?: string; limit: number
     }) => {
       const client = await (pool as any).connect();
       try {
         const where: string[] = [];
         const params: unknown[] = [];
         let p = 1;
-        if (status) { where.push(`a.status = $${p++}`); params.push(status); }
+
+        // Merge single status + statuses array into one IN/= clause
+        const allStatuses = Array.from(new Set([
+          ...(status ? [status] : []),
+          ...(statuses ?? []),
+        ]));
+        if (allStatuses.length === 1) {
+          where.push(`a.status = $${p++}`); params.push(allStatuses[0]);
+        } else if (allStatuses.length > 1) {
+          where.push(`a.status = ANY($${p++})`); params.push(allStatuses);
+        }
+
+        if (company) { where.push(`LOWER(COALESCE(c.name, a.company_name_raw)) LIKE '%' || LOWER($${p++}) || '%'`); params.push(company); }
+        if (role)    { where.push(`LOWER(a.role_title) LIKE '%' || LOWER($${p++}) || '%'`); params.push(role); }
+        if (profile) { where.push(`p.slug = $${p++}`); params.push(profile); }
         if (priority) { where.push(`a.priority = $${p++}`); params.push(priority); }
+        if (min_priority) { where.push(`a.priority >= $${p++}`); params.push(min_priority); }
         if (due_before) { where.push(`a.follow_up_date <= $${p++}`); params.push(due_before); }
         params.push(limit);
 

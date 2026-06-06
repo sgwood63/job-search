@@ -36,7 +36,7 @@ trap cleanup EXIT INT TERM
 
 echo "Starting backend (port 8000)..."
 cd "$SCRIPT_DIR/backend"
-uvicorn main:app --reload --port 8000 &
+uvicorn main:app --reload --reload-exclude ".venv" --port 8000 &
 
 echo "Starting vite build --watch (auto-rebuilds dist on change)..."
 cd "$SCRIPT_DIR/frontend"

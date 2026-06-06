@@ -110,21 +110,74 @@ Compose `notes_content`:
   **Status Detail:** Fetch failed — <fetch_result: "no_url" | "auth_required" | "failed"> — full JD not available
   **Source:** SearchAPI / Google Jobs — /ingest <profile>
   **Date found:** YYYY-MM-DD
+  **Via:** <raw.via, or "Not listed" if absent>
+
+  ## Search Snippet
+
+  <If raw.job_highlights is present and non-empty: render each highlight group as a subheading with its items as bullets. Example:
+  ### Qualifications
+  - Requirement 1
+  - Requirement 2
+
+  ### Responsibilities
+  - Responsibility 1
+
+  If raw.job_highlights is absent: write "_No highlights available from search result._">
 
   ## Next Steps
-  - [ ] Manually open apply link and paste JD to continue processing, or re-run /ingest after auth setup
+  - [ ] Manually locate apply link and paste JD to continue processing, or re-run /ingest after auth setup
+  ```
+
+Compose `jd_fallback_content`:
+  ```markdown
+  **Source:** SearchAPI / Google Jobs (full JD fetch failed — <fetch_result: "no_url" | "auth_required" | "failed">)
+  **Date:** YYYY-MM-DD
+
+  ---
+
+  # <raw.title> — <raw.company_name>
+
+  ## Overview
+
+  | Field | Value |
+  |---|---|
+  | Company | <raw.company_name> |
+  | Location | <raw.location> |
+  | Via | <raw.via, or "Not listed"> |
+  | Employment Type | <raw.extensions.schedule_type or raw.detected_extensions.schedule_type, or "Not listed"> |
+  | Salary | <raw.extensions.salary or raw.detected_extensions.salary, or "Not listed"> |
+  | Posted | <raw.detected_extensions.posted_at, or "Not listed"> |
+
+  ## Description
+
+  <raw.description verbatim, or "_No description available from search result._" if absent or empty>
+
+  <For each group in raw.job_highlights (if present and non-empty), emit a section:>
+  ## <group.title>
+
+  - <item> (one bullet per item in group.items)
+
+  <If raw.job_highlights is absent or empty: omit the highlights sections entirely>
+
+  ## Apply Links
+
+  <If raw.apply_links is present and non-empty: one bullet per entry — `- [<link>](<link>)`>
+  <If raw.apply_link is present and not already listed: add it as a bullet>
+  <If no links at all: `_No apply links available._`>
   ```
 
 **If OB1_MODE=true:**
-- `upload_file('applications/<folder>/search-result.json', <raw_json>, 'application/json')`
+- `upload_file('applications/<folder>/search-result.json', <raw_json>, 'application/json')` — `<raw_json>` is the exact, verbatim content of the `raw` field from the batch line: the original SearchAPI job object with ALL fields intact (title, company_name, location, via, extensions, detected_extensions, job_highlights, apply_links, apply_link, description, sharing_link, position, thumbnail — whatever the API returned). Copy the JSON character-for-character. Do NOT reconstruct, summarize, or omit any fields.
 - `upload_file('applications/<folder>/notes.md', <notes_content>, 'text/markdown')`
+- `upload_file('applications/<folder>/jd-<company>-<role>.md', <jd_fallback_content>, 'text/markdown')`
 - `upsert_company(name=<company>, slug=<company-slug>)`
 - `create_application(company_name=<company>, role_title=<role>, folder_prefix='applications/<folder>/', profile_slug=<profile>, status='pending-review', status_detail='Fetch failed — <fetch_result>')`
 
 **If OB1_MODE=false (local):**
 - Create `$APPLICANT_DIR/applications/<folder>/`
-- Write `search-result.json`: the full raw SearchAPI job object
+- Write `search-result.json`: the exact, verbatim content of the `raw` field from the batch line — the original SearchAPI job object with ALL fields intact. Do NOT reconstruct, summarize, or omit any fields.
 - Write `notes.md` with the content above
+- Write `jd-<company>-<role>.md` with `jd_fallback_content`
 - Update `$APPLICANT_DIR/application-tracker.md`: add row to Active Applications:
   `| YYYY-MM-DD | <Company> | <Role> | <profile> | SearchAPI | Pending Review | Fetch failed — <reason> | Review JD | — |`
 
@@ -252,16 +305,17 @@ Omit section if no required qualifications are stated.>
 ```
 
 **`jd-<company>-<role>.md`** content:
-The fetched markdown content as-is, prepended with:
+The full, verbatim markdown content of the retrieved JD — no summarization, no editing, no truncation. Prepend with:
 ```
-**Source:** <fetch_url> (fetched via fetch-jd.py)
+**Source:** <fetch_url> (fetched via <"WebFetch" if WebFetch succeeded | "fetch-jd.py --md-out" if script succeeded>)
 **Date fetched:** YYYY-MM-DD
 
 ---
 
 ```
+Then append `full_jd_content` character-for-character.
 
-**`search-result.json`** content: the raw SearchAPI job object (the `raw` field from the batch line)
+**`search-result.json`** content: the exact, verbatim content of the `raw` field from the batch line — the original SearchAPI job object with ALL fields intact (title, company_name, location, via, extensions, detected_extensions, job_highlights, apply_links, apply_link, description, sharing_link, position, thumbnail — whatever the API returned). Copy the JSON character-for-character. Do NOT reconstruct, summarize, or omit any fields. This is the only archival record of what the API returned for this job.
 
 **`notes.md`** content:
 

@@ -16,8 +16,7 @@ from typing import Any, Optional
 import asyncpg
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -56,6 +55,8 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
+        elif request.url.path in ('/', '/index.html'):
+            response.headers['Cache-Control'] = 'no-cache'
         return response
 
 
@@ -138,53 +139,77 @@ def _local_scan(rel_prefix: str) -> list[dict]:
     return results
 
 
+_STATUS_NORMALIZE = {
+    'Pending Review': 'pending-review',
+    'Resume Ready': 'resume-ready',
+    'Applied': 'applied',
+    'Interview Scheduled': 'interview-scheduled',
+    'Interview scheduled': 'interview-scheduled',
+    'Interviewed': 'interviewed',
+    'Exercise/Test requested': 'exercise',
+    'Exercise/Test': 'exercise',
+    'Offer': 'offer',
+    'Closed': 'closed',
+    'Not Interested': 'not-interested',
+}
+
+
 def _local_tracker() -> dict:
     from tracker import parse_tracker
     if not APPLICANT_DIR:
-        return {'active': [], 'phase_d': [], 'closed': []}
+        return {'rows': []}
     tracker_path = APPLICANT_DIR / 'application-tracker.md'
     if not tracker_path.exists():
-        return {'active': [], 'phase_d': [], 'closed': []}
+        return {'rows': []}
     content = tracker_path.read_text(encoding='utf-8')
     parsed = parse_tracker(content, APPLICANT_DIR)
 
-    def _norm_active(r: dict) -> dict:
-        return {
+    rows: list[dict] = []
+
+    for r in parsed.get('active', []):
+        raw_status = r.get('status', '')
+        rows.append({
             'id': '',
+            'date': r.get('date', ''),
             'company': r.get('company', ''),
             'role': r.get('role', ''),
             'profile': r.get('profile', ''),
-            'status': r.get('status', ''),
+            'status': _STATUS_NORMALIZE.get(raw_status, raw_status.lower().replace(' ', '-')),
             'status_detail': r.get('status_detail', ''),
-            'applied_date': r.get('date', ''),
             'follow_up_date': r.get('next_action', ''),
-            'next_interview_at': '',
             'priority': r.get('priority', ''),
-            'source_url': r.get('source', ''),
             'folder': r.get('folder') or '',
-        }
+        })
 
-    def _norm_closed(r: dict) -> dict:
-        return {
+    for r in parsed.get('phase_d', []):
+        rows.append({
             'id': '',
+            'date': r.get('date', ''),
+            'company': r.get('company', ''),
+            'role': r.get('role', ''),
+            'profile': r.get('profile', ''),
+            'status': 'interview-scheduled',
+            'status_detail': r.get('notes', ''),
+            'follow_up_date': '',
+            'priority': '',
+            'folder': r.get('folder') or '',
+        })
+
+    for r in parsed.get('closed', []):
+        rows.append({
+            'id': '',
+            'date': r.get('date', ''),
             'company': r.get('company', ''),
             'role': r.get('role', ''),
             'profile': r.get('profile', ''),
             'status': 'closed',
             'status_detail': r.get('status_detail', '') or r.get('notes', ''),
-            'applied_date': r.get('date', ''),
             'follow_up_date': '',
-            'next_interview_at': '',
             'priority': '',
-            'source_url': '',
             'folder': r.get('folder') or '',
-        }
+        })
 
-    return {
-        'active': [_norm_active(r) for r in parsed.get('active', [])],
-        'phase_d': [_norm_active(r) for r in parsed.get('phase_d', [])],
-        'closed': [_norm_closed(r) for r in parsed.get('closed', [])],
-    }
+    return {'rows': rows}
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +225,8 @@ async def get_tracker():
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT a.id, a.role_title, a.status, a.status_detail,
-                   a.applied_date, a.follow_up_date, a.priority,
+                   COALESCE(a.applied_date, a.created_at::date) AS display_date,
+                   a.follow_up_date, a.priority,
                    a.source_url, a.folder_prefix, a.resume_key,
                    COALESCE(c.name, a.company_name_raw) AS company,
                    p.slug AS profile,
@@ -216,29 +242,21 @@ async def get_tracker():
             ORDER BY a.priority DESC, a.created_at DESC
         """)
 
-    active, phase_d, closed = [], [], []
+    result_rows = []
     for r in rows:
-        entry = {
+        result_rows.append({
             'id': str(r['id']),
+            'date': r['display_date'].isoformat() if r['display_date'] else '',
             'company': r['company'] or '',
             'role': r['role_title'],
             'profile': r['profile'] or '',
             'status': r['status'],
             'status_detail': r['status_detail'] or '',
-            'applied_date': r['applied_date'].isoformat() if r['applied_date'] else '',
             'follow_up_date': r['follow_up_date'].isoformat() if r['follow_up_date'] else '',
-            'next_interview_at': r['next_interview_at'].isoformat() if r['next_interview_at'] else '',
             'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(r['priority'], ''),
-            'source_url': r['source_url'] or '',
             'folder': (r['folder_prefix'] or '').removeprefix('applications/').rstrip('/'),
-        }
-        if r['status'] == 'closed':
-            closed.append(entry)
-        elif r['status'] in ('interview-scheduled', 'interviewed', 'exercise', 'offer'):
-            phase_d.append(entry)
-        else:
-            active.append(entry)
-    return {'active': active, 'phase_d': phase_d, 'closed': closed}
+        })
+    return {'rows': result_rows}
 
 
 # ---------------------------------------------------------------------------
@@ -1047,4 +1065,9 @@ async def session_ws(websocket: WebSocket, session_id: str):
 # Serve built frontend in production
 frontend_dist = Path(__file__).parent.parent / 'frontend' / 'dist'
 if frontend_dist.exists():
-    app.mount('/', StaticFiles(directory=frontend_dist, html=True), name='static')
+    @app.get('/{full_path:path}', include_in_schema=False)
+    async def serve_spa(full_path: str):
+        file_path = frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(frontend_dist / 'index.html')

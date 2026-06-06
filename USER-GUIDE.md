@@ -122,7 +122,7 @@ Phase completion status is shown in the sidebar under **Setup Status**. Once all
 
 A collapsible panel at the bottom of every page gives you two tabs:
 
-**Commands tab (default):** Run preset assistant commands with one click, or type any allowed command in the input box. Output streams in real time from a fresh Claude Code session. Supported commands: `/status`, `/memory read`, `/ingest <profile>`, `/audit <folder>`, `/apply "Co" "Role" "date"`.
+**Commands tab (default):** Run preset assistant commands with one click, or type any allowed command in the input box. Output streams in real time from a fresh Claude Code session. Supported commands: `/status`, `/memory read`, `/ingest <profile>`, `/linkedin-ingest`, `/audit <folder>`, `/apply "Co" "Role" "date"`.
 
 **Terminal tab:** A full interactive terminal connected to a shell session opened in the repo directory. Type `claude` to start an interactive Claude Code session, run scripts, or use any shell command. Each terminal connection is a fresh session — close and reopen the tab to start a new one.
 
@@ -438,6 +438,7 @@ To reload context mid-conversation (for example, after a status change):
 | `/context` | none | Loads session context: identity, memory, and DEV_MODE status | Automatic at conversation start; use manually to refresh |
 | `/status` | none | Pipeline snapshot with overdue follow-ups | Weekly check-in |
 | `/ingest [profile] [--fits N] [--batch N]` | `profile` — profile slug (optional; lists profiles if omitted); `--fits N` — override target fit count; `--batch N` — override batch size | Search Google Jobs; screen and save fit jobs | Proactive discovery, ~every 3 days per profile |
+| `/linkedin-ingest [--max-pages N]` | `--max-pages N` — cap pages fetched (optional; default: all) | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs | Complement to `/ingest`; use whenever LinkedIn has fresh recommendations |
 | `/audit [folder]` | `folder` — application folder name (optional; lists folders if omitted) | Confirms application is complete and ready to submit | Before submitting |
 | `/apply "Co" "Role" "date" [url?]` | `company`, `role`, `date` (YYYY-MM-DD) required; `url` — portal URL, optional | Records submission; sets 14-day follow-up reminder | Right after submitting |
 | `/interview [company] [stage?]` | `company` — partial name match required; `stage` — interview stage (optional; inferred from notes if omitted) | Interview brief: talking points, questions, positioning | Night before any call |

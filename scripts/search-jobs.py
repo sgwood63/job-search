@@ -169,28 +169,40 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print params, skip API call")
     parser.add_argument("--batch-out", default=None, metavar="FILE", help="Append new jobs as NDJSON to FILE; omit new_jobs from stdout")
     parser.add_argument("--batch-size", default=None, type=int, metavar="N", help="Max new jobs to return (overrides SEARCH_BATCH_SIZE env var)")
+    parser.add_argument("--seen-jobs-path", default=None, metavar="FILE", help="Override path to seen-jobs.json (OB1 mode: pre-populated from object store)")
+    parser.add_argument("--no-raw-save", action="store_true", help="Skip saving raw API response to disk (OB1 mode)")
     args = parser.parse_args()
 
-    applicant_dir = Path(get_env("APPLICANT_DIR"))
     api_key = get_env("SEARCHAPI_KEY")
     batch_size = args.batch_size if args.batch_size is not None else int(os.environ.get("SEARCH_BATCH_SIZE", "10"))
 
-    profiles_dir = applicant_dir / "profiles"
-    quick_ref = profiles_dir / "PROFILES-QUICK-REFERENCE.md"
-    profile_dir = profiles_dir / args.profile
-    search_results_dir = profile_dir / "search-results"
+    ob1_mode = args.seen_jobs_path is not None
 
-    if not quick_ref.exists():
-        print(f"Error: {quick_ref} not found", file=sys.stderr)
-        sys.exit(1)
-    if not profile_dir.exists():
-        print(f"Error: profile directory {profile_dir} not found", file=sys.stderr)
-        sys.exit(1)
+    if ob1_mode:
+        if not args.query:
+            print("Error: --seen-jobs-path requires --query (profile dir lookup is skipped in OB1 mode)", file=sys.stderr)
+            sys.exit(1)
+        seen_jobs_path = Path(args.seen_jobs_path)
+        search_results_dir = seen_jobs_path.parent
+    else:
+        applicant_dir = Path(get_env("APPLICANT_DIR"))
+        profiles_dir = applicant_dir / "profiles"
+        quick_ref = profiles_dir / "PROFILES-QUICK-REFERENCE.md"
+        profile_dir = profiles_dir / args.profile
+        search_results_dir = profile_dir / "search-results"
 
-    search_results_dir.mkdir(parents=True, exist_ok=True)
+        if not quick_ref.exists():
+            print(f"Error: {quick_ref} not found", file=sys.stderr)
+            sys.exit(1)
+        if not profile_dir.exists():
+            print(f"Error: profile directory {profile_dir} not found", file=sys.stderr)
+            sys.exit(1)
+
+        search_results_dir.mkdir(parents=True, exist_ok=True)
+        seen_jobs_path = search_results_dir / "seen-jobs.json"
 
     query = args.query if args.query else parse_query_for_profile(quick_ref, args.profile)
-    seen = load_seen_jobs(search_results_dir / "seen-jobs.json")
+    seen = load_seen_jobs(seen_jobs_path)
 
     if args.dry_run:
         print(json.dumps({
@@ -213,10 +225,11 @@ def main():
 
     response = call_searchapi(query, api_key, args.page_token)
 
-    # Save raw response
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    raw_file = search_results_dir / f"{timestamp}_page.json"
-    raw_file.write_text(json.dumps(response, indent=2))
+    # Save raw response (skipped in OB1 mode)
+    if not args.no_raw_save:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        raw_file = search_results_dir / f"{timestamp}_page.json"
+        raw_file.write_text(json.dumps(response, indent=2))
 
     raw_jobs = response.get("jobs", [])
     total_fetched = len(raw_jobs)
@@ -232,7 +245,7 @@ def main():
         if jid:
             seen.add(jid)
 
-    save_seen_jobs(search_results_dir / "seen-jobs.json", seen)
+    save_seen_jobs(seen_jobs_path, seen)
 
     # Respect batch_size — caller can paginate for more
     new_jobs = new_jobs[:batch_size]

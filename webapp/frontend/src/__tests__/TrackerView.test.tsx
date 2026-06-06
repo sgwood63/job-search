@@ -10,33 +10,32 @@ import type { TrackerData } from '../api'
 // MSW server — intercepts fetch calls from the component
 // ---------------------------------------------------------------------------
 
-const EMPTY_TRACKER: TrackerData = { active: [], phase_d: [], closed: [] }
+const EMPTY_TRACKER: TrackerData = { rows: [] }
 
 const POPULATED_TRACKER: TrackerData = {
-  active: [
+  rows: [
     {
+      id: 'abc-1',
       date: '2026-05-01',
       company: 'Acme Corp',
       role: 'Solutions Engineer',
       profile: 'presales-se',
-      source: 'LinkedIn',
-      status: 'Applied',
+      status: 'applied',
       status_detail: '',
-      next_action: 'Follow up',
-      priority: '⭐️⭐️⭐️',
+      follow_up_date: '2026-05-15',
+      priority: '⭐⭐⭐',
       folder: '2026-05-01-acme-corp-se',
     },
-  ],
-  phase_d: [],
-  closed: [
     {
+      id: 'abc-2',
       date: '2026-04-01',
       company: 'OldCo',
       role: 'SDR',
-      status: 'Closed',
-      status_detail: 'No response',
-      notes: '',
       profile: 'sales',
+      status: 'closed',
+      status_detail: 'No response',
+      follow_up_date: '',
+      priority: '',
       folder: null,
     },
   ],
@@ -72,17 +71,18 @@ describe('TrackerView', () => {
     expect(screen.getByText(/loading tracker/i)).toBeInTheDocument()
   })
 
-  it('renders section headers once data loads', async () => {
+  it('renders table column headers once data loads', async () => {
     server.use(http.get('/api/tracker', () => HttpResponse.json(EMPTY_TRACKER)))
     renderTracker()
 
     await waitFor(() => {
-      expect(screen.getByText('Active Applications')).toBeInTheDocument()
+      expect(screen.getByText('Company')).toBeInTheDocument()
     })
-    expect(screen.getByText('Closed / Rejected')).toBeInTheDocument()
+    expect(screen.getByText('Status')).toBeInTheDocument()
+    expect(screen.getByText('Profile')).toBeInTheDocument()
   })
 
-  it('shows active application company and role', async () => {
+  it('shows application company and role', async () => {
     server.use(http.get('/api/tracker', () => HttpResponse.json(POPULATED_TRACKER)))
     renderTracker()
 
@@ -92,17 +92,13 @@ describe('TrackerView', () => {
     expect(screen.getByText('Solutions Engineer')).toBeInTheDocument()
   })
 
-  it('shows count badge on section header', async () => {
+  it('shows row count in filter bar', async () => {
     server.use(http.get('/api/tracker', () => HttpResponse.json(POPULATED_TRACKER)))
     renderTracker()
 
     await waitFor(() => {
-      // Active Applications section should show count "1"
-      expect(screen.getByText('Active Applications')).toBeInTheDocument()
+      expect(screen.getByText('2 rows')).toBeInTheDocument()
     })
-    // Badge renders the count as text
-    const badges = screen.getAllByText('1')
-    expect(badges.length).toBeGreaterThan(0)
   })
 
   it('shows error message when fetch fails', async () => {

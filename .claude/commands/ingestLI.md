@@ -73,7 +73,7 @@ If `new_after_dedup == 0`: output "No new jobs after deduplication (all previous
 **Step 5 — Fetch full JDs + screen + create stubs**
 
 Before entering the loop, extract from the files loaded in Step 1 (reuse across all jobs):
-- From `applicant.md`: the "Location" section, "Deal-breakers (Hard No)" section, and compensation/target salary line only
+- From `applicant.md`: the "Location" section, "Deal-breakers (Hard No)" section, the "Not interested in" subsection from "Role Preferences", and compensation/target salary line only
 - From `PROFILES-QUICK-REFERENCE.md`: the `## Hard Stops` section, `## Location Check` section, and the profile overview table (profile slugs + one-line summaries)
 
 Read `new_jobs` and **for each job object**:

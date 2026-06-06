@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, Application, TrackerRow, PhaseDRow, ClosedRow } from '../api'
+import { api, Application, TrackerRow } from '../api'
 import FileTree from './FileTree'
 import FileViewer from './FileViewer'
 import UploadButton from './UploadButton'
 import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
-
-type AnyRow = TrackerRow | PhaseDRow | ClosedRow
 
 function parseFolder(folder: string) {
   const m = folder.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/)
@@ -18,28 +16,29 @@ function parseFolder(folder: string) {
   return { date: m[1], label }
 }
 
-function statusClass(status: string): string {
-  const s = status.toLowerCase()
-  if (s.includes('hard stop') || s.includes('comp hard stop')) return 'bg-red-100 text-red-700'
-  if (s.includes('applied')) return 'bg-green-100 text-green-700'
-  if (s.includes('pending review')) return 'bg-yellow-100 text-yellow-700'
-  if (s.includes('rejected') || s.includes('not pursuing') || s.includes('no fit')) return 'bg-gray-100 text-gray-500'
-  if (s.includes('resume ready')) return 'bg-blue-100 text-blue-700'
-  if (s.includes('interview scheduled')) return 'bg-purple-100 text-purple-700'
-  if (s.includes('interviewed')) return 'bg-indigo-100 text-indigo-700'
-  if (s.includes('exercise/test requested')) return 'bg-orange-100 text-orange-700'
-  if (s.includes('exercise/test')) return 'bg-amber-100 text-amber-700'
-  if (s.includes('awaiting')) return 'bg-teal-100 text-teal-700'
-  return 'bg-gray-100 text-gray-600'
+const STATUS_LABEL: Record<string, string> = {
+  'pending-review': 'Pending Review', 'resume-ready': 'Resume Ready',
+  'applied': 'Applied', 'interview-scheduled': 'Interview Scheduled',
+  'interviewed': 'Interviewed', 'exercise': 'Exercise/Test',
+  'offer': 'Offer', 'closed': 'Closed', 'not-interested': 'Not Interested',
 }
 
-function TrackerHeader({ row }: { row: AnyRow }) {
-  const isActive = 'next_action' in row
-  const isPhaseD = 'fit' in row
-  const statusValue = isActive ? (row as TrackerRow).status : isPhaseD ? (row as PhaseDRow).fit : (row as ClosedRow).status
-  const nextAction = isActive ? (row as TrackerRow).next_action : ''
-  const priority = isActive ? (row as TrackerRow).priority : ''
+function statusClass(status: string): string {
+  switch (status) {
+    case 'pending-review':      return 'bg-yellow-100 text-yellow-700'
+    case 'resume-ready':        return 'bg-blue-100 text-blue-700'
+    case 'applied':             return 'bg-green-100 text-green-700'
+    case 'interview-scheduled': return 'bg-purple-100 text-purple-700'
+    case 'interviewed':         return 'bg-indigo-100 text-indigo-700'
+    case 'exercise':            return 'bg-orange-100 text-orange-700'
+    case 'offer':               return 'bg-emerald-100 text-emerald-700'
+    case 'closed':              return 'bg-gray-100 text-gray-500'
+    case 'not-interested':      return 'bg-gray-100 text-gray-400'
+    default:                    return 'bg-gray-100 text-gray-600'
+  }
+}
 
+function TrackerHeader({ row }: { row: TrackerRow }) {
   return (
     <div className="px-4 pt-2.5 pb-2 border-b bg-white flex-shrink-0">
       <div className="flex items-start justify-between gap-3">
@@ -49,15 +48,15 @@ function TrackerHeader({ row }: { row: AnyRow }) {
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {statusValue && (
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusClass(statusValue)}`}>
-              {statusValue}
+          {row.status && (
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusClass(row.status)}`}>
+              {STATUS_LABEL[row.status] ?? row.status}
             </span>
           )}
-          {priority && priority.includes('⭐') && (
-            <span className="text-yellow-500 text-sm">{priority}</span>
+          {row.priority && row.priority.includes('⭐') && (
+            <span className="text-yellow-500 text-sm">{row.priority}</span>
           )}
-          {priority && priority.toLowerCase() === 'high' && (
+          {row.priority && row.priority.toLowerCase() === 'high' && (
             <span className="text-xs font-semibold text-gray-700">High</span>
           )}
         </div>
@@ -69,8 +68,8 @@ function TrackerHeader({ row }: { row: AnyRow }) {
         {row.date && (
           <span className="text-xs text-gray-400">{row.date}</span>
         )}
-        {nextAction && (
-          <span className="text-xs text-gray-500 truncate max-w-xs">→ {nextAction}</span>
+        {row.follow_up_date && (
+          <span className="text-xs text-gray-500 truncate max-w-xs">→ {row.follow_up_date}</span>
         )}
       </div>
     </div>
@@ -81,7 +80,7 @@ export default function ApplicationView() {
   const { folder } = useParams<{ folder: string }>()
   const navigate = useNavigate()
   const [app, setApp] = useState<Application | null>(null)
-  const [trackerRow, setTrackerRow] = useState<AnyRow | null>(null)
+  const [trackerRow, setTrackerRow] = useState<TrackerRow | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
@@ -109,12 +108,7 @@ export default function ApplicationView() {
   useEffect(() => {
     if (!folder) return
     api.tracker().then(data => {
-      const match =
-        data.active.find(r => r.folder === folder) ||
-        data.phase_d.find(r => r.folder === folder) ||
-        data.closed.find(r => r.folder === folder) ||
-        null
-      setTrackerRow(match)
+      setTrackerRow(data.rows.find(r => r.folder === folder) ?? null)
     }).catch(() => setTrackerRow(null))
   }, [folder, headerVersion])
 

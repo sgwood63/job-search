@@ -2,6 +2,19 @@
 # Prerequisites:
 #   bash scripts/k8s-apply-env.sh   — creates minio-secret from .env
 #   kubectl apply -f k8s/minio-configmap.yml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: openbrain
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: hostpath
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,9 +67,8 @@ spec:
             periodSeconds: 10
       volumes:
         - name: data
-          hostPath:
-            path: /var/openbrain/minio
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: minio-data
 ---
 apiVersion: v1
 kind: Service

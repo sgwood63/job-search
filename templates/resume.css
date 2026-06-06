@@ -108,6 +108,12 @@ h3, h4 {
     page-break-after: avoid;
 }
 
+/* Keep role header paragraph with its bullet list */
+p + ul {
+    page-break-before: avoid;
+    break-before: avoid-page;
+}
+
 ul, p {
     orphans: 3;
     widows: 3;

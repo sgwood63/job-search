@@ -9,43 +9,20 @@ export type FileNode = {
 }
 
 export type TrackerRow = {
+  id: string
   date: string
   company: string
   role: string
   profile: string
-  source: string
   status: string
   status_detail: string
-  next_action: string
+  follow_up_date: string
   priority: string
   folder: string | null
 }
 
-export type PhaseDRow = {
-  date: string
-  company: string
-  role: string
-  profile: string
-  fit: string
-  notes: string
-  folder: string | null
-}
-
-export type ClosedRow = {
-  date: string
-  company: string
-  role: string
-  status: string
-  status_detail: string
-  notes: string
-  profile: string
-  folder: string | null
-}
-
 export type TrackerData = {
-  active: TrackerRow[]
-  phase_d: PhaseDRow[]
-  closed: ClosedRow[]
+  rows: TrackerRow[]
 }
 
 export type Profile = {
