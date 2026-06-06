@@ -13,8 +13,9 @@ $APPLICANT_DIR/profiles/
 ├── PROFILES-QUICK-REFERENCE.md     # Fast JD-matching index (one row per profile)
 ├── EXPERIENCE-REFERENCE.md         # Verified facts for every role — canonical source
 ├── role-achievements.md            # Achievement set scored against all active profiles
-├── [profile-name].md               # Full strategy document per profile
-└── [profile-name]-CONTENT.md       # Pre-compiled resume content library per profile
+└── [profile-name]/                 # One subdirectory per profile
+    ├── [profile-name].md           # Full strategy document
+    └── [profile-name]-CONTENT.md  # Pre-compiled resume content library
 ```
 
 ---
@@ -34,7 +35,7 @@ Achievement set organized by role (most-recent first), scored against all active
 role-achievements.md → EXPERIENCE-REFERENCE.md → [profile]-CONTENT.md
 ```
 
-### `[profile-name].md`
+### `[profile-name]/[profile-name].md`
 Full strategy document for one target role type. Contains:
 - What makes the applicant strong for this profile
 - Framing guidance for experience and accomplishments
@@ -42,7 +43,7 @@ Full strategy document for one target role type. Contains:
 - Keywords and signals for this audience
 - Example JDs (added during Phase E)
 
-### `[profile-name]-CONTENT.md`
+### `[profile-name]/[profile-name]-CONTENT.md`
 Pre-compiled resume content library for one profile. Contains:
 - Opening summaries tailored to this profile
 - Achievement bullets organized by role, ready to pull from

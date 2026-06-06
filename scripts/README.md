@@ -180,6 +180,55 @@ Not a CLI script — runs in the browser only. See [README-linkedin-extractors.m
 
 ---
 
+## k8s-apply-env.sh
+
+Creates k8s Secrets and ConfigMaps in the `openbrain` namespace from `.env` values. Also auto-generates `.mcp.json` for Claude Code with the correct `"type": "http"` transport and `/mcp` URL suffix. Re-run after any credential or config change; takes effect on next pod restart.
+
+```bash
+source "$APP_DIR/.env"
+bash "$APP_DIR/scripts/k8s-apply-env.sh"
+```
+
+Creates/updates: `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, `webapp-secret`. Generates `.mcp.json` (gitignored) for Claude Code.
+
+Required env: `OB1_MCP_KEY`, `JOB_SEARCH_MCP_KEY`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `DB_PASSWORD`, `LLM_API_KEY`, and all associated `*_URL`, `*_BASE`, `*_MODEL` vars. See `.env.example` for the full list.
+
+---
+
+## migrate-to-ob1.py
+
+Migrates existing local applicant files from `$APPLICANT_DIR` to OB1: uploads all files to MinIO, inserts records into `js_files`, populates `js_applicant` and `js_profiles` from `applicant.md`, and migrates application folders to `js_applications`. Requires Python venv with `psycopg2-binary minio` and an active port-forward to PostgreSQL.
+
+```bash
+# Start port-forward (migration connects to localhost:5432)
+kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
+PF_PID=$!
+
+source .venv/bin/activate && source "$APP_DIR/.env"
+python "$APP_DIR/scripts/migrate-to-ob1.py" --dry-run   # preview without writing
+python "$APP_DIR/scripts/migrate-to-ob1.py"             # full run
+
+kill $PF_PID
+```
+
+Exit codes: `0` (success), `1` (connection error, missing env, or parse failure).
+
+Required env: `APP_DIR`, `APPLICANT_DIR`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+---
+
+## generate-setup-status.sh
+
+Auto-generates `$APPLICANT_DIR/memory/applicant-setup-status.md` from the current state of `$APPLICANT_DIR`. Captures which onboarding phases are complete, active profiles, and recent maintenance. Run automatically by the Stop hook after every Claude response. Not intended to be run manually.
+
+---
+
+## status-line.sh
+
+Generates the dynamic status bar displayed in the Claude Code VS Code extension. Reads the application tracker live and outputs active application count, pending-review count, and nearest follow-up date. Configured in `.claude/settings.json` under `statusLine`. Runs on every render of the status bar — not intended to be run manually.
+
+---
+
 ## Environment Variables
 
 | Variable | Used by | Required | Default | Purpose |
@@ -191,3 +240,13 @@ Not a CLI script — runs in the browser only. See [README-linkedin-extractors.m
 | `DEV_MODE` | check-dev-mode.sh | No | `"false"` | `"true"` enables APP_DIR writes |
 | `SEARCHAPI_KEY` | search-jobs.py | Yes (for /ingest) | — | SearchAPI authentication key |
 | `SEARCH_BATCH_SIZE` | search-jobs.py | No | 10 | Max new jobs per API call |
+| `OB1_REPO_PATH` | k8s-apply-env.sh (image build) | Yes (OB1 k8s) | — | Path to local OB1 repo clone; image built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/` |
+| `OB1_MCP_URL` | k8s-apply-env.sh, .mcp.json | Yes (OB1) | K8s: `http://localhost/ob1` · Compose: `http://localhost:8080` | Base URL for OB1 MCP server |
+| `OB1_MCP_KEY` | k8s-apply-env.sh, .mcp.json | Yes (OB1) | — | Auth key for OB1 MCP (`x-brain-key` header) |
+| `JOB_SEARCH_MCP_URL` | k8s-apply-env.sh, .mcp.json | Yes (OB1) | K8s: `http://localhost/job-search` · Compose: `http://localhost:8081` | Base URL for job-search MCP server |
+| `JOB_SEARCH_MCP_KEY` | k8s-apply-env.sh, .mcp.json | Yes (OB1 k8s) | — | Auth key for job-search MCP (`x-brain-key` header) |
+| `MINIO_ENDPOINT` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | `localhost:30900` | MinIO S3 API address |
+| `MINIO_ACCESS_KEY` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | — | MinIO access key |
+| `MINIO_SECRET_KEY` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | — | MinIO secret key |
+| `MINIO_BUCKET` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | `job-search` | MinIO bucket name |
+| `DB_PASSWORD` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | — | PostgreSQL password (OB1 shared database) |

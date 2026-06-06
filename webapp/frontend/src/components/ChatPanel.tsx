@@ -246,9 +246,43 @@ export default function ChatPanel() {
 
   const [expanded, setExpanded] = useState(false)
   const [maximized, setMaximized] = useState(false)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const dragOrigin = useRef<{ offsetX: number; offsetY: number } | null>(null)
+  const justDraggedRef = useRef(false)
 
   const executing = activeStatus === 'executing'
   const isClosed = activeStatus === 'closed'
+
+  function startDrag(e: React.MouseEvent) {
+    if (maximized) return
+    e.preventDefault()
+    const rect = panelRef.current!.getBoundingClientRect()
+    dragOrigin.current = { offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top }
+    setDragging(true)
+  }
+
+  useEffect(() => {
+    if (!dragging) return
+    let moved = false
+    function onMove(e: MouseEvent) {
+      if (!dragOrigin.current) return
+      moved = true
+      setPos({ x: e.clientX - dragOrigin.current.offsetX, y: e.clientY - dragOrigin.current.offsetY })
+    }
+    function onUp() {
+      if (moved) {
+        justDraggedRef.current = true
+        setTimeout(() => { justDraggedRef.current = false }, 0)
+      }
+      dragOrigin.current = null
+      setDragging(false)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [dragging])
 
   const handleSend = useCallback(async (text: string) => {
     if (!activeSessionId) {
@@ -265,19 +299,21 @@ export default function ChatPanel() {
     await closeSession()
   }, [closeSession])
 
-  // Collapse maximized state when minimizing
   function handleMinimize() {
     setExpanded(false)
     setMaximized(false)
   }
 
   const panelStyle: React.CSSProperties = maximized
-    ? { width: '50vw', height: 'calc(100vh - 2rem)', bottom: '1rem', right: '1rem', top: 'auto' }
-    : { width: expanded ? 380 : 200 }
+    ? { width: '50vw', height: 'calc(100vh - 2rem)', top: '1rem', right: '1rem' }
+    : pos
+    ? { left: pos.x, top: pos.y, width: expanded ? 380 : 200 }
+    : { bottom: '4.5rem', right: '1rem', width: expanded ? 380 : 200 }
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 flex flex-col"
+      ref={panelRef}
+      className={`fixed z-50 flex flex-col ${dragging ? 'cursor-grabbing select-none' : ''}`}
       style={panelStyle}
     >
       {expanded && (
@@ -285,8 +321,11 @@ export default function ChatPanel() {
           className="bg-white border border-gray-200 rounded-lg shadow-xl flex flex-col overflow-hidden"
           style={maximized ? { flex: 1, height: '100%' } : { height: 500 }}
         >
-          {/* Header */}
-          <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
+          {/* Header — drag handle */}
+          <div
+            onMouseDown={startDrag}
+            className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100 cursor-grab active:cursor-grabbing"
+          >
             <StatusDot status={activeStatus} />
             <span className="text-xs font-medium text-gray-700 flex-1 truncate">
               {activeSessionId
@@ -354,14 +393,15 @@ export default function ChatPanel() {
           )}
 
           {/* Messages */}
-          <ChatMessages messages={messages} streamingContent={streamingContent} executing={executing} sessionReady={sessionReady} />
+          <ChatMessages messages={messages} streamingContent={streamingContent} executing={executing} sessionReady={sessionReady || !activeSessionId} />
 
           {/* Input */}
           <ChatInput
             onSend={handleSend}
-            disabled={isClosed || !sessionReady}
+            disabled={isClosed || (!!activeSessionId && !sessionReady)}
             placeholder={
               isClosed ? 'Session closed' :
+              !activeSessionId ? 'Message… (Enter to send)' :
               !sessionReady ? 'Session starting…' :
               'Message… (Enter to send)'
             }
@@ -379,10 +419,11 @@ export default function ChatPanel() {
         </div>
       )}
 
-      {/* Collapsed bar */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-md hover:shadow-lg transition-shadow text-sm text-gray-700"
+      {/* Collapsed bar — drag handle + expand toggle */}
+      <div
+        onMouseDown={startDrag}
+        onClick={() => { if (justDraggedRef.current) return; setExpanded(e => !e) }}
+        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-md hover:shadow-lg transition-shadow text-sm text-gray-700 cursor-grab active:cursor-grabbing select-none"
       >
         <StatusDot status={activeStatus} />
         <span className="font-medium flex-1 text-left">Chat</span>
@@ -390,7 +431,7 @@ export default function ChatPanel() {
           <span className="text-xs text-blue-600">Running…</span>
         )}
         <span className="text-gray-400 text-xs">{expanded ? '▼' : '▲'}</span>
-      </button>
+      </div>
     </div>
   )
 }

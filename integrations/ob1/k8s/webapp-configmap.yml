@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-configmap
+  namespace: openbrain
+data:
+  # Data backend — OB1 mode (PostgreSQL + MinIO) when running in cluster
+  DATA_BACKEND: "ob1"
+
+  # PostgreSQL — cluster-internal DNS (different from localhost used in .env)
+  DB_HOST: "openbrain-db.openbrain.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "openbrain"
+  DB_USER: "postgres"
+
+  # MinIO — cluster-internal DNS
+  OBJECT_STORE_BACKEND: "minio"
+  MINIO_ENDPOINT: "minio.openbrain.svc.cluster.local:9000"
+  MINIO_BUCKET: "job-search"
+  MINIO_SECURE: "false"
+
+  # App paths inside container
+  APP_DIR: "/app"
+  CLAUDE_BINARY: "/usr/local/bin/claude"   # fallback when runner is unavailable
+  DEV_MODE: "false"                        # APP_DIR is always read-only in container
+  PLAYWRIGHT_PYTHON: "python3"
+
+  # Claude runner sidecar — webapp delegates subprocess calls here
+  CLAUDE_RUNNER_URL: "http://localhost:8090"
+
+  # MCP server URLs (cluster-internal DNS, direct-to-service — no Ingress prefix)
+  # Ingress strips /ob1 and /job-search prefixes before forwarding; bypass it in-cluster.
+  OB1_MCP_URL: "http://openbrain.openbrain.svc.cluster.local:8000/mcp"
+  JOB_SEARCH_MCP_URL: "http://job-search-mcp.openbrain.svc.cluster.local:8001/mcp"

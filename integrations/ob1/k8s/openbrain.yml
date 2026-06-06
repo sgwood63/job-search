@@ -1,0 +1,199 @@
+---
+# Job-search-managed copy of the OB1 StatefulSet manifest.
+# Sources all non-sensitive config from openbrain-configmap and sensitive values
+# from openbrain-secret — both created/updated by: bash scripts/k8s-apply-env.sh
+#
+# Deploy this instead of the manifest in the OB1 repo.
+# Do NOT apply OB1's openbrain.yml or secrets.yml alongside this.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openbrain
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbrain-init-sql
+  namespace: openbrain
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    CREATE TABLE IF NOT EXISTS thoughts (
+        id BIGSERIAL PRIMARY KEY,
+        content TEXT NOT NULL,
+        embedding vector(1536),
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_thoughts_created_at ON thoughts (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_thoughts_metadata ON thoughts USING GIN (metadata);
+
+    CREATE OR REPLACE FUNCTION match_thoughts(
+        query_embedding vector(1536),
+        match_threshold FLOAT DEFAULT 0.5,
+        match_count INT DEFAULT 10,
+        filter JSONB DEFAULT '{}'::jsonb
+    )
+    RETURNS TABLE (
+        id BIGINT,
+        content TEXT,
+        metadata JSONB,
+        similarity FLOAT,
+        created_at TIMESTAMP WITH TIME ZONE
+    )
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            t.id,
+            t.content,
+            t.metadata,
+            (1 - (t.embedding <=> query_embedding))::FLOAT AS similarity,
+            t.created_at
+        FROM thoughts t
+        WHERE 1 - (t.embedding <=> query_embedding) >= match_threshold
+        ORDER BY t.embedding <=> query_embedding
+        LIMIT match_count;
+    END;
+    $$;
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openbrain
+  namespace: openbrain
+spec:
+  serviceName: "openbrain"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openbrain
+  template:
+    metadata:
+      labels:
+        app: openbrain
+    spec:
+      containers:
+        # Container 1: PostgreSQL + pgvector
+        - name: db
+          image: ankane/pgvector:v0.5.1
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: openbrain-configmap
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: postgres-password
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: openbrain-configmap
+                  key: DB_NAME
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+        # Container 2: Open Brain MCP Server (Deno)
+        - name: mcp-server
+          image: openbrain-mcp-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            # Non-sensitive config: DB_HOST, DB_PORT, DB_NAME, DB_USER,
+            # EMBEDDING_API_BASE, EMBEDDING_MODEL, CHAT_API_BASE, CHAT_MODEL
+            # Created/updated by: bash scripts/k8s-apply-env.sh
+            - configMapRef:
+                name: openbrain-configmap
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: postgres-password
+            - name: MCP_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: mcp-access-key
+            - name: EMBEDDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: embedding-api-key
+            - name: CHAT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: chat-api-key
+            - name: PORT
+              value: "8000"
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+      volumes:
+        - name: init-sql
+          configMap:
+            name: openbrain-init-sql
+
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hostpath
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbrain
+  namespace: openbrain
+spec:
+  selector:
+    app: openbrain
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: http
+      name: mcp
+  type: ClusterIP

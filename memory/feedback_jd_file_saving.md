@@ -23,7 +23,13 @@ For every JD processed, two files must be created in the application folder:
 - Both files must be created before moving to resume generation or notes
 - `jd-*.md` must contain the verbatim source text — not an extraction, not a reformatted version
 - `fetch-jd.py --md-out` syntax: `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out <filepath> <url>`
-- If fetch fails (exit 1), ask the user to paste the raw text rather than skipping the step
-- If fetch returns exit 2 (auth required), run `--setup <url>` to refresh auth
+
+**JD fetch fallback chain — always attempt in order:**
+1. Try `WebFetch` on the URL
+2. If `WebFetch` fails or returns a login wall, run `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out <filepath> <url>`
+3. If Playwright exits 2 (auth required), show the user the stderr setup command (`--setup <url>`) and wait
+4. If Playwright exits 1, or Playwright is unavailable, require user to paste the raw text or upload a file — do not skip
+
+Never stop at step 1 failure without attempting step 2.
 
 **Post-regeneration sync:** After updating jd-*.md or job-description.md for an existing application, compare the new fit assessment against the current notes.md status and tracker row. If regeneration reveals a status change (hard stop confirmed, job closed, deadline passed), apply the two-file rule (notes.md + tracker) before closing the task. See `workflow.md §JD Regeneration`.

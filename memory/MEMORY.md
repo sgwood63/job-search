@@ -109,7 +109,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 3. Can they succeed in our environment?
 
 ## Session Start (DO WITHOUT BEING ASKED)
-At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, `applicant.md`, `application-tracker.md`, `APPLICANT-MEMORY.md`, and `MEMORY.md`, then output a 10-line session briefing ending with "Context loaded. Ready." Skip if the user's first message makes clear context is already loaded.
+At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, then in parallel load `applicant.md` + `APPLICANT-MEMORY.md` (via OB1 MCP if configured, else direct reads). Output a briefing confirming identity, OB1/local mode, and DEV_MODE. End with "Context loaded. Ready." **Do not load pipeline or application-tracker.md at session start** — those are deferred to `/status`. Skip if the user's first message makes clear context is already loaded.
 
 ## Applicant Memory — Update in Real-Time (DO WITHOUT BEING ASKED)
 When the user states a clear preference, fact, constraint, or rule about themselves, immediately update the relevant file in `$APPLICANT_DIR/memory/`. No sync step needed — `$APPLICANT_DIR` is plain local storage.
@@ -137,6 +137,9 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`; CSV columns: `date,time,profile,pages_fetched,total_results,new_after_dedup,screened,fit_count,query,summary_file`
 - Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
 - Requires `SEARCHAPI_KEY` in `.env`
+
+## OB1 Integration
+- See [feedback_ob1_integration.md](feedback_ob1_integration.md) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback)
 
 ## Workflow Rules
 - See `feedback_application_tracking.md` — check tracker before acting on any company mention; update both tracker AND notes.md when application is submitted

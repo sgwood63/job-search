@@ -48,7 +48,7 @@ export function useSessionContext() {
 }
 
 const WS_BASE = typeof window !== 'undefined'
-  ? `ws://${window.location.hostname}:8000`
+  ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
   : 'ws://localhost:8000'
 
 let _msgCounter = 0
@@ -97,7 +97,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setStreamingContent('')
     setActiveStatus(null)
     setSessionReady(false)
-    pendingRef.current = []
 
     // Load history immediately via REST to avoid blank-flash on session switch
     try {
@@ -115,10 +114,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     wsRef.current = ws
 
     ws.onopen = () => {
-      for (const data of pendingRef.current) {
+      // Drain messages queued during disconnect; splice atomically empties the array
+      const pending = pendingRef.current.splice(0)
+      for (const data of pending) {
         ws.send(JSON.stringify({ type: 'input', data }))
       }
-      pendingRef.current = []
     }
 
     ws.onmessage = (e) => {
@@ -126,6 +126,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const msg = JSON.parse(e.data)
         if (msg.type === 'replay') {
           // History already loaded via REST — skip WebSocket replay to avoid overwrite
+        } else if (msg.type === 'error') {
+          setMessages(prev => [...prev, {
+            id: nextId(id),
+            role: 'assistant',
+            content: `⚠️ ${msg.content}`,
+            ts: Date.now() / 1000,
+          }])
+        } else if (msg.type === 'session_error') {
+          setMessages(prev => [...prev, {
+            id: nextId(id),
+            role: 'assistant',
+            content: `🔴 ${msg.content}`,
+            ts: Date.now() / 1000,
+          }])
+          setActiveStatus('closed')
+          setSessions(prev => prev.map(s =>
+            s.id === id ? { ...s, status: 'closed' } : s
+          ))
         } else if (msg.type === 'user_message') {
           setMessages(prev => [...prev, {
             id: nextId(id),
@@ -169,6 +187,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     activeIdRef.current = id
     setActiveSessionIdState(id)
     if (id) {
+      pendingRef.current = []  // discard any pending from the previous session
       connectToSession(id)
     } else {
       if (wsRef.current) {

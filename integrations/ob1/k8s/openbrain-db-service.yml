@@ -1,0 +1,23 @@
+---
+# Expose PostgreSQL from the openbrain StatefulSet pod for cluster-internal access.
+#
+# The default openbrain Service only exposes port 8000 (MCP). This Service adds
+# port 5432 so other Deployments in the cluster (like the job-search sidecar)
+# can reach the same PostgreSQL instance without modifying openbrain.yml.
+#
+# Apply once:
+#   kubectl apply -f k8s/openbrain-db-service.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbrain-db
+  namespace: openbrain
+spec:
+  selector:
+    app: openbrain
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+      name: postgres
+  type: ClusterIP

@@ -58,6 +58,14 @@ cd webapp
 ./start.sh
 ```
 
+`start.sh` checks that the resolved Claude Code binary is version 2.1.152 or later before starting. If it's too old, it prints the required upgrade command and exits. Set `CLAUDE_BINARY` in `.env` to pin to a specific binary path (e.g. the VS Code extension's bundled binary); defaults to `claude` in PATH.
+
+**If `DATA_BACKEND=ob1`:** OB1 services must be running before starting the webapp. Start them first:
+- **K8s (Docker Desktop):** ensure pods are up (`kubectl get pods -n openbrain`), then start the PostgreSQL port-forward: `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &`
+- **Docker Compose:** `docker compose -f integrations/ob1/docker-compose.yml up -d`
+
+See [integrations/ob1/README.md](integrations/ob1/README.md) for full setup. Without OB1 services running, the webapp backend will fail to connect.
+
 Or start the two processes separately:
 
 ```bash
@@ -114,7 +122,7 @@ Phase completion status is shown in the sidebar under **Setup Status**. Once all
 
 A collapsible panel at the bottom of every page gives you two tabs:
 
-**Commands tab (default):** Run preset assistant commands with one click, or type any allowed command in the input box. Output streams in real time from a fresh Claude Code session. Supported commands: `/status`, `/memory read`, `/ingest <profile>`, `/audit <folder>`, `/apply "Co" "Role" "date"`.
+**Commands tab (default):** Run preset assistant commands with one click, or type any allowed command in the input box. Output streams in real time from a fresh Claude Code session. Supported commands: `/status`, `/memory read`, `/ingest <profile>`, `/linkedin-ingest`, `/audit <folder>`, `/apply "Co" "Role" "date"`.
 
 **Terminal tab:** A full interactive terminal connected to a shell session opened in the repo directory. Type `claude` to start an interactive Claude Code session, run scripts, or use any shell command. Each terminal connection is a fresh session — close and reopen the tab to start a new one.
 
@@ -413,7 +421,7 @@ A full snapshot: active applications by status, overdue follow-ups, priority com
 
 ## Starting a Conversation
 
-Context loads automatically at the start of every conversation. You'll see a brief summary of your active pipeline, any overdue follow-ups, and the most urgent next action. No command needed — just start talking.
+Context loads automatically at the start of every conversation — you'll see a brief confirmation of your identity, OB1/local mode, and DEV_MODE status. No command needed — just start talking. Run `/status` to see your active pipeline and overdue follow-ups.
 
 To reload context mid-conversation (for example, after a status change):
 
@@ -427,9 +435,10 @@ To reload context mid-conversation (for example, after a status change):
 
 | Command | Parameters | What it does | When to use |
 |---------|-----------|--------------|-------------|
-| `/context` | none | Loads your full job search state | Automatic at conversation start; use manually to refresh |
+| `/context` | none | Loads session context: identity, memory, and DEV_MODE status | Automatic at conversation start; use manually to refresh |
 | `/status` | none | Pipeline snapshot with overdue follow-ups | Weekly check-in |
 | `/ingest [profile] [--fits N] [--batch N]` | `profile` — profile slug (optional; lists profiles if omitted); `--fits N` — override target fit count; `--batch N` — override batch size | Search Google Jobs; screen and save fit jobs | Proactive discovery, ~every 3 days per profile |
+| `/linkedin-ingest [--max-pages N]` | `--max-pages N` — cap pages fetched (optional; default: all) | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs | Complement to `/ingest`; use whenever LinkedIn has fresh recommendations |
 | `/audit [folder]` | `folder` — application folder name (optional; lists folders if omitted) | Confirms application is complete and ready to submit | Before submitting |
 | `/apply "Co" "Role" "date" [url?]` | `company`, `role`, `date` (YYYY-MM-DD) required; `url` — portal URL, optional | Records submission; sets 14-day follow-up reminder | Right after submitting |
 | `/interview [company] [stage?]` | `company` — partial name match required; `stage` — interview stage (optional; inferred from notes if omitted) | Interview brief: talking points, questions, positioning | Night before any call |

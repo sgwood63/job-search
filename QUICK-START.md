@@ -12,6 +12,8 @@
 
 This guide covers how to bootstrap this system from scratch. If the system is already running, see [USER-GUIDE.md](USER-GUIDE.md) for day-to-day usage.
 
+> **Deployment model:** This guide covers the default local CLI setup (`DATA_BACKEND=local`, Claude Code in terminal or VS Code). If the user wants the web app or OB1 data backend, see [DEPLOYMENT.md](DEPLOYMENT.md) first — it covers all options and explains what to set in `.env` before running the setup script.
+
 **Before you begin:**
 
 1. **Install Claude Code** — download the desktop app at [claude.ai/code](https://claude.ai/code) or run `npm install -g @anthropic-ai/claude-code`. This is the AI runtime for the entire system. `scripts/setup.sh` will exit if it cannot find Claude Code.
@@ -33,7 +35,7 @@ The script detects whether an existing applicant is already configured and offer
 
 | Step | What it does |
 |---|---|
-| Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key |
+| Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key. **Note:** OAuth works for local Claude Code sessions only. If you plan to run the webapp or OB1 stack via Docker/K8s, also add `ANTHROPIC_API_DEPLOYMENT_KEY` to `.env` after setup — OAuth does not work inside containers. See [DEPLOYMENT.md](DEPLOYMENT.md) for full container deployment instructions. |
 | Existing check | If a valid `.env` + applicant directory is found, offers to refresh the existing setup and exit |
 | Applicant name | Prompts for the applicant's full name |
 | 1 | Installs PDF generation dependencies — pandoc, poppler (checks first, skips if installed); detects Playwright Python installation |

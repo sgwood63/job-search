@@ -1,0 +1,142 @@
+name: ob1
+
+# Complete OB1 stack: PostgreSQL + MinIO + openbrain MCP + job-search-mcp.
+# Runs the same 4 services as the K8s deployment without needing a cluster.
+#
+# Standalone (data services + MCP only):
+#   docker compose -f integrations/ob1/docker-compose.yml up
+#
+# Full stack with webapp:
+#   docker compose \
+#     -f webapp/docker-compose.yml \
+#     -f integrations/ob1/docker-compose.yml up
+#
+# ---------------------------------------------------------------------------
+# .env overrides required for compose mode (values differ from K8s defaults):
+#
+#   DATA_BACKEND=ob1
+#   DB_HOST=postgres              (compose service name, not localhost/cluster DNS)
+#   MINIO_ENDPOINT=minio:9000     (compose service name, not localhost:30900)
+#   OB1_MCP_URL=http://localhost:8080     (direct port, not /ob1 Ingress path)
+#   JOB_SEARCH_MCP_URL=http://localhost:8081
+#
+# After updating .env, regenerate .mcp.json for Claude Code:
+#   bash scripts/k8s-apply-env.sh
+# ---------------------------------------------------------------------------
+#
+# Prerequisites:
+#   openbrain-mcp-server:latest must be pre-built from $OB1_REPO_PATH:
+#     docker build -t openbrain-mcp-server:latest \
+#       "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
+#
+# Service access (compose mode):
+#   OB1 MCP:          http://localhost:8080/mcp
+#   job-search MCP:   http://localhost:8081/mcp
+#   MinIO S3 API:     http://localhost:9000
+#   MinIO console:    http://localhost:9001
+#   PostgreSQL:       localhost:5432
+#
+# Apply schema once after postgres first starts:
+#   docker compose -f integrations/ob1/docker-compose.yml exec postgres \
+#     psql -U postgres -d openbrain \
+#     < integrations/ob1/job-search-schema.sql
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-openbrain}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-openbrain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set in .env}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console
+    restart: unless-stopped
+
+  openbrain:
+    image: openbrain-mcp-server:latest
+    # Pre-built from $OB1_REPO_PATH — see Prerequisites above.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Postgres — compose service name (not localhost; postgres is a sidecar in K8s but a separate service here)
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-openbrain}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # Auth
+      MCP_ACCESS_KEY: ${OB1_MCP_KEY:?OB1_MCP_KEY must be set in .env}
+      # LLM API
+      EMBEDDING_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set in .env}
+      CHAT_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      CHAT_API_BASE: ${CHAT_API_BASE:-https://openrouter.ai/api/v1}
+      CHAT_MODEL: ${CHAT_MODEL:-openai/gpt-4o-mini}
+      PORT: "8000"
+    ports:
+      - "8080:8000"   # OB1 MCP — localhost:8080 (avoids conflict with webapp on 8000)
+    restart: unless-stopped
+
+  job-search-mcp:
+    build:
+      context: .          # integrations/ob1/ — contains Dockerfile + deno files
+      dockerfile: Dockerfile
+    image: job-search-mcp:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      # Postgres — compose service name
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-openbrain}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # MinIO — compose service name (not localhost:30900)
+      OBJECT_STORE_BACKEND: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-job-search}
+      MINIO_SECURE: "false"
+      # LLM API
+      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}
+      EMBEDDING_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      CHAT_API_BASE: ${CHAT_API_BASE:-https://openrouter.ai/api/v1}
+      CHAT_API_KEY: ${LLM_API_KEY}
+      CHAT_MODEL: ${CHAT_MODEL:-openai/gpt-4o-mini}
+      # Auth
+      MCP_ACCESS_KEY: ${JOB_SEARCH_MCP_KEY:?JOB_SEARCH_MCP_KEY must be set in .env}
+      PORT: "8001"
+    ports:
+      - "8081:8001"   # job-search MCP — localhost:8081
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  minio-data:

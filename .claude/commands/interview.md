@@ -7,11 +7,14 @@ Load interview preparation context for a specific application.
 
 **Steps:**
 1. Run `/context` to load base session state (applicant criteria, pipeline, memory).
-2. Search `$APPLICANT_DIR/applications/` for a folder matching [company] (case-insensitive, partial match OK). If multiple matches exist, ask which one.
-3. Read from the application folder:
-   - `job-description.md` — role details and requirements
-   - `notes.md` — full file, especially Interview Prep sections and Process section
-   - `$APPLICANT_DIR/profiles/[matched-profile].md` — positioning strategy for this profile
+2. Locate the application — use the first available method:
+   - **OB1 active** (open-brain MCP connected): call `get_application("[company]")` — returns folder_prefix, profile, and linked file keys.
+   - **Fallback**: search `$APPLICANT_DIR/applications/` for a folder matching [company] (case-insensitive, partial match OK).
+   - If multiple matches exist, ask which one.
+3. Read from the application folder — use the first available method for each file:
+   - **OB1 active**: `get_file('applications/[folder]/job-description.md')`, `get_file('applications/[folder]/notes.md')`
+   - **Fallback**: read files directly from `$APPLICANT_DIR/applications/[folder]/`
+   - Also read: `$APPLICANT_DIR/profiles/[matched-profile].md` — positioning strategy (from object store or local)
 4. Output an interview brief:
    - **Stage:** what interview type this is (from notes.md Process section)
    - **Key talking points** for this specific stage

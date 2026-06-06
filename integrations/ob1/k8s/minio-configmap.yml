@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-configmap
+  namespace: openbrain
+data:
+  # Data directory — MinIO reads MINIO_VOLUMES instead of the positional /data arg
+  MINIO_VOLUMES: "/data"
+  # Console bind address
+  MINIO_CONSOLE_ADDRESS: ":9001"

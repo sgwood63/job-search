@@ -1,0 +1,40 @@
+# Dependencies (rebuilt inside container)
+webapp/frontend/node_modules/
+webapp/frontend/dist/
+
+# Python artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+webapp/backend/.pytest_cache/
+webapp/backend/htmlcov/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+**/.auth/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Infra (not needed in webapp image)
+integrations/
+
+# Local Claude Code overrides — not for container use
+.claude/settings.local.json
+.claude/settings.local.template.json
+
+# MCP secrets — provide at runtime via env vars; only example baked in
+.mcp.json
+
+# Generated files
+**/*.pdf
+**/*.log
+
+# Test artifacts
+webapp/backend/tests/
+webapp/frontend/src/__tests__/

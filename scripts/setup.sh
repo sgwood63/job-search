@@ -323,6 +323,40 @@ ENVEOF
     echo "$(green "✓") Written: $ENV_FILE"
 }
 
+refresh_env() {
+    # Surgically update only the three vars setup.sh manages (APPLICANT_NAME,
+    # APP_DIR, PLAYWRIGHT_PYTHON). All other content — OB1 config, DATA_BACKEND,
+    # DEV_MODE, SEARCHAPI_KEY, CLAUDE_BINARY, custom keys, etc. — is preserved.
+    local tmp
+    tmp="$(mktemp)"
+
+    local found_name=false found_app=false found_py=false
+
+    while IFS= read -r line; do
+        case "$line" in
+            'export APPLICANT_NAME='*)
+                printf 'export APPLICANT_NAME="%s"\n' "${APPLICANT_NAME}"
+                found_name=true;;
+            'export APP_DIR='*)
+                printf 'export APP_DIR="%s"\n' "${REPO_ROOT}"
+                found_app=true;;
+            'export PLAYWRIGHT_PYTHON='*)
+                printf 'export PLAYWRIGHT_PYTHON="%s"\n' "${PLAYWRIGHT_PYTHON:-python3}"
+                found_py=true;;
+            *)
+                printf '%s\n' "$line";;
+        esac
+    done < "$ENV_FILE" > "$tmp"
+
+    # Append any managed vars that weren't already in the file
+    $found_name || printf 'export APPLICANT_NAME="%s"\n' "${APPLICANT_NAME}" >> "$tmp"
+    $found_app  || printf 'export APP_DIR="%s"\n'        "${REPO_ROOT}"       >> "$tmp"
+    $found_py   || printf 'export PLAYWRIGHT_PYTHON="%s"\n' "${PLAYWRIGHT_PYTHON:-python3}" >> "$tmp"
+
+    mv "$tmp" "$ENV_FILE"
+    echo "$(green "✓") Updated: $ENV_FILE (OB1 config and custom vars preserved)"
+}
+
 run_verification() {
     print_section "Verification"
     set +e
@@ -355,7 +389,7 @@ if [[ -n "$EXISTING_APPLICANT_DIR" && -d "$EXISTING_APPLICANT_DIR" ]]; then
 
         run_deps
         detect_playwright_python
-        write_env
+        refresh_env
         generate_settings_local
         run_verification
 
@@ -511,4 +545,10 @@ echo "To fetch job pages that require login (LinkedIn, Greenhouse, etc.):"
 echo "  ${PLAYWRIGHT_PYTHON:-python3} scripts/fetch-jd.py --setup '<url>'"
 echo "  → opens a browser → log in → press Enter → auth saved for that site"
 echo "  Subsequent fetches are headless (Claude does this automatically)."
+echo ""
+echo "Optional — OB1 backend (MinIO + PostgreSQL on Kubernetes or Docker Compose):"
+echo "  Stores all applicant files in object storage + structured DB instead of local files."
+echo "  See: $(bold "integrations/ob1/README.md")"
+echo "  Quick start: set DATA_BACKEND=ob1 in .env, copy .mcp.json.example to .mcp.json,"
+echo "  fill in your access keys, then restart Claude Code (or reload the VS Code window)."
 echo ""
