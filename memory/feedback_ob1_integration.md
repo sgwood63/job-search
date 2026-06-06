@@ -66,3 +66,39 @@ If `upload_file` fails or times out: **hard stop**. Do NOT fall back to GDrive o
 The two permanently forbidden fallbacks, regardless of the reason:
 - Writing to `$APPLICANT_DIR` (GDrive) — creates silent drift with OB1 as authoritative store
 - Writing to MinIO directly (Python, mc CLI) — bypasses `js_files`, file becomes invisible in webapp
+
+## PDF generation workflow in OB1 mode
+
+Generate to `/tmp`, not to `$APPLICANT_DIR`. Upload to OB1 via the webapp `/api/upload` endpoint (handles binary without base64 in conversation context) or via `upload_file` MCP with `binary=true`.
+
+**Correct command sequence:**
+```bash
+source "$APP_DIR/.env"
+RESUME_MD_KEY="applications/<folder>/Resume.md"
+RESUME_PDF_KEY="applications/<folder>/Resume.pdf"
+TMP_HTML="/tmp/resume.html"
+TMP_PDF="/tmp/resume.pdf"
+
+# Fetch .md from OB1 → temp file for pandoc
+# (get_file returns text; write to tmp)
+pandoc "$TMP_MD" -o "$TMP_HTML" --css="$APP_DIR/templates/resume.css" --standalone
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/generate-pdf.py" "$TMP_HTML" "$TMP_PDF"
+rm "$TMP_HTML"
+pdfinfo "$TMP_PDF" | grep Pages
+
+# Upload PDF to OB1 via webapp
+curl -s -X POST "http://127.0.0.1:8000/api/upload?dir=applications/<folder>" \
+  -F "file=@$TMP_PDF"
+rm "$TMP_PDF"
+```
+
+The webapp `/api/upload` endpoint writes to both MinIO and `js_files` — it is OB1-compliant and handles binary files without base64.
+
+## When webapp shows stale content
+
+Before touching local APPLICANT_DIR files, check what is stale:
+1. Is it the .md or the PDF the user is viewing? (Different OB1 keys)
+2. Verify OB1 state with `list_files` — sizes tell you what's current
+3. Never read local APPLICANT_DIR to "check" — trust the MCP tool return values
+
+If .md uploaded successfully (MCP returned size) but webapp shows old PDF: the PDF was not uploaded to OB1. Upload it via webapp `/api/upload` — do NOT write the .md to local disk as a workaround.
