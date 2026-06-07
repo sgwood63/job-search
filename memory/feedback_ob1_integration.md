@@ -19,6 +19,16 @@ When `DATA_BACKEND=ob1` in `.env`, OB1 is configured and **all APPLICANT file op
 
 **How to apply:** At every file read or write that would normally touch `$APPLICANT_DIR` (applicant.md, profiles, applications, memory, tracker), substitute the corresponding OB1 MCP call instead. `$APP_DIR` files (tooling, memory, workflow docs) are still read locally — only the applicant data directory is in OB1.
 
+## Two MCP servers, two roles
+
+Two MCP servers are registered when OB1 is configured. They have distinct, non-overlapping responsibilities:
+
+- **`mcp__job_search__*`** — owns ALL file I/O for APPLICANT content. `upload_file`, `get_file`, `list_files`, `delete_file`, and `get_file_url` are general-purpose and apply to every key under `$APPLICANT_DIR`: applicant.md, profiles, memory files, applications, search results — all of it. The name `job-search` is the server namespace, not a scope restriction to job application folders.
+
+- **`mcp__open_brain__*`** — owns thought querying and capture: `search_thoughts`, `list_thoughts`, `thought_stats`, `capture_thought`, `fetch`, `search`. It does NOT own file reads or writes. Do not use it as a substitute for `upload_file` or `get_file`.
+
+If in doubt about which server to call: file operations → `mcp__job_search__*`, thought/search operations → `mcp__open_brain__*`.
+
 ## Session start check
 
 At session start (during `/context` workflow), verify **both** MCP servers are connected. Presence of `mcp__open_brain__*` alone is insufficient — `upload_file`, `get_file`, `get_pipeline`, and all file/pipeline operations live in the job-search server.
@@ -45,6 +55,8 @@ No fallback, no curl workaround. If the tools are missing, we don't have a syste
 
 **Session start loads only:** `applicant.md` + `memory/APPLICANT-MEMORY.md` (in parallel). Pipeline and overdue follow-ups are deferred to `/status` and application workflow commands.
 
+**Scope override:** If you find yourself reasoning that `get_file` or `upload_file` are "not appropriate" for a particular operation — a profile update, a memory file write, reading applicant.md — that reasoning is wrong. These tools cover the entire `$APPLICANT_DIR` key space. Discard the alternative approach and use the MCP tool.
+
 ## File key convention
 
 Object store keys mirror former local paths relative to `$APPLICANT_DIR`. Example: `applications/2026-05-15-co-role/notes.md` in OB1 = `$APPLICANT_DIR/applications/2026-05-15-co-role/notes.md` on disk.
@@ -61,9 +73,15 @@ A 75KB PDF encodes to ~102KB base64 — well within MCP limits. There is no file
 
 If `upload_file` fails or times out: **hard stop**. Do NOT fall back to GDrive or direct MinIO. Report the failure to the user and let them decide how to recover.
 
+**The MCP server is the transaction boundary.** `upload_file` does three things atomically in one server-side operation: writes to MinIO, inserts a `js_files` record, and captures a semantic thought (generates an embedding → writes to OB1 `thoughts` table → stores `thought_id` in `js_files`). Bypassing this tool by writing to MinIO directly makes Claude responsible for coordinating two systems it has no business managing — the same anti-pattern as an API consumer writing directly to a service's database. This is not correct MCP architecture; the server owns the transaction, the AI client calls tools.
+
+**Consequence of bypass:** `thought_id = NULL` in `js_files` — the file exists in storage but is permanently invisible to semantic search (`search_applications_semantic`, `search_thoughts`). There is no repair path short of re-uploading through the MCP tool.
+
 The two permanently forbidden fallbacks, regardless of the reason:
 - Writing to `$APPLICANT_DIR` (GDrive) — creates silent drift with OB1 as authoritative store
-- Writing to MinIO directly (Python, mc CLI) — bypasses `js_files`, file becomes invisible in webapp
+- Writing to MinIO directly (mc, boto3, curl to MinIO port) — bypasses `js_files` and thought capture; file is invisible to semantic search
+
+**Large file exception:** There is none. `upload_file` via base64 handles all file sizes in this system (resume PDFs ≤ 150KB, markdown files ≤ 100KB). If a future use case genuinely exceeds MCP transport limits, the correct solution is a pre-signed URL endpoint on the server — not direct MinIO access from Claude.
 
 ## PDF generation workflow in OB1 mode
 
