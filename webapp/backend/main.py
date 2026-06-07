@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import glob
 import json
 import mimetypes
@@ -13,7 +14,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
-import asyncpg
+
+import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -21,7 +23,6 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from storage import make_store
 
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
@@ -44,10 +45,115 @@ DOCS_ALLOWLIST = {
 
 ALLOWED_UPLOAD_PREFIXES = ('applications/', 'base-documents/')
 
-store = make_store()
-_pool: asyncpg.Pool | None = None
-
 app = FastAPI()
+
+# ---------------------------------------------------------------------------
+# OB1 REST client — replaces direct MinIO + Postgres access in ob1 mode
+# ---------------------------------------------------------------------------
+
+class ObRestClient:
+    """Thin wrapper around the job-search MCP server REST API (/api/v2/*)."""
+
+    def __init__(self, base_url: str, api_key: str) -> None:
+        self._base = base_url.rstrip('/')
+        self._key = api_key
+        self._client: httpx.AsyncClient | None = None
+
+    @property
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url=self._base,
+                headers={'x-brain-key': self._key},
+                timeout=60.0,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client:
+            await self._client.aclose()
+
+    async def get_file(self, key: str) -> bytes:
+        r = await self._http.get(f'/api/v2/files/{key}')
+        r.raise_for_status()
+        return r.content
+
+    async def get_file_url(self, key: str, expires_in: int = 3600) -> str:
+        r = await self._http.get(f'/api/v2/file-url/{key}', params={'expires_in': expires_in})
+        r.raise_for_status()
+        return r.json()['url']
+
+    async def list_files(self, prefix: str = '') -> list[dict]:
+        r = await self._http.get('/api/v2/files', params={'prefix': prefix})
+        r.raise_for_status()
+        return r.json()
+
+    async def put_file(self, key: str, content: bytes | str, content_type: str = 'text/markdown') -> dict:
+        if isinstance(content, bytes):
+            payload = {
+                'content': base64.b64encode(content).decode('ascii'),
+                'content_type': content_type,
+                'binary': True,
+            }
+        else:
+            payload = {'content': content, 'content_type': content_type, 'binary': False}
+        r = await self._http.put(f'/api/v2/files/{key}', json=payload)
+        r.raise_for_status()
+        return r.json()
+
+    async def delete_file(self, key: str) -> dict:
+        r = await self._http.delete(f'/api/v2/files/{key}')
+        r.raise_for_status()
+        return r.json()
+
+    async def get_tracker(self, **filters) -> list[dict]:
+        params = {k: v for k, v in filters.items() if v is not None}
+        r = await self._http.get('/api/v2/tracker', params=params)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_profiles(self) -> list[dict]:
+        r = await self._http.get('/api/v2/profiles')
+        r.raise_for_status()
+        return r.json()
+
+    async def get_application(self, identifier: str) -> dict | None:
+        r = await self._http.get(f'/api/v2/applications/{identifier}')
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    async def get_contacts(self, company: str | None = None) -> list[dict]:
+        params = {'company': company} if company else {}
+        r = await self._http.get('/api/v2/contacts', params=params)
+        r.raise_for_status()
+        return r.json()
+
+    async def search(self, query: str, limit: int = 5) -> list[dict]:
+        r = await self._http.post('/api/v2/search', json={'query': query, 'limit': limit})
+        r.raise_for_status()
+        return r.json()
+
+    async def ping(self) -> bool:
+        try:
+            r = await self._http.get('/api/v2/profiles', timeout=5.0)
+            return r.status_code == 200
+        except Exception:
+            return False
+
+
+_ob_rest: ObRestClient | None = None
+
+# Local-mode store (used only when DATA_BACKEND != 'ob1')
+_local_store = None
+
+def _get_local_store():
+    global _local_store
+    if _local_store is None:
+        from storage import make_store
+        _local_store = make_store()
+    return _local_store
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -84,12 +190,6 @@ def _validate_upload_key(key: str) -> str:
     if not any(key.startswith(p) for p in ALLOWED_UPLOAD_PREFIXES):
         raise HTTPException(status_code=403, detail='Upload not allowed to this path')
     return key
-
-
-def _require_pool() -> asyncpg.Pool:
-    if _pool is None:
-        raise HTTPException(status_code=503, detail='Database not ready')
-    return _pool
 
 
 def _rows_to_tree(rows: list[dict]) -> list[dict]:
@@ -221,40 +321,23 @@ async def get_tracker():
     if DATA_BACKEND != 'ob1':
         return await asyncio.get_event_loop().run_in_executor(None, _local_tracker)
 
-    pool = _require_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT a.id, a.role_title, a.status, a.status_detail,
-                   COALESCE(a.applied_date, a.created_at::date) AS display_date,
-                   a.follow_up_date, a.priority,
-                   a.source_url, a.folder_prefix, a.resume_key,
-                   COALESCE(c.name, a.company_name_raw) AS company,
-                   p.slug AS profile,
-                   (SELECT MIN(i.scheduled_at)
-                    FROM js_interviews i
-                    WHERE i.application_id = a.id
-                      AND i.scheduled_at >= NOW()
-                      AND i.completed_at IS NULL
-                   ) AS next_interview_at
-            FROM js_applications a
-            LEFT JOIN js_companies c ON a.company_id = c.id
-            LEFT JOIN js_profiles p ON a.profile_id = p.id
-            ORDER BY a.priority DESC, a.created_at DESC
-        """)
-
+    raw_rows = await _ob_rest.get_tracker(limit=200)
     result_rows = []
-    for r in rows:
+    for r in raw_rows:
+        display_date = r.get('applied_date') or (r.get('created_at') or '')[:10]
+        fup = r.get('follow_up_date') or ''
+        pri = r.get('priority') or 1
         result_rows.append({
-            'id': str(r['id']),
-            'date': r['display_date'].isoformat() if r['display_date'] else '',
-            'company': r['company'] or '',
-            'role': r['role_title'],
-            'profile': r['profile'] or '',
-            'status': r['status'],
-            'status_detail': r['status_detail'] or '',
-            'follow_up_date': r['follow_up_date'].isoformat() if r['follow_up_date'] else '',
-            'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(r['priority'], ''),
-            'folder': (r['folder_prefix'] or '').removeprefix('applications/').rstrip('/'),
+            'id': str(r.get('id', '')),
+            'date': display_date,
+            'company': r.get('company') or '',
+            'role': r.get('role_title') or '',
+            'profile': r.get('profile') or '',
+            'status': r.get('status') or '',
+            'status_detail': r.get('status_detail') or '',
+            'follow_up_date': fup[:10] if fup else '',
+            'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(pri, ''),
+            'folder': (r.get('folder_prefix') or '').removeprefix('applications/').rstrip('/'),
         })
     return {'rows': result_rows}
 
@@ -269,12 +352,11 @@ async def get_root_files():
         rows = await asyncio.to_thread(lambda: _local_scan(''))
         return [r for r in rows if '/' not in r['key']]
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT storage_key AS key, file_size AS size FROM js_files "
-            "WHERE storage_key NOT LIKE '%/%' ORDER BY storage_key"
-        )
-    return [{'name': r['key'], 'path': r['key'], 'size': r['size']} for r in rows]
+    all_files = await _ob_rest.list_files(prefix='')
+    return [
+        {'name': f['key'], 'path': f['key'], 'size': f['size']}
+        for f in all_files if '/' not in f['key']
+    ]
 
 
 @app.get('/api/profiles')
@@ -301,28 +383,24 @@ async def get_profiles():
         ]
         return {'profiles': profiles, 'reference_files': reference_files}
 
-    async with _require_pool().acquire() as conn:
-        profile_rows = await conn.fetch(
-            "SELECT slug, display_name FROM js_profiles WHERE active ORDER BY slug"
-        )
-        file_rows = await conn.fetch(
-            "SELECT storage_key AS key, content_type, file_size AS size "
-            "FROM js_files WHERE storage_key LIKE 'profiles/%' ORDER BY storage_key"
-        )
+    profile_rows, file_rows = await asyncio.gather(
+        _ob_rest.get_profiles(),
+        _ob_rest.list_files(prefix='profiles/'),
+    )
 
     profiles = []
     for p in profile_rows:
         prefix = f"profiles/{p['slug']}/"
-        files = [dict(r) for r in file_rows if r['key'].startswith(prefix)]
+        files = [f for f in file_rows if f['key'].startswith(prefix)]
         profiles.append({
             'name': p['slug'],
-            'display_name': p['display_name'],
+            'display_name': p.get('display_name') or p['slug'].replace('-', ' ').title(),
             'path': f"profiles/{p['slug']}",
             'files': _rows_to_tree(files),
         })
     reference_files = [
-        {'name': r['key'].split('/')[-1], 'path': r['key'], 'type': 'file', 'size': r['size']}
-        for r in file_rows if r['key'].count('/') == 1
+        {'name': f['key'].split('/')[-1], 'path': f['key'], 'type': 'file', 'size': f['size']}
+        for f in file_rows if f['key'].count('/') == 1
     ]
     return {'profiles': profiles, 'reference_files': reference_files}
 
@@ -341,18 +419,13 @@ async def get_applications():
         ))
         return [{'name': name, 'path': f'applications/{name}'} for name in folders]
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT folder_prefix FROM js_applications "
-            "WHERE folder_prefix IS NOT NULL "
-            "ORDER BY created_at DESC"
-        )
+    rows = await _ob_rest.get_tracker(limit=200)
     return [
         {
-            'name': r['folder_prefix'].removeprefix('applications/').rstrip('/'),
-            'path': r['folder_prefix'].rstrip('/'),
+            'name': (r.get('folder_prefix') or '').removeprefix('applications/').rstrip('/'),
+            'path': (r.get('folder_prefix') or '').rstrip('/'),
         }
-        for r in rows
+        for r in rows if r.get('folder_prefix')
     ]
 
 
@@ -365,18 +438,13 @@ async def get_application(folder: str):
             raise HTTPException(status_code=404, detail='Application folder not found')
         return {'name': folder, 'path': f'applications/{folder}', 'files': _rows_to_tree(rows)}
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT storage_key AS key, content_type, file_size AS size "
-            "FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
-            prefix + '%',
-        )
-    if not rows:
+    files = await _ob_rest.list_files(prefix=prefix)
+    if not files:
         raise HTTPException(status_code=404, detail='Application folder not found')
     return {
         'name': folder,
         'path': f'applications/{folder}',
-        'files': _rows_to_tree([dict(r) for r in rows]),
+        'files': _rows_to_tree(files),
     }
 
 
@@ -386,26 +454,18 @@ async def get_base_documents():
         rows = await asyncio.to_thread(lambda: _local_scan('base-documents'))
         return _rows_to_tree(rows)
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT storage_key AS key, content_type, file_size AS size "
-            "FROM js_files WHERE storage_key LIKE 'base-documents/%' ORDER BY storage_key"
-        )
-    return _rows_to_tree([dict(r) for r in rows])
+    files = await _ob_rest.list_files(prefix='base-documents/')
+    return _rows_to_tree(files)
 
 
-@app.get('/api/search')
-async def get_search():
+@app.get('/api/search-results')
+async def get_search_results():
     if DATA_BACKEND != 'ob1':
         rows = await asyncio.to_thread(lambda: _local_scan('search'))
         return _rows_to_tree(rows)
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT storage_key AS key, content_type, file_size AS size "
-            "FROM js_files WHERE storage_key LIKE 'search/%' ORDER BY storage_key"
-        )
-    return _rows_to_tree([dict(r) for r in rows])
+    files = await _ob_rest.list_files(prefix='search/')
+    return _rows_to_tree(files)
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +476,10 @@ async def get_search():
 async def get_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
-        content = await store.get(key)
+        if DATA_BACKEND == 'ob1':
+            content = await _ob_rest.get_file(key)
+        else:
+            content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
         return Response(content, media_type=mime)
     except Exception:
@@ -427,7 +490,10 @@ async def get_file(path: str = Query(...)):
 async def download_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
-        content = await store.get(key)
+        if DATA_BACKEND == 'ob1':
+            content = await _ob_rest.get_file(key)
+        else:
+            content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
         filename = key.split('/')[-1]
         return Response(
@@ -448,19 +514,10 @@ async def put_file(path: str = Query(...), body: FileBody = None):
     if not path.endswith('.md'):
         raise HTTPException(status_code=400, detail='Only markdown files can be edited')
     key = _validate_key(path)
-    content_bytes = body.content.encode('utf-8')
-    await store.put(key, content_bytes, 'text/markdown')
     if DATA_BACKEND == 'ob1':
-        async with _require_pool().acquire() as conn:
-            await conn.execute(
-                """INSERT INTO js_files (storage_key, bucket, content_type, file_size)
-                   VALUES ($1, $2, 'text/markdown', $3)
-                   ON CONFLICT (storage_key) DO UPDATE SET
-                     file_size = EXCLUDED.file_size, updated_at = now()""",
-                key,
-                os.environ.get('MINIO_BUCKET') or os.environ.get('SUPABASE_BUCKET', 'job-search'),
-                len(content_bytes),
-            )
+        await _ob_rest.put_file(key, body.content, 'text/markdown')
+    else:
+        await _get_local_store().put(key, body.content.encode('utf-8'), 'text/markdown')
     return {'ok': True}
 
 
@@ -471,18 +528,10 @@ async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail='File too large (max 50 MB)')
     mime = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
-    await store.put(key, data, mime)
     if DATA_BACKEND == 'ob1':
-        bucket = os.environ.get('MINIO_BUCKET') or os.environ.get('SUPABASE_BUCKET', 'job-search')
-        async with _require_pool().acquire() as conn:
-            await conn.execute(
-                """INSERT INTO js_files (storage_key, bucket, content_type, file_size)
-                   VALUES ($1, $2, $3, $4)
-                   ON CONFLICT (storage_key) DO UPDATE SET
-                     content_type = EXCLUDED.content_type,
-                     file_size = EXCLUDED.file_size, updated_at = now()""",
-                key, bucket, mime, len(data),
-            )
+        await _ob_rest.put_file(key, data, mime)
+    else:
+        await _get_local_store().put(key, data, mime)
     return {'ok': True, 'path': key, 'name': file.filename}
 
 
@@ -498,15 +547,11 @@ async def get_docs():
                 results.append({'name': name, 'size': path.stat().st_size})
         return results
 
-    async with _require_pool().acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT storage_key AS key, file_size AS size "
-            "FROM js_files WHERE storage_key LIKE 'docs/%' ORDER BY storage_key"
-        )
+    files = await _ob_rest.list_files(prefix='docs/')
     return [
-        {'name': r['key'].replace('docs/', ''), 'size': r['size']}
-        for r in rows
-        if r['key'].replace('docs/', '') in DOCS_ALLOWLIST
+        {'name': f['key'].replace('docs/', ''), 'size': f['size']}
+        for f in files
+        if f['key'].replace('docs/', '') in DOCS_ALLOWLIST
     ]
 
 
@@ -520,9 +565,8 @@ async def get_docs_file(name: str = Query(...)):
             raise HTTPException(status_code=404, detail='File not found')
         content = await asyncio.to_thread(path.read_bytes)
         return Response(content, media_type='text/plain; charset=utf-8')
-    key = f'docs/{name}'
     try:
-        content = await store.get(key)
+        content = await _ob_rest.get_file(f'docs/{name}')
         return Response(content, media_type='text/plain; charset=utf-8')
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
@@ -539,9 +583,8 @@ async def get_setup_status():
         except Exception:
             return {'phases': {p: False for p in 'ABCDEF'}, 'raw': ''}
     else:
-        key = 'memory/applicant-setup-status.md'
         try:
-            raw_bytes = await store.get(key)
+            raw_bytes = await _ob_rest.get_file('memory/applicant-setup-status.md')
         except Exception:
             return {'phases': {p: False for p in 'ABCDEF'}, 'raw': ''}
     try:
@@ -570,21 +613,8 @@ async def get_health():
         store_status = 'ok' if (APPLICANT_DIR and APPLICANT_DIR.exists()) else 'error'
         return {'backend': 'local', 'store': store_status}
 
-    db_status = 'error'
-    store_status = 'error'
-    if _pool is not None:
-        try:
-            async with _pool.acquire() as conn:
-                await conn.fetchval('SELECT 1')
-            db_status = 'ok'
-        except Exception:
-            pass
-    try:
-        await store.list('memory/applicant-setup-status.md')
-        store_status = 'ok'
-    except Exception:
-        pass
-    return {'backend': 'ob1', 'db': db_status, 'store': store_status}
+    rest_ok = await _ob_rest.ping()
+    return {'backend': 'ob1', 'rest': 'ok' if rest_ok else 'error'}
 
 
 # ── Presigned URL ─────────────────────────────────────────────────────────────
@@ -593,7 +623,10 @@ async def get_health():
 async def get_file_url(path: str = Query(...)):
     key = _validate_key(path)
     try:
-        url = await store.get_presigned_url(key)
+        if DATA_BACKEND == 'ob1':
+            url = await _ob_rest.get_file_url(key)
+        else:
+            url = await _get_local_store().get_presigned_url(key)
         return {'url': url}
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
@@ -604,53 +637,49 @@ async def get_file_url(path: str = Query(...)):
 @app.get('/api/contacts')
 async def get_contacts(company: Optional[str] = Query(None)):
     if DATA_BACKEND != 'ob1':
-        return []  # no local equivalent for contacts
-    pool = _require_pool()
-    async with pool.acquire() as conn:
-        if company:
-            rows = await conn.fetch("""
-                SELECT ct.id, ct.name, ct.title, ct.email, ct.linkedin_url,
-                       ct.relationship_type, ct.notes, co.name AS company
-                FROM js_contacts ct
-                LEFT JOIN js_companies co ON ct.company_id = co.id
-                WHERE LOWER(co.name) LIKE LOWER($1)
-                ORDER BY ct.name
-            """, f'%{company}%')
-        else:
-            rows = await conn.fetch("""
-                SELECT ct.id, ct.name, ct.title, ct.email, ct.linkedin_url,
-                       ct.relationship_type, ct.notes, co.name AS company
-                FROM js_contacts ct
-                LEFT JOIN js_companies co ON ct.company_id = co.id
-                ORDER BY ct.name
-            """)
+        return []
+
+    rows = await _ob_rest.get_contacts(company=company)
     return [
         {
-            'id': str(r['id']),
-            'name': r['name'],
-            'title': r['title'] or '',
-            'email': r['email'] or '',
-            'linkedin_url': r['linkedin_url'] or '',
-            'relationship_type': r['relationship_type'] or '',
-            'notes': r['notes'] or '',
-            'company': r['company'] or '',
+            'id': str(r.get('id', '')),
+            'name': r.get('name') or '',
+            'title': r.get('title') or '',
+            'email': r.get('email') or '',
+            'linkedin_url': r.get('linkedin_url') or '',
+            'relationship_type': r.get('relationship_type') or '',
+            'notes': r.get('notes') or '',
+            'company': r.get('company_name') or '',
         }
         for r in rows
     ]
+
+
+# ── Semantic search ───────────────────────────────────────────────────────────
+
+@app.post('/api/semantic-search')
+async def semantic_search(body: dict):
+    if DATA_BACKEND != 'ob1':
+        raise HTTPException(status_code=501, detail='Semantic search requires OB1 backend')
+    results = await _ob_rest.search(
+        query=body.get('query', ''),
+        limit=body.get('limit', 5),
+    )
+    return results
 
 
 # ── Delete file ───────────────────────────────────────────────────────────────
 
 @app.delete('/api/file')
 async def delete_file(path: str = Query(...)):
-    key = _validate_upload_key(path)  # restrict to applications/ and base-documents/
+    key = _validate_upload_key(path)
     try:
-        await store.delete(key)
+        if DATA_BACKEND == 'ob1':
+            await _ob_rest.delete_file(key)
+        else:
+            await _get_local_store().delete(key)
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
-    if DATA_BACKEND == 'ob1':
-        async with _require_pool().acquire() as conn:
-            await conn.execute('DELETE FROM js_files WHERE storage_key = $1', key)
     return {'ok': True}
 
 
@@ -663,10 +692,10 @@ class ChatSession:
     created_at: float
     status: str              # 'executing' | 'waiting' | 'closed'
     mode: str                # 'execute' | 'plan'
-    claude_session_id: Optional[str] = None   # Claude Code session ID for --resume
-    messages_structured: list = field(default_factory=list)  # {role, content, ts}
-    clients: list = field(default_factory=list)  # connected WebSockets
-    current_proc: Any = None  # subprocess.Popen, if a message is running
+    claude_session_id: Optional[str] = None
+    messages_structured: list = field(default_factory=list)
+    clients: list = field(default_factory=list)
+    current_proc: Any = None
 
 
 _sessions: dict[str, ChatSession] = {}
@@ -676,24 +705,19 @@ _loop: Optional[asyncio.AbstractEventLoop] = None
 
 @app.on_event('startup')
 async def _on_startup() -> None:
-    global _loop, _pool
+    global _loop, _ob_rest
     _loop = asyncio.get_running_loop()
     if DATA_BACKEND == 'ob1':
-        _pool = await asyncpg.create_pool(
-            host=os.environ.get('DB_HOST', 'localhost'),
-            port=int(os.environ.get('DB_PORT', 5432)),
-            database=os.environ.get('DB_NAME', 'openbrain'),
-            user=os.environ.get('DB_USER', 'postgres'),
-            password=os.environ.get('DB_PASSWORD', ''),
-            min_size=2,
-            max_size=10,
+        _ob_rest = ObRestClient(
+            base_url=os.environ.get('JOB_SEARCH_REST_URL', 'http://job-search-mcp.openbrain.svc.cluster.local:8001'),
+            api_key=os.environ.get('JOB_SEARCH_MCP_KEY', ''),
         )
 
 
 @app.on_event('shutdown')
 async def _on_shutdown() -> None:
-    if _pool:
-        await _pool.close()
+    if _ob_rest:
+        await _ob_rest.close()
 
 
 def _broadcast(session: ChatSession, msg: dict) -> None:
@@ -835,8 +859,8 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
             if proc is None:
                 yield from lines
                 return
-            DRAIN_TIMEOUT = 3.0   # seconds to wait for trailing output after proc exits
-            POLL_INTERVAL = 1.0   # seconds between select calls while proc is alive
+            DRAIN_TIMEOUT = 3.0
+            POLL_INTERVAL = 1.0
             while True:
                 exited = proc.poll() is not None
                 timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
@@ -849,9 +873,9 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
                     if line:
                         yield line
                     else:
-                        break  # EOF
+                        break
                 elif exited:
-                    break  # proc done, no more output
+                    break
 
         for raw_line in _iter_lines():
             raw_line = raw_line.strip()
@@ -862,12 +886,10 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
             except json.JSONDecodeError:
                 continue
 
-            # Capture Claude Code session ID for --resume on subsequent messages
             if 'session_id' in obj and not session.claude_session_id:
                 session.claude_session_id = obj['session_id']
 
             if obj.get('type') == 'user':
-                # Tool results arrive as user messages; detect MCP connectivity failures
                 for block in obj.get('message', {}).get('content', []):
                     if block.get('type') == 'tool_result' and block.get('is_error'):
                         err_text = str(block.get('content', ''))
@@ -892,19 +914,16 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
                 if not current_text:
                     continue
                 if current_text.startswith(prev_text):
-                    # Continuing the current segment
                     delta = current_text[len(prev_text):]
                     if delta:
                         _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
                     prev_text = current_text
                 else:
-                    # New segment started — finalize the previous one
                     if prev_text and prev_text != last_saved_text:
                         seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
                         session.messages_structured.append(seg)
                         _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
                         last_saved_text = prev_text
-                    # Begin streaming the new segment from scratch
                     prev_text = current_text
                     _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
 
@@ -913,7 +932,6 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
     except Exception:
         pass
 
-    # Save and broadcast the final segment
     if prev_text and prev_text != last_saved_text:
         seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
         session.messages_structured.append(seg)
@@ -1024,10 +1042,8 @@ async def session_ws(websocket: WebSocket, session_id: str):
     await websocket.accept()
     session.clients.append(websocket)
 
-    # Replay conversation history on reconnect
     if session.messages_structured:
         await websocket.send_text(json.dumps({'type': 'replay', 'messages': session.messages_structured}))
-    # Sessions are always immediately ready (no init phase)
     await websocket.send_text(json.dumps({'type': 'system', 'content': 'ready'}))
     await websocket.send_text(json.dumps({'type': 'status', 'status': session.status}))
 
@@ -1073,7 +1089,6 @@ async def session_ws(websocket: WebSocket, session_id: str):
 
 # ── Static frontend (production) ──────────────────────────────────────────────
 
-# Serve built frontend in production
 frontend_dist = Path(__file__).parent.parent / 'frontend' / 'dist'
 if frontend_dist.exists():
     @app.get('/{full_path:path}', include_in_schema=False)

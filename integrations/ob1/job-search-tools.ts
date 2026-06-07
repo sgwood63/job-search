@@ -3,6 +3,14 @@
  *
  * Imported by job-search-server.ts (the sidecar entry point).
  * Prerequisites: job-search-schema.sql applied to the OB1 Postgres instance.
+ *
+ * Each tool is split into:
+ *   - A *Core() exported function containing the business logic
+ *   - A register*Tool() wrapper that adapts the core to the MCP tool protocol
+ *
+ * The *Core() functions are also called directly by the REST API routes in
+ * job-search-server.ts, ensuring a single code path for both Claude Code and
+ * the webapp.
  */
 
 import { z } from "zod";
@@ -51,11 +59,9 @@ const s3 = makeS3Client();
 // ---------------------------------------------------------------------------
 
 async function streamToBytes(stream: unknown): Promise<Uint8Array> {
-  // AWS SDK v3 npm body in Deno: use transformToByteArray() (SDK v3.x built-in)
   if (typeof (stream as any).transformToByteArray === "function") {
     return (stream as any).transformToByteArray();
   }
-  // Fallback: Web API ReadableStream
   const reader = (stream as ReadableStream<Uint8Array>).getReader();
   const chunks: Uint8Array[] = [];
   while (true) {
@@ -82,14 +88,182 @@ export type SearchThoughtsFn = (
 ) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; similarity: number; created_at: string }>>;
 export type JobSearchCallbacks = { captureThought?: CaptureThoughtFn; searchThoughts?: SearchThoughtsFn };
 
-// ---------------------------------------------------------------------------
-// FILE TOOLS
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// FILE CORE FUNCTIONS
+// ===========================================================================
 
-/**
- * upload_file
- * Dual-persist: write to object store + upsert js_files + optionally capture thought.
- */
+export async function uploadFileCore(
+  pool: unknown,
+  captureThoughtFn: CaptureThoughtFn | undefined,
+  args: { key: string; content: string; content_type: string; binary: boolean },
+): Promise<{ key: string; bytes: number }> {
+  const bytes = args.binary
+    ? Uint8Array.from(atob(args.content), c => c.charCodeAt(0))
+    : new TextEncoder().encode(args.content);
+
+  let oldThoughtId: string | null = null;
+  {
+    const c = await (pool as any).connect();
+    try {
+      const r = await c.queryObject(
+        `SELECT thought_id FROM js_files WHERE storage_key = $1`, [args.key],
+      );
+      oldThoughtId = (r.rows[0] as any)?.thought_id ?? null;
+    } finally { c.release(); }
+  }
+
+  await s3.send(new PutObjectCommand({
+    Bucket: BUCKET, Key: args.key, Body: bytes, ContentType: args.content_type,
+  }));
+
+  let thoughtId: string | null = null;
+  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && captureThoughtFn) {
+    try {
+      thoughtId = await captureThoughtFn(args.content, {
+        type: "file", storage_key: args.key, content_type: args.content_type,
+      });
+    } catch { /* best-effort */ }
+  }
+
+  {
+    const c = await (pool as any).connect();
+    try {
+      await c.queryObject(
+        `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (storage_key) DO UPDATE SET
+           bucket = EXCLUDED.bucket,
+           content_type = EXCLUDED.content_type,
+           file_size = EXCLUDED.file_size,
+           thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
+           updated_at = now()`,
+        [args.key, BUCKET, args.content_type, bytes.length, thoughtId],
+      );
+    } finally { c.release(); }
+  }
+
+  if (oldThoughtId && thoughtId && oldThoughtId !== thoughtId) {
+    const c = await (pool as any).connect();
+    try {
+      await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [oldThoughtId]);
+    } catch { /* best-effort */ }
+    finally { c.release(); }
+  }
+
+  return { key: args.key, bytes: bytes.length };
+}
+
+export async function getFileCore(key: string): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const res: GetObjectCommandOutput = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  const contentType = res.ContentType ?? "application/octet-stream";
+  const bytes = await streamToBytes(res.Body as ReadableStream<Uint8Array>);
+  return { bytes, contentType };
+}
+
+export async function getFileUrlCore(key: string, expiresIn: number): Promise<{ url: string }> {
+  const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn });
+  return { url };
+}
+
+export async function listFilesCore(
+  pool: unknown,
+  prefix: string,
+): Promise<Array<{ key: string; content_type: string; size: number; updated_at: string }>> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `SELECT storage_key, content_type, file_size, updated_at
+       FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key`,
+      [prefix + "%"],
+    );
+    return (rows as any[]).map((r: any) => ({
+      key: r.storage_key, content_type: r.content_type, size: r.file_size, updated_at: r.updated_at,
+    }));
+  } finally { client.release(); }
+}
+
+export async function deleteFileCore(pool: unknown, key: string): Promise<{ deleted: string }> {
+  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  const client = await (pool as any).connect();
+  let thoughtId: string | null = null;
+  try {
+    const r = await client.queryObject(
+      `DELETE FROM js_files WHERE storage_key = $1 RETURNING thought_id::text AS thought_id`, [key],
+    );
+    thoughtId = (r.rows[0] as any)?.thought_id ?? null;
+  } finally { client.release(); }
+  if (thoughtId) {
+    const c = await (pool as any).connect();
+    try { await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [thoughtId]); }
+    catch { /* best-effort */ }
+    finally { c.release(); }
+  }
+  return { deleted: key };
+}
+
+export interface DeleteApplicationResult {
+  folder_prefix: string;
+  files_deleted: number;
+  thoughts_deleted: number;
+  apps_deleted: number;
+}
+
+export async function deleteApplicationCore(
+  pool: unknown,
+  folderPrefix: string,
+): Promise<DeleteApplicationResult | null> {
+  const prefix = folderPrefix.endsWith("/") ? folderPrefix : folderPrefix + "/";
+  const client = await (pool as any).connect();
+  let filesDeleted = 0, thoughtsDeleted = 0, appsDeleted = 0;
+  try {
+    const appRows = await client.queryObject(
+      `SELECT id, jd_thought_id, notes_thought_id FROM js_applications WHERE folder_prefix = $1`,
+      [prefix],
+    );
+    if ((appRows.rows as any[]).length === 0) return null;
+
+    const appThoughtIds: bigint[] = (appRows.rows as any[])
+      .flatMap((r: any) => [r.jd_thought_id, r.notes_thought_id])
+      .filter(Boolean);
+
+    const filesResult = await client.queryObject(
+      `DELETE FROM js_files WHERE storage_key LIKE $1 RETURNING storage_key, thought_id`,
+      [prefix + "%"],
+    );
+    const fileRows = filesResult.rows as any[];
+    filesDeleted = fileRows.length;
+    const fileThoughtIds: bigint[] = fileRows.map((r: any) => r.thought_id).filter(Boolean);
+    const s3Keys: string[] = fileRows.map((r: any) => r.storage_key);
+
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+    const s3Extra = (listed.Contents ?? [])
+      .map((o: any) => o.Key as string)
+      .filter((k: string) => !s3Keys.includes(k));
+    for (const key of [...s3Keys, ...s3Extra]) {
+      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+    }
+
+    const allThoughtIds = [...new Set([...fileThoughtIds, ...appThoughtIds])];
+    for (const tid of allThoughtIds) {
+      try {
+        await client.queryObject(`DELETE FROM thoughts WHERE id = $1`, [tid]);
+        thoughtsDeleted++;
+      } catch { /* best-effort */ }
+    }
+
+    const del = await client.queryObject(
+      `DELETE FROM js_applications WHERE folder_prefix = $1`, [prefix],
+    );
+    appsDeleted = (del as any).rowCount ?? 0;
+  } finally { client.release(); }
+
+  return { folder_prefix: prefix, files_deleted: filesDeleted, thoughts_deleted: thoughtsDeleted, apps_deleted: appsDeleted };
+}
+
+// ===========================================================================
+// FILE TOOLS
+// ===========================================================================
+
 export function registerUploadFileTool(server: unknown, pool: unknown, captureThoughtFn?: CaptureThoughtFn) {
   (server as any).tool(
     "upload_file",
@@ -101,111 +275,29 @@ export function registerUploadFileTool(server: unknown, pool: unknown, captureTh
       content_type: z.string().default("text/markdown"),
       binary: z.boolean().default(false).describe("Set true and base64-encode content for PDFs/binaries"),
     },
-    async ({ key, content, content_type, binary }: {
-      key: string; content: string; content_type: string; binary: boolean
-    }) => {
-      const bytes = binary
-        ? Uint8Array.from(atob(content), c => c.charCodeAt(0))
-        : new TextEncoder().encode(content);
-
-      // 0. Look up any existing thought_id so we can delete it after overwrite
-      let oldThoughtId: string | null = null;
-      {
-        const c = await (pool as any).connect();
-        try {
-          const r = await c.queryObject(
-            `SELECT thought_id FROM js_files WHERE storage_key = $1`, [key]
-          );
-          oldThoughtId = (r.rows[0] as any)?.thought_id ?? null;
-        } finally {
-          c.release();
-        }
-      }
-
-      // 1. Write to object store
-      await s3.send(new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: key,
-        Body: bytes,
-        ContentType: content_type,
-      }));
-
-      // 2. Capture semantic thought for text content
-      let thoughtId: string | null = null;
-      if (!binary && isTextType(content_type) && content.length > 50 && captureThoughtFn) {
-        try {
-          thoughtId = await captureThoughtFn(content, {
-            type: "file",
-            storage_key: key,
-            content_type,
-          });
-        } catch { /* thought capture is best-effort */ }
-      }
-
-      // 3. Upsert js_files record
-      {
-        const c = await (pool as any).connect();
-        try {
-          await c.queryObject(
-            `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (storage_key) DO UPDATE SET
-               bucket = EXCLUDED.bucket,
-               content_type = EXCLUDED.content_type,
-               file_size = EXCLUDED.file_size,
-               thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
-               updated_at = now()`,
-            [key, BUCKET, content_type, bytes.length, thoughtId]
-          );
-        } finally {
-          c.release();
-        }
-      }
-
-      // 4. Delete orphaned thought from the previous version (best-effort)
-      if (oldThoughtId && thoughtId && oldThoughtId !== thoughtId) {
-        const c = await (pool as any).connect();
-        try {
-          await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [oldThoughtId]);
-        } catch { /* best-effort */ }
-        finally { c.release(); }
-      }
-
-      return { content: [{ type: "text", text: `Uploaded: ${key} (${bytes.length} bytes)` }] };
-    }
+    async (args: { key: string; content: string; content_type: string; binary: boolean }) => {
+      const result = await uploadFileCore(pool, captureThoughtFn, args);
+      return { content: [{ type: "text", text: `Uploaded: ${result.key} (${result.bytes} bytes)` }] };
+    },
   );
 }
 
-/**
- * get_file
- * Fetch file content from the object store.
- */
 export function registerGetFileTool(server: unknown) {
   (server as any).tool(
     "get_file",
     "Read a file from the object store. Returns text content directly; binary files return base64.",
-    {
-      key: z.string().describe("Object store key"),
-    },
+    { key: z.string().describe("Object store key") },
     async ({ key }: { key: string }) => {
-      const res: GetObjectCommandOutput = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-      const contentType = res.ContentType ?? "application/octet-stream";
-      const bytes = await streamToBytes(res.Body as ReadableStream<Uint8Array>);
-
+      const { bytes, contentType } = await getFileCore(key);
       if (isTextType(contentType)) {
         return { content: [{ type: "text", text: new TextDecoder().decode(bytes) }] };
       }
-      // Binary: return base64
       const b64 = btoa(String.fromCharCode(...bytes));
       return { content: [{ type: "text", text: b64 }], _binary: true, _contentType: contentType };
-    }
+    },
   );
 }
 
-/**
- * get_file_url
- * Generate a presigned URL for direct browser access (PDFs, downloads).
- */
 export function registerGetFileUrlTool(server: unknown) {
   (server as any).tool(
     "get_file_url",
@@ -215,283 +307,451 @@ export function registerGetFileUrlTool(server: unknown) {
       expires_in: z.number().int().min(60).max(86400).default(3600),
     },
     async ({ key, expires_in }: { key: string; expires_in: number }) => {
-      const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
-        expiresIn: expires_in,
-      });
+      const { url } = await getFileUrlCore(key, expires_in);
       return { content: [{ type: "text", text: url }] };
-    }
+    },
   );
 }
 
-/**
- * list_files
- * List object store keys under a prefix (folder listing).
- */
 export function registerListFilesTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "list_files",
     "List files stored under a given prefix (like a folder listing).",
-    {
-      prefix: z.string().describe("Key prefix, e.g. 'applications/2026-05-15-co-role/'"),
-    },
+    { prefix: z.string().describe("Key prefix, e.g. 'applications/2026-05-15-co-role/'") },
     async ({ prefix }: { prefix: string }) => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows } = await client.queryObject(
-          `SELECT storage_key, content_type, file_size, updated_at
-           FROM js_files
-           WHERE storage_key LIKE $1
-           ORDER BY storage_key`,
-          [prefix + "%"]
-        );
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(rows.map((r: any) => ({
-              key: r.storage_key,
-              content_type: r.content_type,
-              size: r.file_size,
-              updated_at: r.updated_at,
-            })), null, 2),
-          }],
-        };
-      } finally {
-        client.release();
-      }
-    }
+      const files = await listFilesCore(pool, prefix);
+      return { content: [{ type: "text", text: JSON.stringify(files, null, 2) }] };
+    },
   );
 }
 
-/**
- * delete_file
- */
 export function registerDeleteFileTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "delete_file",
     "Delete a file from the object store and remove its js_files record.",
     { key: z.string() },
     async ({ key }: { key: string }) => {
-      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
-      const client = await (pool as any).connect();
-      let thoughtId: string | null = null;
-      try {
-        const r = await client.queryObject(
-          `DELETE FROM js_files WHERE storage_key = $1 RETURNING thought_id::text AS thought_id`, [key]
-        );
-        thoughtId = (r.rows[0] as any)?.thought_id ?? null;
-      } finally {
-        client.release();
-      }
-      if (thoughtId) {
-        const c = await (pool as any).connect();
-        try {
-          await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [thoughtId]);
-        } catch { /* best-effort */ }
-        finally { c.release(); }
-      }
-      return { content: [{ type: "text", text: `Deleted: ${key}` }] };
-    }
+      const { deleted } = await deleteFileCore(pool, key);
+      return { content: [{ type: "text", text: `Deleted: ${deleted}` }] };
+    },
   );
 }
 
-/**
- * delete_application
- */
 export function registerDeleteApplicationTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "delete_application",
     "Fully delete an application: removes all object store files, js_files records, thoughts, interviews, and the js_applications row(s).",
     { folder_prefix: z.string().describe("Object store folder prefix, e.g. 'applications/2026-01-01-co-role/'") },
     async ({ folder_prefix }: { folder_prefix: string }) => {
-      const prefix = folder_prefix.endsWith("/") ? folder_prefix : folder_prefix + "/";
-      const client = await (pool as any).connect();
-      let filesDeleted = 0, thoughtsDeleted = 0, appsDeleted = 0;
-      try {
-        // 1. Collect thought IDs from all matching js_applications rows
-        const appRows = await client.queryObject(
-          `SELECT id, jd_thought_id, notes_thought_id FROM js_applications WHERE folder_prefix = $1`,
-          [prefix]
-        );
-        if ((appRows.rows as any[]).length === 0) {
-          return { content: [{ type: "text", text: `No application found with folder_prefix ${prefix}` }] };
-        }
-        const appThoughtIds: bigint[] = (appRows.rows as any[])
-          .flatMap((r: any) => [r.jd_thought_id, r.notes_thought_id])
-          .filter(Boolean);
-
-        // 2. Delete js_files records, collect their thought IDs
-        const filesResult = await client.queryObject(
-          `DELETE FROM js_files WHERE storage_key LIKE $1 RETURNING storage_key, thought_id`,
-          [prefix + "%"]
-        );
-        const fileRows = filesResult.rows as any[];
-        filesDeleted = fileRows.length;
-        const fileThoughtIds: bigint[] = fileRows.map((r: any) => r.thought_id).filter(Boolean);
-        const s3Keys: string[] = fileRows.map((r: any) => r.storage_key);
-
-        // 3. Delete S3 objects (also list to catch any orphaned keys not in js_files)
-        const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
-        const s3Extra = (listed.Contents ?? [])
-          .map((o: any) => o.Key as string)
-          .filter((k: string) => !s3Keys.includes(k));
-        for (const key of [...s3Keys, ...s3Extra]) {
-          await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
-        }
-
-        // 4. Delete all collected thoughts (best-effort)
-        const allThoughtIds = [...new Set([...fileThoughtIds, ...appThoughtIds])];
-        for (const tid of allThoughtIds) {
-          try {
-            await client.queryObject(`DELETE FROM thoughts WHERE id = $1`, [tid]);
-            thoughtsDeleted++;
-          } catch { /* best-effort */ }
-        }
-
-        // 5. Delete all js_applications rows (cascades js_interviews)
-        const del = await client.queryObject(
-          `DELETE FROM js_applications WHERE folder_prefix = $1`, [prefix]
-        );
-        appsDeleted = (del as any).rowCount ?? 0;
-      } finally {
-        client.release();
+      const result = await deleteApplicationCore(pool, folder_prefix);
+      if (!result) {
+        return { content: [{ type: "text", text: `No application found with folder_prefix ${folder_prefix}` }] };
       }
       return {
         content: [{
           type: "text",
-          text: `Deleted application ${prefix}: ${appsDeleted} app row(s), ${filesDeleted} files, ${thoughtsDeleted} thoughts removed.`
-        }]
+          text: `Deleted application ${result.folder_prefix}: ${result.apps_deleted} app row(s), ${result.files_deleted} files, ${result.thoughts_deleted} thoughts removed.`,
+        }],
       };
-    }
+    },
   );
 }
 
-// ---------------------------------------------------------------------------
-// STATE TOOLS
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// STATE CORE FUNCTIONS
+// ===========================================================================
 
-/**
- * get_pipeline
- */
+export interface PipelineFilters {
+  status?: string;
+  statuses?: string[];
+  company?: string;
+  role?: string;
+  profile?: string;
+  priority?: number;
+  min_priority?: number;
+  due_before?: string;
+  limit?: number;
+}
+
+export async function getPipelineCore(pool: unknown, filters: PipelineFilters = {}): Promise<unknown[]> {
+  const { status, statuses, company, role, profile, priority, min_priority, due_before, limit = 50 } = filters;
+  const client = await (pool as any).connect();
+  try {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+
+    const allStatuses = Array.from(new Set([
+      ...(status ? [status] : []),
+      ...(statuses ?? []),
+    ]));
+    if (allStatuses.length === 1) { where.push(`a.status = $${p++}`); params.push(allStatuses[0]); }
+    else if (allStatuses.length > 1) { where.push(`a.status = ANY($${p++})`); params.push(allStatuses); }
+
+    if (company) { where.push(`LOWER(COALESCE(c.name, a.company_name_raw)) LIKE '%' || LOWER($${p++}) || '%'`); params.push(company); }
+    if (role) { where.push(`LOWER(a.role_title) LIKE '%' || LOWER($${p++}) || '%'`); params.push(role); }
+    if (profile) { where.push(`p.slug = $${p++}`); params.push(profile); }
+    if (priority) { where.push(`a.priority = $${p++}`); params.push(priority); }
+    if (min_priority) { where.push(`a.priority >= $${p++}`); params.push(min_priority); }
+    if (due_before) { where.push(`a.follow_up_date <= $${p++}`); params.push(due_before); }
+    params.push(limit);
+
+    const sql = `
+      SELECT a.id, COALESCE(c.name, a.company_name_raw) AS company,
+             a.role_title, p.slug AS profile, a.status, a.status_detail,
+             a.applied_date, a.follow_up_date, a.priority, a.folder_prefix,
+             a.resume_key, a.created_at
+      FROM js_applications a
+      LEFT JOIN js_companies c ON a.company_id = c.id
+      LEFT JOIN js_profiles p ON a.profile_id = p.id
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY a.priority DESC, a.follow_up_date ASC NULLS LAST, a.created_at DESC
+      LIMIT $${p}`;
+
+    const { rows } = await client.queryObject(sql, params);
+    return rows as unknown[];
+  } finally { client.release(); }
+}
+
+export async function getApplicationCore(pool: unknown, identifier: string): Promise<unknown | null> {
+  const client = await (pool as any).connect();
+  try {
+    const isUuid = /^[0-9a-f-]{36}$/.test(identifier);
+    const { rows } = await client.queryObject(
+      `SELECT a.id::text AS id, a.company_name_raw, a.role_title, a.folder_prefix,
+              a.source_url, a.status, a.status_detail, a.applied_date, a.follow_up_date,
+              a.priority, a.resume_key, a.created_at, a.updated_at,
+              a.jd_thought_id::text AS jd_thought_id,
+              a.notes_thought_id::text AS notes_thought_id,
+              COALESCE(c.name, a.company_name_raw) AS company_name,
+              c.industry, c.remote_policy, p.slug AS profile_slug, p.display_name AS profile_name
+       FROM js_applications a
+       LEFT JOIN js_companies c ON a.company_id = c.id
+       LEFT JOIN js_profiles p ON a.profile_id = p.id
+       WHERE ${isUuid ? "a.id = $1::uuid" : "LOWER(COALESCE(c.name, a.company_name_raw)) LIKE LOWER($1)"}
+       LIMIT 1`,
+      [isUuid ? identifier : `%${identifier}%`],
+    );
+    if (!rows.length) return null;
+
+    const app = rows[0] as any;
+    const { rows: files } = await client.queryObject(
+      "SELECT storage_key, content_type, file_size FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
+      [((app.folder_prefix ?? "") + "%")],
+    );
+    const { rows: interviews } = await client.queryObject(
+      "SELECT stage, scheduled_at, completed_at, rating FROM js_interviews WHERE application_id = $1 ORDER BY created_at",
+      [app.id],
+    );
+    return { ...app, files, interviews };
+  } finally { client.release(); }
+}
+
+export async function getProfilesCore(pool: unknown): Promise<unknown[]> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `SELECT id, slug, display_name, created_at, updated_at FROM js_profiles ORDER BY slug`,
+    );
+    return rows as unknown[];
+  } finally { client.release(); }
+}
+
+export async function getOverdueFollowupsCore(pool: unknown): Promise<unknown[]> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `SELECT a.id, COALESCE(c.name, a.company_name_raw) AS company,
+              a.role_title, a.status, a.follow_up_date,
+              (now()::date - a.follow_up_date) AS days_overdue
+       FROM js_applications a
+       LEFT JOIN js_companies c ON a.company_id = c.id
+       WHERE a.follow_up_date <= now()::date
+         AND a.status NOT IN ('closed', 'offer')
+       ORDER BY a.follow_up_date ASC`,
+    );
+    return rows as unknown[];
+  } finally { client.release(); }
+}
+
+export interface CreateApplicationArgs {
+  company_name: string;
+  role_title: string;
+  folder_prefix: string;
+  profile_slug?: string;
+  source_url?: string;
+  status: string;
+  priority: number;
+  status_detail?: string;
+}
+
+export async function createApplicationCore(
+  pool: unknown,
+  args: CreateApplicationArgs,
+): Promise<{ id: string; company: string; role: string }> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows: co } = await client.queryObject<{ id: string }>(
+      "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) OR slug = LOWER($1) LIMIT 1",
+      [args.company_name],
+    );
+    const companyId = co[0]?.id ?? null;
+
+    let profileId: string | null = null;
+    if (args.profile_slug) {
+      const { rows: pr } = await client.queryObject<{ id: string }>(
+        "SELECT id FROM js_profiles WHERE slug = $1 LIMIT 1",
+        [args.profile_slug],
+      );
+      profileId = pr[0]?.id ?? null;
+    }
+
+    const { rows } = await client.queryObject<{ id: string }>(
+      `INSERT INTO js_applications
+         (company_id, company_name_raw, role_title, profile_id, folder_prefix,
+          source_url, status, status_detail, priority)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id::text AS id`,
+      [companyId, args.company_name, args.role_title, profileId, args.folder_prefix,
+       args.source_url ?? null, args.status, args.status_detail ?? null, args.priority],
+    );
+    return { id: rows[0].id, company: args.company_name, role: args.role_title };
+  } finally { client.release(); }
+}
+
+export interface UpdateApplicationStatusArgs {
+  id: string;
+  status: string;
+  status_detail?: string;
+  follow_up_date?: string;
+  applied_date?: string;
+}
+
+export async function updateApplicationStatusCore(
+  pool: unknown,
+  args: UpdateApplicationStatusArgs,
+): Promise<{ id: string; status: string; follow_up_date?: string } | null> {
+  const client = await (pool as any).connect();
+  try {
+    const fup = args.follow_up_date ?? (args.status === "applied"
+      ? new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
+      : undefined);
+
+    const sets: string[] = ["status = $2", "updated_at = now()"];
+    const params: unknown[] = [args.id, args.status];
+    let p = 3;
+    if (args.status_detail !== undefined) { sets.push(`status_detail = $${p++}`); params.push(args.status_detail); }
+    if (fup !== undefined) { sets.push(`follow_up_date = $${p++}`); params.push(fup); }
+    if (args.applied_date !== undefined) { sets.push(`applied_date = $${p++}`); params.push(args.applied_date); }
+    else if (args.status === "applied") { sets.push(`applied_date = COALESCE(applied_date, now()::date)`); }
+
+    const { rowCount } = await client.queryObject(
+      `UPDATE js_applications SET ${sets.join(", ")} WHERE id = $1`, params,
+    );
+    if (!rowCount) return null;
+    return { id: args.id, status: args.status, follow_up_date: fup };
+  } finally { client.release(); }
+}
+
+export interface LogInterviewArgs {
+  application_id: string;
+  stage: string;
+  scheduled_at?: string;
+  interviewer_name?: string;
+  interviewer_title?: string;
+  pre_notes?: string;
+}
+
+export async function logInterviewCore(
+  pool: unknown,
+  args: LogInterviewArgs,
+): Promise<{ id: string; stage: string }> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `INSERT INTO js_interviews (application_id, stage, scheduled_at, interviewer_name, interviewer_title, pre_notes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [args.application_id, args.stage, args.scheduled_at ?? null,
+       args.interviewer_name ?? null, args.interviewer_title ?? null, args.pre_notes ?? null],
+    );
+    await client.queryObject(
+      "UPDATE js_applications SET status = 'interview-scheduled', updated_at = now() WHERE id = $1 AND status NOT IN ('interviewed','offer','closed')",
+      [args.application_id],
+    );
+    return { id: (rows[0] as any).id, stage: args.stage };
+  } finally { client.release(); }
+}
+
+export async function completeInterviewCore(
+  pool: unknown,
+  args: { interview_id: string; post_notes: string; rating?: number },
+): Promise<{ interview_id: string } | null> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `UPDATE js_interviews SET post_notes = $2, rating = $3, completed_at = now(), updated_at = now()
+       WHERE id = $1 RETURNING application_id`,
+      [args.interview_id, args.post_notes, args.rating ?? null],
+    );
+    if (!rows.length) return null;
+    await client.queryObject(
+      "UPDATE js_applications SET status = 'interviewed', updated_at = now() WHERE id = $1",
+      [(rows[0] as any).application_id],
+    );
+    return { interview_id: args.interview_id };
+  } finally { client.release(); }
+}
+
+export interface AddContactArgs {
+  name: string;
+  company_name?: string;
+  title?: string;
+  email?: string;
+  linkedin_url?: string;
+  relationship_type: string;
+  notes?: string;
+}
+
+export async function addContactCore(
+  pool: unknown,
+  args: AddContactArgs,
+): Promise<{ id: string; name: string }> {
+  const client = await (pool as any).connect();
+  try {
+    let companyId: string | null = null;
+    if (args.company_name) {
+      const { rows } = await client.queryObject(
+        "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        [args.company_name],
+      );
+      companyId = (rows[0] as any)?.id ?? null;
+    }
+    const { rows } = await client.queryObject(
+      `INSERT INTO js_contacts (name, company_id, title, email, linkedin_url, relationship_type, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [args.name, companyId, args.title ?? null, args.email ?? null,
+       args.linkedin_url ?? null, args.relationship_type, args.notes ?? null],
+    );
+    return { id: (rows[0] as any).id, name: args.name };
+  } finally { client.release(); }
+}
+
+export interface UpsertCompanyArgs {
+  name: string;
+  slug: string;
+  industry?: string;
+  size_range?: string;
+  remote_policy?: string;
+  website?: string;
+  domain_tags?: string[];
+  notes?: string;
+}
+
+export async function upsertCompanyCore(
+  pool: unknown,
+  args: UpsertCompanyArgs,
+): Promise<{ id: string; name: string }> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `INSERT INTO js_companies (name, slug, industry, size_range, remote_policy, website, domain_tags, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (slug) DO UPDATE SET
+         name = EXCLUDED.name,
+         industry = COALESCE(EXCLUDED.industry, js_companies.industry),
+         size_range = COALESCE(EXCLUDED.size_range, js_companies.size_range),
+         remote_policy = COALESCE(EXCLUDED.remote_policy, js_companies.remote_policy),
+         website = COALESCE(EXCLUDED.website, js_companies.website),
+         domain_tags = COALESCE(EXCLUDED.domain_tags, js_companies.domain_tags),
+         notes = COALESCE(EXCLUDED.notes, js_companies.notes),
+         updated_at = now()
+       RETURNING id`,
+      [args.name, args.slug, args.industry ?? null, args.size_range ?? null,
+       args.remote_policy ?? null, args.website ?? null,
+       args.domain_tags ?? null, args.notes ?? null],
+    );
+    return { id: (rows[0] as any).id, name: args.name };
+  } finally { client.release(); }
+}
+
+export interface LogSearchRunArgs {
+  profile_slug: string;
+  query: string;
+  pages_fetched: number;
+  total_results: number;
+  new_after_dedup: number;
+  screened: number;
+  fit_count: number;
+  summary_key?: string;
+}
+
+export async function logSearchRunCore(pool: unknown, args: LogSearchRunArgs): Promise<void> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows: pRows } = await client.queryObject(
+      "SELECT id FROM js_profiles WHERE slug = $1", [args.profile_slug],
+    );
+    const profileId = (pRows[0] as any)?.id ?? null;
+    await client.queryObject(
+      `INSERT INTO js_search_runs
+         (profile_id, query, pages_fetched, total_results, new_after_dedup, screened, fit_count, summary_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [profileId, args.query, args.pages_fetched, args.total_results,
+       args.new_after_dedup, args.screened, args.fit_count, args.summary_key ?? null],
+    );
+  } finally { client.release(); }
+}
+
+export async function searchApplicationsSemanticCore(
+  searchThoughtsFn: SearchThoughtsFn | undefined,
+  query: string,
+  limit: number,
+): Promise<Array<{ content: string; similarity: number; metadata: Record<string, unknown> }> | null> {
+  if (!searchThoughtsFn) return null;
+  const results = await searchThoughtsFn(query, limit, { source: "job-search-mcp" });
+  return results.map(r => ({ content: r.content, similarity: r.similarity, metadata: r.metadata }));
+}
+
+// ===========================================================================
+// STATE TOOLS
+// ===========================================================================
+
 export function registerGetPipelineTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "get_pipeline",
     "List applications with optional filters. Returns pipeline state from js_applications.",
     {
       status: z.string().optional().describe("Filter by a single status, e.g. 'applied' (use statuses[] for multi)"),
-      statuses: z.array(z.string()).optional().describe("Filter by multiple statuses (OR), e.g. ['applied','interview-scheduled']"),
-      company: z.string().optional().describe("Case-insensitive substring match on company name"),
-      role: z.string().optional().describe("Case-insensitive substring match on role title"),
-      profile: z.string().optional().describe("Filter by profile slug, e.g. 'presales-se'"),
-      priority: z.number().int().min(1).max(3).optional().describe("Exact priority level (1=low, 2=normal, 3=high)"),
-      min_priority: z.number().int().min(1).max(3).optional().describe("Return apps with priority >= this value (2=any starred, 3=highest only)"),
-      due_before: z.string().optional().describe("ISO date — return apps with follow_up_date before this"),
+      statuses: z.array(z.string()).optional().describe("Filter by multiple statuses (OR)"),
+      company: z.string().optional(),
+      role: z.string().optional(),
+      profile: z.string().optional(),
+      priority: z.number().int().min(1).max(3).optional(),
+      min_priority: z.number().int().min(1).max(3).optional(),
+      due_before: z.string().optional(),
       limit: z.number().int().min(1).max(200).default(50),
     },
-    async ({ status, statuses, company, role, profile, priority, min_priority, due_before, limit }: {
-      status?: string; statuses?: string[]; company?: string; role?: string;
-      profile?: string; priority?: number; min_priority?: number; due_before?: string; limit: number
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        const where: string[] = [];
-        const params: unknown[] = [];
-        let p = 1;
-
-        // Merge single status + statuses array into one IN/= clause
-        const allStatuses = Array.from(new Set([
-          ...(status ? [status] : []),
-          ...(statuses ?? []),
-        ]));
-        if (allStatuses.length === 1) {
-          where.push(`a.status = $${p++}`); params.push(allStatuses[0]);
-        } else if (allStatuses.length > 1) {
-          where.push(`a.status = ANY($${p++})`); params.push(allStatuses);
-        }
-
-        if (company) { where.push(`LOWER(COALESCE(c.name, a.company_name_raw)) LIKE '%' || LOWER($${p++}) || '%'`); params.push(company); }
-        if (role)    { where.push(`LOWER(a.role_title) LIKE '%' || LOWER($${p++}) || '%'`); params.push(role); }
-        if (profile) { where.push(`p.slug = $${p++}`); params.push(profile); }
-        if (priority) { where.push(`a.priority = $${p++}`); params.push(priority); }
-        if (min_priority) { where.push(`a.priority >= $${p++}`); params.push(min_priority); }
-        if (due_before) { where.push(`a.follow_up_date <= $${p++}`); params.push(due_before); }
-        params.push(limit);
-
-        const sql = `
-          SELECT a.id, COALESCE(c.name, a.company_name_raw) AS company,
-                 a.role_title, p.slug AS profile, a.status, a.status_detail,
-                 a.applied_date, a.follow_up_date, a.priority, a.folder_prefix,
-                 a.resume_key, a.created_at
-          FROM js_applications a
-          LEFT JOIN js_companies c ON a.company_id = c.id
-          LEFT JOIN js_profiles p ON a.profile_id = p.id
-          ${where.length ? "WHERE " + where.join(" AND ") : ""}
-          ORDER BY a.priority DESC, a.follow_up_date ASC NULLS LAST, a.created_at DESC
-          LIMIT $${p}`;
-
-        const { rows } = await client.queryObject(sql, params);
-        return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (filters: PipelineFilters) => {
+      const rows = await getPipelineCore(pool, filters);
+      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+    },
   );
 }
 
-/**
- * get_application
- */
 export function registerGetApplicationTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "get_application",
     "Get full application record plus list of associated files. Accepts company name fragment or UUID.",
     { identifier: z.string().describe("Company name (partial match OK) or application UUID") },
     async ({ identifier }: { identifier: string }) => {
-      const client = await (pool as any).connect();
-      try {
-        const isUuid = /^[0-9a-f-]{36}$/.test(identifier);
-        const { rows } = await client.queryObject(
-          `SELECT a.*, COALESCE(c.name, a.company_name_raw) AS company_name,
-                  c.industry, c.remote_policy, p.slug AS profile_slug, p.display_name AS profile_name
-           FROM js_applications a
-           LEFT JOIN js_companies c ON a.company_id = c.id
-           LEFT JOIN js_profiles p ON a.profile_id = p.id
-           WHERE ${isUuid ? "a.id = $1" : "LOWER(COALESCE(c.name, a.company_name_raw)) LIKE LOWER($1)"}
-           LIMIT 1`,
-          [isUuid ? identifier : `%${identifier}%`]
-        );
-        if (!rows.length) {
-          return { content: [{ type: "text", text: `No application found matching: ${identifier}` }] };
-        }
-        const app = rows[0];
-
-        // List associated files
-        const { rows: files } = await client.queryObject(
-          "SELECT storage_key, content_type, file_size FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
-          [(app.folder_prefix ?? "") + "%"]
-        );
-
-        // List interviews
-        const { rows: interviews } = await client.queryObject(
-          "SELECT stage, scheduled_at, completed_at, rating FROM js_interviews WHERE application_id = $1 ORDER BY created_at",
-          [app.id]
-        );
-
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ ...app, files, interviews }, null, 2),
-          }],
-        };
-      } finally {
-        client.release();
-      }
-    }
+      const result = await getApplicationCore(pool, identifier);
+      if (!result) return { content: [{ type: "text", text: `No application found matching: ${identifier}` }] };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
   );
 }
 
-/**
- * update_application_status
- */
 export function registerUpdateApplicationStatusTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "update_application_status",
@@ -501,43 +761,21 @@ export function registerUpdateApplicationStatusTool(server: unknown, pool: unkno
       status: z.string(),
       status_detail: z.string().optional(),
       follow_up_date: z.string().optional().describe("ISO date for next follow-up"),
-      applied_date: z.string().optional().describe("ISO date when submitted (sets applied_date if status=applied)"),
+      applied_date: z.string().optional().describe("ISO date when submitted"),
     },
-    async ({ id, status, status_detail, follow_up_date, applied_date }: {
-      id: string; status: string; status_detail?: string;
-      follow_up_date?: string; applied_date?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        // Auto-set follow_up +14 days when transitioning to applied
-        const fup = follow_up_date ?? (status === "applied"
-          ? new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
-          : undefined);
-
-        const sets: string[] = ["status = $2", "updated_at = now()"];
-        const params: unknown[] = [id, status];
-        let p = 3;
-        if (status_detail !== undefined) { sets.push(`status_detail = $${p++}`); params.push(status_detail); }
-        if (fup !== undefined) { sets.push(`follow_up_date = $${p++}`); params.push(fup); }
-        if (applied_date !== undefined) { sets.push(`applied_date = $${p++}`); params.push(applied_date); }
-        else if (status === "applied") { sets.push(`applied_date = COALESCE(applied_date, now()::date)`); }
-
-        const { rowCount } = await client.queryObject(
-          `UPDATE js_applications SET ${sets.join(", ")} WHERE id = $1`,
-          params
-        );
-        if (!rowCount) return { content: [{ type: "text", text: `Application not found: ${id}` }] };
-        return { content: [{ type: "text", text: `Updated ${id} → ${status}${fup ? ` (follow-up: ${fup})` : ""}` }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: UpdateApplicationStatusArgs) => {
+      const result = await updateApplicationStatusCore(pool, args);
+      if (!result) return { content: [{ type: "text", text: `Application not found: ${args.id}` }] };
+      return {
+        content: [{
+          type: "text",
+          text: `Updated ${result.id} → ${result.status}${result.follow_up_date ? ` (follow-up: ${result.follow_up_date})` : ""}`,
+        }],
+      };
+    },
   );
 }
 
-/**
- * log_interview
- */
 export function registerLogInterviewTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "log_interview",
@@ -550,34 +788,13 @@ export function registerLogInterviewTool(server: unknown, pool: unknown) {
       interviewer_title: z.string().optional(),
       pre_notes: z.string().optional().describe("Preparation notes"),
     },
-    async (args: {
-      application_id: string; stage: string; scheduled_at?: string;
-      interviewer_name?: string; interviewer_title?: string; pre_notes?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows } = await client.queryObject(
-          `INSERT INTO js_interviews (application_id, stage, scheduled_at, interviewer_name, interviewer_title, pre_notes)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id`,
-          [args.application_id, args.stage, args.scheduled_at ?? null,
-           args.interviewer_name ?? null, args.interviewer_title ?? null, args.pre_notes ?? null]
-        );
-        await client.queryObject(
-          "UPDATE js_applications SET status = 'interview-scheduled', updated_at = now() WHERE id = $1 AND status NOT IN ('interviewed','offer','closed')",
-          [args.application_id]
-        );
-        return { content: [{ type: "text", text: `Interview logged: ${rows[0].id} (${args.stage})` }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: LogInterviewArgs) => {
+      const result = await logInterviewCore(pool, args);
+      return { content: [{ type: "text", text: `Interview logged: ${result.id} (${result.stage})` }] };
+    },
   );
 }
 
-/**
- * complete_interview
- */
 export function registerCompleteInterviewTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "complete_interview",
@@ -587,61 +804,26 @@ export function registerCompleteInterviewTool(server: unknown, pool: unknown) {
       post_notes: z.string().describe("Debrief notes after the call"),
       rating: z.number().int().min(1).max(5).optional().describe("Self-assessment 1-5"),
     },
-    async ({ interview_id, post_notes, rating }: {
-      interview_id: string; post_notes: string; rating?: number
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows } = await client.queryObject(
-          `UPDATE js_interviews SET post_notes = $2, rating = $3, completed_at = now(), updated_at = now()
-           WHERE id = $1 RETURNING application_id`,
-          [interview_id, post_notes, rating ?? null]
-        );
-        if (!rows.length) return { content: [{ type: "text", text: `Interview not found: ${interview_id}` }] };
-        await client.queryObject(
-          "UPDATE js_applications SET status = 'interviewed', updated_at = now() WHERE id = $1",
-          [rows[0].application_id]
-        );
-        return { content: [{ type: "text", text: `Interview ${interview_id} completed. Debrief saved.` }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: { interview_id: string; post_notes: string; rating?: number }) => {
+      const result = await completeInterviewCore(pool, args);
+      if (!result) return { content: [{ type: "text", text: `Interview not found: ${args.interview_id}` }] };
+      return { content: [{ type: "text", text: `Interview ${result.interview_id} completed. Debrief saved.` }] };
+    },
   );
 }
 
-/**
- * get_overdue_followups
- */
 export function registerGetOverdueFollowupsTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "get_overdue_followups",
     "List applications where follow_up_date is today or earlier and status is still active.",
     {},
     async () => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows } = await client.queryObject(
-          `SELECT a.id, COALESCE(c.name, a.company_name_raw) AS company,
-                  a.role_title, a.status, a.follow_up_date,
-                  (now()::date - a.follow_up_date) AS days_overdue
-           FROM js_applications a
-           LEFT JOIN js_companies c ON a.company_id = c.id
-           WHERE a.follow_up_date <= now()::date
-             AND a.status NOT IN ('closed', 'offer')
-           ORDER BY a.follow_up_date ASC`
-        );
-        return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
-      } finally {
-        client.release();
-      }
-    }
+      const rows = await getOverdueFollowupsCore(pool);
+      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+    },
   );
 }
 
-/**
- * add_contact
- */
 export function registerAddContactTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "add_contact",
@@ -655,38 +837,13 @@ export function registerAddContactTool(server: unknown, pool: unknown) {
       relationship_type: z.enum(["recruiter", "hiring-manager", "warm-connection", "network"]).default("network"),
       notes: z.string().optional(),
     },
-    async (args: {
-      name: string; company_name?: string; title?: string; email?: string;
-      linkedin_url?: string; relationship_type: string; notes?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        // Resolve company_id if provided
-        let companyId: string | null = null;
-        if (args.company_name) {
-          const { rows } = await client.queryObject(
-            "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) LIMIT 1",
-            [args.company_name]
-          );
-          companyId = rows[0]?.id ?? null;
-        }
-        const { rows } = await client.queryObject(
-          `INSERT INTO js_contacts (name, company_id, title, email, linkedin_url, relationship_type, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [args.name, companyId, args.title ?? null, args.email ?? null,
-           args.linkedin_url ?? null, args.relationship_type, args.notes ?? null]
-        );
-        return { content: [{ type: "text", text: `Contact added: ${args.name} (${rows[0].id})` }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: AddContactArgs) => {
+      const result = await addContactCore(pool, args);
+      return { content: [{ type: "text", text: `Contact added: ${result.name} (${result.id})` }] };
+    },
   );
 }
 
-/**
- * get_contacts
- */
 export function registerGetContactsTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "get_contacts",
@@ -703,19 +860,14 @@ export function registerGetContactsTool(server: unknown, pool: unknown) {
            LEFT JOIN js_companies c ON ct.company_id = c.id
            ${company ? "WHERE LOWER(c.name) LIKE LOWER($1)" : ""}
            ORDER BY ct.last_contact_at DESC NULLS LAST`,
-          company ? [`%${company}%`] : []
+          company ? [`%${company}%`] : [],
         );
         return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
-      } finally {
-        client.release();
-      }
-    }
+      } finally { client.release(); }
+    },
   );
 }
 
-/**
- * upsert_company
- */
 export function registerUpsertCompanyTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "upsert_company",
@@ -730,40 +882,13 @@ export function registerUpsertCompanyTool(server: unknown, pool: unknown) {
       domain_tags: z.array(z.string()).optional(),
       notes: z.string().optional(),
     },
-    async (args: {
-      name: string; slug: string; industry?: string; size_range?: string;
-      remote_policy?: string; website?: string; domain_tags?: string[]; notes?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows } = await client.queryObject(
-          `INSERT INTO js_companies (name, slug, industry, size_range, remote_policy, website, domain_tags, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (slug) DO UPDATE SET
-             name = EXCLUDED.name,
-             industry = COALESCE(EXCLUDED.industry, js_companies.industry),
-             size_range = COALESCE(EXCLUDED.size_range, js_companies.size_range),
-             remote_policy = COALESCE(EXCLUDED.remote_policy, js_companies.remote_policy),
-             website = COALESCE(EXCLUDED.website, js_companies.website),
-             domain_tags = COALESCE(EXCLUDED.domain_tags, js_companies.domain_tags),
-             notes = COALESCE(EXCLUDED.notes, js_companies.notes),
-             updated_at = now()
-           RETURNING id`,
-          [args.name, args.slug, args.industry ?? null, args.size_range ?? null,
-           args.remote_policy ?? null, args.website ?? null,
-           args.domain_tags ?? null, args.notes ?? null]
-        );
-        return { content: [{ type: "text", text: `Company: ${args.name} (${rows[0].id})` }] };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: UpsertCompanyArgs) => {
+      const result = await upsertCompanyCore(pool, args);
+      return { content: [{ type: "text", text: `Company: ${result.name} (${result.id})` }] };
+    },
   );
 }
 
-/**
- * log_search_run
- */
 export function registerLogSearchRunTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "log_search_run",
@@ -778,39 +903,18 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
       fit_count: z.number().int(),
       summary_key: z.string().optional().describe("Object store key for the summary .md file"),
     },
-    async (args: {
-      profile_slug: string; query: string; pages_fetched: number; total_results: number;
-      new_after_dedup: number; screened: number; fit_count: number; summary_key?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        const { rows: pRows } = await client.queryObject(
-          "SELECT id FROM js_profiles WHERE slug = $1", [args.profile_slug]
-        );
-        const profileId = pRows[0]?.id ?? null;
-        await client.queryObject(
-          `INSERT INTO js_search_runs
-             (profile_id, query, pages_fetched, total_results, new_after_dedup, screened, fit_count, summary_key)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [profileId, args.query, args.pages_fetched, args.total_results,
-           args.new_after_dedup, args.screened, args.fit_count, args.summary_key ?? null]
-        );
-        return {
-          content: [{
-            type: "text",
-            text: `Search run logged: ${args.profile_slug}, ${args.fit_count} fits from ${args.total_results} results`,
-          }],
-        };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: LogSearchRunArgs) => {
+      await logSearchRunCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Search run logged: ${args.profile_slug}, ${args.fit_count} fits from ${args.total_results} results`,
+        }],
+      };
+    },
   );
 }
 
-/**
- * search_applications_semantic
- */
 export function registerSearchApplicationsSemanticTool(server: unknown, pool: unknown, searchThoughtsFn?: SearchThoughtsFn) {
   (server as any).tool(
     "search_applications_semantic",
@@ -820,29 +924,21 @@ export function registerSearchApplicationsSemanticTool(server: unknown, pool: un
       limit: z.number().int().min(1).max(20).default(5),
     },
     async ({ query, limit }: { query: string; limit: number }) => {
-      if (!searchThoughtsFn) {
+      const results = await searchApplicationsSemanticCore(searchThoughtsFn, query, limit);
+      if (results === null) {
         return { content: [{ type: "text", text: "search_applications_semantic: searchThoughts callback not configured" }] };
       }
-      try {
-        const results = await searchThoughtsFn(query, limit, { source: "job-search-mcp" });
-        if (!results.length) {
-          return { content: [{ type: "text", text: `No application content found matching "${query}".` }] };
-        }
-        const formatted = results.map((r, i) =>
-          `--- ${i + 1} (${(r.similarity * 100).toFixed(1)}% match) ---\n${r.content}`
-        ).join("\n\n");
-        return { content: [{ type: "text", text: formatted }] };
-      } catch (err: unknown) {
-        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      if (!results.length) {
+        return { content: [{ type: "text", text: `No application content found matching "${query}".` }] };
       }
-    }
+      const formatted = results.map((r, i) =>
+        `--- ${i + 1} (${(r.similarity * 100).toFixed(1)}% match) ---\n${r.content}`
+      ).join("\n\n");
+      return { content: [{ type: "text", text: formatted }] };
+    },
   );
 }
 
-/**
- * create_application
- * Create a new application record in the pipeline. Returns the new application UUID.
- */
 export function registerCreateApplicationTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "create_application",
@@ -857,54 +953,20 @@ export function registerCreateApplicationTool(server: unknown, pool: unknown) {
       priority: z.number().int().min(1).max(3).default(1),
       status_detail: z.string().optional(),
     },
-    async (args: {
-      company_name: string; role_title: string; folder_prefix: string;
-      profile_slug?: string; source_url?: string; status: string;
-      priority: number; status_detail?: string;
-    }) => {
-      const client = await (pool as any).connect();
-      try {
-        // Resolve company_id
-        const { rows: co } = await client.queryObject<{ id: string }>(
-          "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) OR slug = LOWER($1) LIMIT 1",
-          [args.company_name]
-        );
-        const companyId = co[0]?.id ?? null;
-
-        // Resolve profile_id
-        let profileId: string | null = null;
-        if (args.profile_slug) {
-          const { rows: pr } = await client.queryObject<{ id: string }>(
-            "SELECT id FROM js_profiles WHERE slug = $1 LIMIT 1",
-            [args.profile_slug]
-          );
-          profileId = pr[0]?.id ?? null;
-        }
-
-        const { rows } = await client.queryObject<{ id: string }>(
-          `INSERT INTO js_applications
-             (company_id, company_name_raw, role_title, profile_id, folder_prefix,
-              source_url, status, status_detail, priority)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           RETURNING id::text AS id`,
-          [companyId, args.company_name, args.role_title, profileId, args.folder_prefix,
-           args.source_url ?? null, args.status, args.status_detail ?? null, args.priority]
-        );
-        return {
-          content: [{
-            type: "text",
-            text: `Application created: ${args.company_name} / ${args.role_title} → ${rows[0].id}`,
-          }],
-        };
-      } finally {
-        client.release();
-      }
-    }
+    async (args: CreateApplicationArgs) => {
+      const result = await createApplicationCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Application created: ${result.company} / ${result.role} → ${result.id}`,
+        }],
+      };
+    },
   );
 }
 
 // ---------------------------------------------------------------------------
-// Registration helper — call from index.ts main()
+// Registration helper — call from job-search-server.ts main()
 // ---------------------------------------------------------------------------
 
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {

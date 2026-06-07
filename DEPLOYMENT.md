@@ -15,7 +15,7 @@ Where applicant data is stored. Controlled by `DATA_BACKEND` in `.env`.
 | Value | What it means |
 |-------|---------------|
 | `local` (default) | Files read/written directly from `$APPLICANT_DIR` on disk (or a cloud-synced folder) |
-| `ob1` | All data goes through OB1 MCP tools — files in MinIO or Supabase, structured state in PostgreSQL |
+| `ob1` | All data goes through OB1 MCP tools — files in MinIO or Supabase, structured state in PostgreSQL. The webapp routes all reads and writes through the job-search-mcp REST API (`/api/v2/*`), which handles embedding and Postgres sync atomically. |
 
 ### 2. OB1 Infrastructure *(only if `DATA_BACKEND=ob1`)*
 
@@ -78,38 +78,48 @@ Answer these questions in order:
 
 ## Authentication
 
-> **OAuth works for local Claude Code terminal sessions only.** All container deployments (Docker Compose, K8s) require `ANTHROPIC_API_DEPLOYMENT_KEY` set in `.env` — OAuth is not available inside containers.
+> **OAuth works for local Claude Code terminal sessions only.** All container deployments (Docker Compose, K8s) require `ANTHROPIC_API_DEPLOYMENT_KEY` set in `.env.services` — OAuth is not available inside containers.
 
-Set `ANTHROPIC_API_DEPLOYMENT_KEY` in `.env` to an API key from [console.anthropic.com](https://console.anthropic.com) before running any Docker or K8s deployment.
+Set `ANTHROPIC_API_DEPLOYMENT_KEY` in `.env.services` to an API key from [console.anthropic.com](https://console.anthropic.com) before running any Docker or K8s deployment.
 
 ---
 
-## `.env` Configuration
+## Environment Configuration
 
-`scripts/setup.sh` generates `.env` for the **local CLI baseline only** — it does not populate OB1 or container variables. For all other deployment modes, copy `.env.example` from the repo root and fill in the relevant sections:
+Credentials are split across two gitignored files. Copy both templates:
 
 ```bash
 cp .env.example .env
-# Edit .env — fill in values for your chosen deployment mode
-source .env
+cp .env.services.example .env.services
+# Edit both files, then load for your shell session:
+source .env && source .env.services
 ```
 
-The annotated `.env.example` is grouped by section: base setup, webapp, OB1 integration (backend selector, MinIO, PostgreSQL, MCP URLs, LLM), and Supabase (cloud alternative).
+| File | Contains | Who sources it |
+|------|----------|----------------|
+| `.env` | Claude CLI config: paths, MCP access keys, `DATA_BACKEND` | Claude Code shell session |
+| `.env.services` | Storage credentials: MinIO, PostgreSQL, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY`, `OB1_REPO_PATH` | `scripts/start-ob1.sh`, `scripts/k8s-apply-env.sh` |
+
+**Why the split:** Claude's shell inherits exported vars. Keeping storage credentials out of `.env` means Claude cannot reach MinIO or PostgreSQL directly — all applicant data must flow through OB1 MCP tools.
 
 ### Compose vs K8s env var differences
 
 The single most common configuration mistake is mixing compose service names with K8s cluster DNS (or vice versa). The values are different:
 
-| Variable | Docker Compose | Kubernetes |
-|----------|----------------|------------|
-| `DB_HOST` | `postgres` | `openbrain-db.openbrain.svc.cluster.local` |
-| `MINIO_ENDPOINT` | `minio:9000` | `minio.openbrain.svc.cluster.local:9000` |
-| `OB1_MCP_URL` | `http://localhost:8080` | `http://localhost/ob1` |
-| `JOB_SEARCH_MCP_URL` | `http://localhost:8081` | `http://localhost/job-search` |
+| Variable | File | Docker Compose | Kubernetes |
+|----------|------|----------------|------------|
+| `DB_HOST` | `.env.services` | `postgres` | `openbrain-db.openbrain.svc.cluster.local` |
+| `MINIO_ENDPOINT` | `.env.services` | `minio:9000` | `minio.openbrain.svc.cluster.local:9000` |
+| `OB1_MCP_URL` | `.env` | `http://localhost:8080` | `http://localhost/ob1` |
+| `JOB_SEARCH_MCP_URL` | `.env` | `http://localhost:8081` | `http://localhost/job-search` |
+| `JOB_SEARCH_REST_URL` | `.env` | `http://job-search-mcp:8001` | `http://job-search-mcp.openbrain.svc.cluster.local:8001` |
+| `JOB_SEARCH_MCP_KEY` | `.env` | (same value in both) | (same value in both) |
 
 The compose values use Docker service names (resolved inside the compose network). The K8s values use cluster-internal DNS (resolved inside pods) for the MCP servers and the nginx Ingress path for external access.
 
-After changing any `.env` value, regenerate `.mcp.json` so Claude Code uses the updated MCP server addresses:
+`JOB_SEARCH_REST_URL` and `JOB_SEARCH_MCP_KEY` are consumed by the **webapp** (REST client) and the Claude Code terminal (`.mcp.json`). `DB_HOST`, `MINIO_ENDPOINT`, and their credential vars are consumed by the **job-search-mcp server only** — the webapp does not need them in OB1 mode.
+
+After changing any value, regenerate `.mcp.json` so Claude Code uses the updated MCP server addresses:
 
 ```bash
 bash scripts/k8s-apply-env.sh
@@ -170,28 +180,36 @@ All 4 OB1 services (PostgreSQL, MinIO, openbrain MCP, job-search-mcp) plus the w
 
 **Prerequisites:**
 - Docker and Docker Compose
-- Local clone of the OB1 repo (`$OB1_REPO_PATH` in `.env`)
-- `ANTHROPIC_API_DEPLOYMENT_KEY` in `.env`
+- `.env` and `.env.services` configured (see [Environment Configuration](#environment-configuration))
+- `OB1_REPO_PATH` set in `.env.services` to your local OB1 repo clone
+- `ANTHROPIC_API_DEPLOYMENT_KEY` set in `.env.services`
 
-**Step 1 — Configure `.env` for compose mode**
+**Step 1 — Configure env files for compose mode**
 
-The compose stack uses Docker service names, not localhost or cluster DNS. Set these values in `.env`:
+The compose stack uses Docker service names, not localhost or cluster DNS. In `.env`:
 
 ```
 DATA_BACKEND=ob1
-DB_HOST=postgres
-MINIO_ENDPOINT=minio:9000
 OB1_MCP_URL=http://localhost:8080
 JOB_SEARCH_MCP_URL=http://localhost:8081
+JOB_SEARCH_REST_URL=http://job-search-mcp:8001
 ```
 
-Fill in credentials for `DB_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `OB1_MCP_KEY`, `JOB_SEARCH_MCP_KEY`, `LLM_API_KEY` from `.env.example`.
+In `.env.services` (compose-mode values differ from K8s defaults):
+
+```
+DB_HOST=postgres
+MINIO_ENDPOINT=minio:9000
+```
+
+Fill in all credential vars (`DB_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `OB1_MCP_KEY`, `JOB_SEARCH_MCP_KEY`, `LLM_API_KEY`) from `.env.services.example`.
 
 **Step 2 — Build the openbrain MCP image**
 
-Required once (or after OB1 repo updates):
+Required once (or after OB1 repo updates). Source `.env.services` first to get `$OB1_REPO_PATH`:
 
 ```bash
+source .env.services
 docker build -t openbrain-mcp-server:latest \
   "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
 ```
@@ -206,16 +224,17 @@ bash scripts/k8s-apply-env.sh
 
 **Step 4 — Start the stack**
 
+`scripts/start-ob1.sh` sources both env files before running the OB1 compose services:
+
 ```bash
-docker compose \
-  -f webapp/docker-compose.yml \
-  -f integrations/ob1/docker-compose.yml up
+bash scripts/start-ob1.sh up -d
+docker compose -f webapp/docker-compose.yml up -d
 ```
 
 **Step 5 — Apply schema (first run only)**
 
 ```bash
-docker compose -f integrations/ob1/docker-compose.yml exec postgres \
+bash scripts/start-ob1.sh exec postgres \
   psql -U postgres -d openbrain \
   < integrations/ob1/job-search-schema.sql
 ```
@@ -234,7 +253,7 @@ docker compose -f integrations/ob1/docker-compose.yml exec postgres \
 **Verify:**
 ```bash
 curl http://localhost:8000/api/health
-# Expected: {"backend":"ob1","db":"ok","store":"ok"}
+# Expected: {"backend":"ob1","rest_api":"ok"}
 ```
 
 ---
@@ -243,21 +262,27 @@ curl http://localhost:8000/api/health
 
 Full K8s stack in the `openbrain` namespace: OB1 StatefulSet, MinIO, job-search-mcp, nginx Ingress, and the webapp. All services are permanently accessible via nginx Ingress at port 80 once deployed — no per-session port-forwarding needed.
 
-**Prerequisites:** kubectl, helm, Docker (Docker Desktop provides a local K8s cluster), local OB1 repo clone at `$OB1_REPO_PATH`
+**Prerequisites:** kubectl, helm, Docker (Docker Desktop provides a local K8s cluster), `.env` and `.env.services` configured, `OB1_REPO_PATH` set in `.env.services`
 
-**Step 1 — Configure `.env` for K8s mode**
+**Step 1 — Configure env files for K8s mode**
 
-K8s services use cluster-internal DNS. Set these values in `.env`:
+K8s services use cluster-internal DNS. In `.env`:
 
 ```
 DATA_BACKEND=ob1
-DB_HOST=openbrain-db.openbrain.svc.cluster.local
-MINIO_ENDPOINT=minio.openbrain.svc.cluster.local:9000
 OB1_MCP_URL=http://localhost/ob1
 JOB_SEARCH_MCP_URL=http://localhost/job-search
+JOB_SEARCH_REST_URL=http://job-search-mcp.openbrain.svc.cluster.local:8001
 ```
 
-Fill in all credential vars from `.env.example`.
+In `.env.services` (K8s cluster-internal DNS values):
+
+```
+DB_HOST=openbrain-db.openbrain.svc.cluster.local
+MINIO_ENDPOINT=minio.openbrain.svc.cluster.local:9000
+```
+
+Fill in all credential vars from `.env.services.example`.
 
 **Step 2 — Push secrets and config to K8s**
 
@@ -265,7 +290,7 @@ Fill in all credential vars from `.env.example`.
 bash scripts/k8s-apply-env.sh
 ```
 
-Creates `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, and `job-search-llm-config` in the `openbrain` namespace.
+Reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, and `webapp-secret` in the `openbrain` namespace.
 
 **Step 3 — Deploy OB1 services**
 
@@ -324,7 +349,7 @@ bash integrations/ob1/tests/test-deployment.sh
 
 ```bash
 curl http://localhost:30800/api/health
-# Expected: {"backend":"ob1","db":"ok","store":"ok"}
+# Expected: {"backend":"ob1","rest_api":"ok"}
 ```
 
 For cloud K8s clusters (EKS, GKE, AKS): images must be pushed to a registry accessible to the cluster. The Ingress assumes port 80; LoadBalancer or NodePort configuration differs by cloud provider. See [integrations/ob1/README.md](integrations/ob1/README.md) for cloud-specific notes.
@@ -343,17 +368,22 @@ Follow the [OB1 getting-started guide](https://github.com/NateBJones-Projects/OB
 
 **Step 2 — Add the job-search extension**
 
-Once OB1 is running, deploy the job-search-mcp service alongside it. Configure `.env` with:
+Once OB1 is running, deploy the job-search-mcp service alongside it. In `.env`:
 
 ```
 DATA_BACKEND=ob1
+```
+
+In `.env.services`:
+
+```
 OBJECT_STORE_BACKEND=supabase
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_KEY=your_supabase_service_key
 SUPABASE_BUCKET=job-search
 ```
 
-Set PostgreSQL connection vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`) to point at OB1's database instance.
+Also set PostgreSQL connection vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`) in `.env.services` to point at OB1's database instance.
 
 Run `bash scripts/k8s-apply-env.sh` to generate `.mcp.json`.
 

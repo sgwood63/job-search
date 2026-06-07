@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # Ensure backend/ is on the path so tests can import main, storage, tracker
@@ -36,13 +37,49 @@ def local_store(tmp_applicant: Path, monkeypatch):
 
 @pytest.fixture
 def client(tmp_applicant: Path, local_store, monkeypatch):
-    """FastAPI TestClient with APPLICANT_DIR, DATA_BACKEND, and store all patched."""
+    """FastAPI TestClient in local mode with APPLICANT_DIR and store patched."""
     from starlette.testclient import TestClient
     import main as main_mod
 
     monkeypatch.setattr(main_mod, "APPLICANT_DIR", tmp_applicant)
     monkeypatch.setattr(main_mod, "DATA_BACKEND", "local")
-    monkeypatch.setattr(main_mod, "store", local_store)
+    monkeypatch.setattr(main_mod, "_local_store", local_store)
 
     with TestClient(main_mod.app) as c:
         yield c
+
+
+@pytest.fixture
+def mock_ob_rest():
+    """AsyncMock stand-in for ObRestClient — pre-wired with sensible defaults."""
+    m = MagicMock()
+    m.get_file = AsyncMock(return_value=b"# Content")
+    m.get_file_url = AsyncMock(return_value="http://minio.test/file.md?token=x")
+    m.list_files = AsyncMock(return_value=[])
+    m.put_file = AsyncMock(return_value={"key": "test.md", "bytes": 10})
+    m.delete_file = AsyncMock(return_value={"deleted": True})
+    m.get_tracker = AsyncMock(return_value=[])
+    m.get_profiles = AsyncMock(return_value=[])
+    m.get_application = AsyncMock(return_value=None)
+    m.get_contacts = AsyncMock(return_value=[])
+    m.search = AsyncMock(return_value=[])
+    m.ping = AsyncMock(return_value=True)
+    m.close = AsyncMock(return_value=None)
+    return m
+
+
+@pytest.fixture
+def ob1_client(mock_ob_rest, monkeypatch):
+    """FastAPI TestClient in ob1 mode with _ob_rest replaced by mock_ob_rest.
+
+    Patches are applied INSIDE the TestClient context so they override whatever
+    the startup event created (startup runs when the 'with' block opens and may
+    create a real ObRestClient if DATA_BACKEND=ob1 is in the environment).
+    """
+    from starlette.testclient import TestClient
+    import main as main_mod
+
+    with TestClient(main_mod.app) as c:
+        monkeypatch.setattr(main_mod, "DATA_BACKEND", "ob1")
+        monkeypatch.setattr(main_mod, "_ob_rest", mock_ob_rest)
+        yield c, mock_ob_rest

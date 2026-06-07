@@ -3,7 +3,8 @@
  *
  * Runs alongside the Open Brain MCP server as a separate Kubernetes Deployment.
  * Shares the same PostgreSQL database (js_* tables) and MinIO object store.
- * Provides 16 MCP tools for file storage, pipeline state, and semantic search.
+ * Provides 16 MCP tools for file storage, pipeline state, and semantic search,
+ * plus a REST API at /api/v2/* for direct webapp access.
  *
  * Environment variables:
  *   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD   PostgreSQL (same cluster as OB1)
@@ -20,7 +21,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 import { Pool } from "postgres";
-import { registerJobSearchTools } from "./job-search-tools.ts";
+import {
+  registerJobSearchTools,
+  uploadFileCore, getFileCore, getFileUrlCore, listFilesCore, deleteFileCore, deleteApplicationCore,
+  getPipelineCore, getApplicationCore, getProfilesCore, getOverdueFollowupsCore,
+  createApplicationCore, updateApplicationStatusCore, logInterviewCore, completeInterviewCore,
+  addContactCore, upsertCompanyCore, searchApplicationsSemanticCore,
+} from "./job-search-tools.ts";
 
 // --- Configuration ---
 
@@ -66,7 +73,7 @@ async function getEmbedding(text: string): Promise<number[]> {
   return d.data[0].embedding;
 }
 
-const MAX_EMBED_CHARS = 25_000; // ~6,000 tokens — safely under text-embedding-3-small's 8,191 limit
+const MAX_EMBED_CHARS = 25_000;
 
 async function summarizeForEmbedding(content: string): Promise<string> {
   const r = await fetch(`${CHAT_API_BASE}/chat/completions`, {
@@ -193,11 +200,11 @@ const server = new McpServer({
 
 registerJobSearchTools(server, pool, { captureThought, searchThoughts });
 
-// --- Hono App with Auth ---
+// --- Hono App ---
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-brain-key, accept, mcp-session-id, mcp-protocol-version, last-event-id",
 };
 
@@ -218,25 +225,249 @@ function extractJsonRpcId(bodyText: string | null): string | number | null {
 
 const app = new Hono();
 
-// CORS preflight — required for Electron-based clients (Claude Code, Claude Desktop)
+// CORS preflight — no auth required
 app.options("*", (c) => c.text("ok", 200, corsHeaders));
 
-app.all("*", async (c) => {
-  const provided = c.req.header("x-brain-key") || new URL(c.req.url).searchParams.get("key");
-  if (!provided || provided !== MCP_ACCESS_KEY) {
-    // Return JSON-RPC 2.0 error envelope (HTTP 200) instead of bare HTTP 401.
-    // Strict MCP hosts treat 4xx as transport-level failures and tear the connection down.
-    const bodyText = c.req.method !== "GET" ? await c.req.text().catch(() => null) : null;
-    const id = extractJsonRpcId(bodyText);
-    return new Response(JSON.stringify({
-      jsonrpc: "2.0",
-      error: { code: JSON_RPC_UNAUTHORIZED_CODE, message: UNAUTHORIZED_MESSAGE },
-      id,
-    }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+// Auth middleware — applies to all non-OPTIONS requests
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS") return await next();
+
+  const provided = c.req.header("x-brain-key") ?? new URL(c.req.url).searchParams.get("key");
+  if (provided && provided === MCP_ACCESS_KEY) return await next();
+
+  // REST routes: plain 401 JSON
+  if (c.req.path.startsWith("/api/")) {
+    return c.json({ error: UNAUTHORIZED_MESSAGE }, 401, corsHeaders);
   }
 
-  // Fix: patch missing or incomplete Accept header (StreamableHTTPTransport requires both
-  // application/json and text/event-stream). Fires for any client that doesn't include SSE.
+  // MCP protocol: return JSON-RPC 2.0 error envelope at HTTP 200 (MCP clients treat 4xx as transport failure)
+  const bodyText = c.req.method !== "GET" ? await c.req.text().catch(() => null) : null;
+  const id = extractJsonRpcId(bodyText);
+  return new Response(JSON.stringify({
+    jsonrpc: "2.0",
+    error: { code: JSON_RPC_UNAUTHORIZED_CODE, message: UNAUTHORIZED_MESSAGE },
+    id,
+  }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+});
+
+// ===========================================================================
+// REST API — /api/v2/*
+// ===========================================================================
+
+// --- File routes ---
+
+app.put("/api/v2/files/*", async (c) => {
+  const key = c.req.path.slice("/api/v2/files/".length);
+  const body = await c.req.json();
+  const result = await uploadFileCore(pool, captureThought, {
+    key,
+    content: body.content,
+    content_type: body.content_type ?? "text/markdown",
+    binary: body.binary ?? false,
+  });
+  return c.json(result, 201, corsHeaders);
+});
+
+// List must come before the wildcard GET to avoid ambiguity
+app.get("/api/v2/files", async (c) => {
+  const prefix = c.req.query("prefix") ?? "";
+  const files = await listFilesCore(pool, prefix);
+  return c.json(files, 200, corsHeaders);
+});
+
+app.get("/api/v2/files/*", async (c) => {
+  const key = c.req.path.slice("/api/v2/files/".length);
+  const { bytes, contentType } = await getFileCore(key);
+  return new Response(bytes, {
+    headers: { "Content-Type": contentType, ...corsHeaders },
+  });
+});
+
+app.delete("/api/v2/files/*", async (c) => {
+  const key = c.req.path.slice("/api/v2/files/".length);
+  const result = await deleteFileCore(pool, key);
+  return c.json(result, 200, corsHeaders);
+});
+
+app.get("/api/v2/file-url/*", async (c) => {
+  const key = c.req.path.slice("/api/v2/file-url/".length);
+  const expiresIn = parseInt(c.req.query("expires_in") ?? "3600", 10);
+  const result = await getFileUrlCore(key, expiresIn);
+  return c.json(result, 200, corsHeaders);
+});
+
+// --- Application routes ---
+
+app.post("/api/v2/applications", async (c) => {
+  const body = await c.req.json();
+  const result = await createApplicationCore(pool, {
+    company_name: body.company_name,
+    role_title: body.role_title,
+    folder_prefix: body.folder_prefix,
+    profile_slug: body.profile_slug,
+    source_url: body.source_url,
+    status: body.status ?? "resume-ready",
+    priority: body.priority ?? 1,
+    status_detail: body.status_detail,
+  });
+  return c.json(result, 201, corsHeaders);
+});
+
+app.get("/api/v2/applications/:id", async (c) => {
+  const id = c.req.param("id");
+  const result = await getApplicationCore(pool, id);
+  if (!result) return c.json({ error: "Not found" }, 404, corsHeaders);
+  return c.json(result, 200, corsHeaders);
+});
+
+app.patch("/api/v2/applications/:id/status", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const result = await updateApplicationStatusCore(pool, {
+    id,
+    status: body.status,
+    status_detail: body.status_detail,
+    follow_up_date: body.follow_up_date,
+    applied_date: body.applied_date,
+  });
+  if (!result) return c.json({ error: "Not found" }, 404, corsHeaders);
+  return c.json(result, 200, corsHeaders);
+});
+
+app.delete("/api/v2/applications", async (c) => {
+  const { folder_prefix } = await c.req.json();
+  const result = await deleteApplicationCore(pool, folder_prefix);
+  if (!result) return c.json({ error: "Not found" }, 404, corsHeaders);
+  return c.json(result, 200, corsHeaders);
+});
+
+app.post("/api/v2/applications/:id/interviews", async (c) => {
+  const application_id = c.req.param("id");
+  const body = await c.req.json();
+  const result = await logInterviewCore(pool, {
+    application_id,
+    stage: body.stage,
+    scheduled_at: body.scheduled_at,
+    interviewer_name: body.interviewer_name,
+    interviewer_title: body.interviewer_title,
+    pre_notes: body.pre_notes,
+  });
+  return c.json(result, 201, corsHeaders);
+});
+
+// --- Interview routes ---
+
+app.patch("/api/v2/interviews/:id/complete", async (c) => {
+  const interview_id = c.req.param("id");
+  const body = await c.req.json();
+  const result = await completeInterviewCore(pool, {
+    interview_id,
+    post_notes: body.post_notes,
+    rating: body.rating,
+  });
+  if (!result) return c.json({ error: "Not found" }, 404, corsHeaders);
+  return c.json(result, 200, corsHeaders);
+});
+
+// --- Contact routes ---
+
+app.post("/api/v2/contacts", async (c) => {
+  const body = await c.req.json();
+  const result = await addContactCore(pool, {
+    name: body.name,
+    company_name: body.company_name,
+    title: body.title,
+    email: body.email,
+    linkedin_url: body.linkedin_url,
+    relationship_type: body.relationship_type ?? "network",
+    notes: body.notes,
+  });
+  return c.json(result, 201, corsHeaders);
+});
+
+// --- Company routes ---
+
+app.put("/api/v2/companies/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const body = await c.req.json();
+  const result = await upsertCompanyCore(pool, {
+    name: body.name,
+    slug,
+    industry: body.industry,
+    size_range: body.size_range,
+    remote_policy: body.remote_policy,
+    website: body.website,
+    domain_tags: body.domain_tags,
+    notes: body.notes,
+  });
+  return c.json(result, 200, corsHeaders);
+});
+
+// --- Contacts read route ---
+
+app.get("/api/v2/contacts", async (c) => {
+  const company = c.req.query("company");
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.queryObject(
+      `SELECT ct.id::text AS id, ct.name, ct.title, ct.email, ct.linkedin_url,
+              ct.relationship_type, ct.notes, ct.last_contact_at, ct.follow_up_date,
+              COALESCE(c.name, '') AS company_name
+       FROM js_contacts ct
+       LEFT JOIN js_companies c ON ct.company_id = c.id
+       ${company ? "WHERE LOWER(c.name) LIKE LOWER($1)" : ""}
+       ORDER BY ct.last_contact_at DESC NULLS LAST`,
+      company ? [`%${company}%`] : [],
+    );
+    return c.json(rows, 200, corsHeaders);
+  } finally { client.release(); }
+});
+
+// --- Read routes (used by webapp to avoid direct Postgres access) ---
+
+app.get("/api/v2/tracker", async (c) => {
+  const q = c.req.query();
+  const rows = await getPipelineCore(pool, {
+    status: q.status || undefined,
+    statuses: q.statuses ? q.statuses.split(",") : undefined,
+    company: q.company || undefined,
+    role: q.role || undefined,
+    profile: q.profile || undefined,
+    priority: q.priority ? parseInt(q.priority, 10) : undefined,
+    min_priority: q.min_priority ? parseInt(q.min_priority, 10) : undefined,
+    due_before: q.due_before || undefined,
+    limit: q.limit ? parseInt(q.limit, 10) : 50,
+  });
+  return c.json(rows, 200, corsHeaders);
+});
+
+app.get("/api/v2/profiles", async (c) => {
+  const rows = await getProfilesCore(pool);
+  return c.json(rows, 200, corsHeaders);
+});
+
+app.get("/api/v2/overdue", async (c) => {
+  const rows = await getOverdueFollowupsCore(pool);
+  return c.json(rows, 200, corsHeaders);
+});
+
+// --- Semantic search ---
+
+app.post("/api/v2/search", async (c) => {
+  const { query, limit = 5 } = await c.req.json();
+  const results = await searchApplicationsSemanticCore(searchThoughts, query, limit);
+  if (results === null) return c.json({ error: "Search not configured" }, 503, corsHeaders);
+  return c.json(results, 200, corsHeaders);
+});
+
+// ===========================================================================
+// MCP catch-all (must come after all REST routes)
+// ===========================================================================
+
+app.all("*", async (c) => {
+  // Auth handled by middleware above.
+  // Fix: patch missing or incomplete Accept header — StreamableHTTPTransport requires both
+  // application/json and text/event-stream.
   if (!c.req.header("accept")?.includes("text/event-stream")) {
     const headers = new Headers(c.req.raw.headers);
     headers.set("Accept", "application/json, text/event-stream");

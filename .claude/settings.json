@@ -1,4 +1,16 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(curl -si http://localhost:8000/applications/2026-06-06-stealth-clinical-ai-biz-ops-lead)",
+      "Bash(kubectl apply *)",
+      "Bash(echo \"PF_PID=$!\")",
+      "Bash(docker build *)",
+      "Bash(kubectl exec *)",
+      "Bash(.venv/bin/pytest tests/ -x -q)",
+      "Bash(.venv/bin/pytest tests/test_api.py::test_health_ok -x -q)",
+      "Bash(.venv/bin/pytest tests/ -q --ignore=tests/test_api.py)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -51,10 +63,5 @@
     "type": "command",
     "command": "bash scripts/status-line.sh",
     "refreshInterval": 300
-  },
-  "permissions": {
-    "allow": [
-      "Bash(curl -si http://localhost:8000/applications/2026-06-06-stealth-clinical-ai-biz-ops-lead)"
-    ]
   }
 }

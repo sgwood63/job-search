@@ -12,9 +12,10 @@ base-documents/Jobs*
 base-documents/AI\ Architect*
 base-documents/linkedin-job-listing-page.html
 
-# Environment — contains local paths, never commit
+# Environment — contains local paths and credentials, never commit
 .env
 .env-backup
+.env.services
 
 # MCP server config — contains real access keys, never commit
 # Copy from .mcp.json.example and fill in real values

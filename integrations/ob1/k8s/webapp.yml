@@ -63,8 +63,7 @@ spec:
             # Non-sensitive static config: cluster DNS names, DATA_BACKEND, paths
             - configMapRef:
                 name: webapp-configmap
-            # Sensitive credentials: DB_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
-            # ANTHROPIC_API_KEY, OB1_MCP_KEY, JOB_SEARCH_MCP_KEY
+            # Sensitive credentials: ANTHROPIC_API_KEY, OB1_MCP_KEY, JOB_SEARCH_MCP_KEY
             # Created/updated by: bash scripts/k8s-apply-env.sh
             - secretRef:
                 name: webapp-secret
