@@ -204,10 +204,17 @@ Output: date in header (right), page number in footer (center), no filename or f
 
 **After PDF generation and page count verification:**
 
-- **OB1 active**: `upload_file('applications/[folder]/[Name_Role].pdf', <pdf_bytes>, 'application/pdf')`; `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)`. Do NOT copy the PDF to `$APPLICANT_DIR` — OB1 is the store of record; the `/tmp` copy can be deleted.
+- **OB1 active**: PDFs are binary — use the REST API (binary and large files exceed MCP transport limits; see `memory/feedback_ob1_integration.md` Upload routing section):
+  ```bash
+  source "$APP_DIR/.env"
+  PDF_B64=$(base64 -i "$RESUME_PDF")
+  curl -s -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/applications/[folder]/[Name_Role].pdf" \
+    -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"content\":\"$PDF_B64\",\"content_type\":\"application/pdf\",\"binary\":true}"
+  ```
+  Then: `update_application_status(id, 'resume-ready', 'Resume generated [YYYY-MM-DD] — not yet submitted', null)`. Do NOT copy the PDF to `$APPLICANT_DIR` — OB1 is the store of record; the `/tmp` copy can be deleted.
 - **Fallback**: PDF is already at `$RESUME_PDF`; update `application-tracker.md` status to `Resume Ready`.
-
-In both modes: read the PDF bytes from the generated file path for the `upload_file` call if OB1 is active.
 
 ### Required Resume Sections (every resume)
 
