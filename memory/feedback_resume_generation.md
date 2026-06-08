@@ -40,6 +40,25 @@ Always follow this two-phase sequence. Never generate the PDF before the user ha
 - Founding Architect always comes first within Earlier Career (most recent of the early roles)
 - Never place an early-career role in the main section above a recent role
 
+## Company Descriptions in Role Entries
+
+Include a short company description for every role in the main Experience section. Place it as a brief italicized line immediately after the company name / role title line, before the bullets.
+
+**Format:**
+```markdown
+**Company Name** | Role Title | Date Range
+*Short description — what the company does, stage/size if useful*
+- Bullet...
+```
+
+**What to include:** 1 line, ≤15 words. What the company does, plus stage or scale if relevant to positioning (e.g. "*AI-powered analytics platform for financial services, Series C*" or "*Global management consulting firm, 300,000+ employees*").
+
+**When to drop:** Only when the target page limit would be exceeded and something must give. Priority order for cutting: company descriptions for less-relevant mid-career roles first, then earlier roles in the main section, then descriptions for well-known brands (where the reader already knows the company).
+
+**Why:** Recruiters often don't recognize company names — especially for startups, mid-market SaaS, and pre-IPO companies. A one-line description removes the "what is this?" gap and keeps the reader focused on the bullet content.
+
+**How to apply:** Check every draft. If any role in the main Experience section lacks a company description, add one before presenting for review. Do not add to Earlier Career entries.
+
 ## Capabilities Section Format
 
 Use `, ` (comma-space) as the delimiter between skills in the Capabilities section — not `·` (middle dot).
