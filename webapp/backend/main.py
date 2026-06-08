@@ -696,6 +696,7 @@ class ChatSession:
     messages_structured: list = field(default_factory=list)
     clients: list = field(default_factory=list)
     current_proc: Any = None
+    mcp_error_count: int = 0  # consecutive MCP connection errors; resets on any success
 
 
 _sessions: dict[str, ChatSession] = {}
@@ -891,21 +892,35 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
 
             if obj.get('type') == 'user':
                 for block in obj.get('message', {}).get('content', []):
-                    if block.get('type') == 'tool_result' and block.get('is_error'):
-                        err_text = str(block.get('content', ''))
-                        if any(tok in err_text for tok in ('MCP', 'connect', 'ECONNREFUSED', 'ENOTFOUND')):
-                            session.status = 'closed'
-                            _broadcast(session, {
-                                'type': 'session_error',
-                                'content': (
-                                    'MCP server connection was lost mid-session. '
-                                    'This session has been closed — start a new session to continue.'
-                                ),
-                            })
-                            if proc is not None:
-                                proc.terminate()
-                            session.current_proc = None
-                            return
+                    if block.get('type') == 'tool_result':
+                        if not block.get('is_error'):
+                            session.mcp_error_count = 0
+                        else:
+                            err_text = str(block.get('content', ''))
+                            # Hard failures: server is definitively unreachable — kill immediately.
+                            # Soft failures (generic MCP/connect errors): may be transient (SSE
+                            # timeout, brief nginx hiccup). Kill only after 3 consecutive failures
+                            # so a single dropped connection doesn't close a working session.
+                            hard = any(tok in err_text for tok in ('ECONNREFUSED', 'ENOTFOUND'))
+                            soft = not hard and any(tok in err_text for tok in ('MCP', 'connect'))
+                            if hard:
+                                session.mcp_error_count = 3
+                            elif soft:
+                                session.mcp_error_count += 1
+                            if session.mcp_error_count >= 3:
+                                session.mcp_error_count = 0
+                                session.status = 'closed'
+                                _broadcast(session, {
+                                    'type': 'session_error',
+                                    'content': (
+                                        'MCP server connection was lost mid-session. '
+                                        'This session has been closed — start a new session to continue.'
+                                    ),
+                                })
+                                if proc is not None:
+                                    proc.terminate()
+                                session.current_proc = None
+                                return
             elif obj.get('type') == 'assistant':
                 content_blocks = obj.get('message', {}).get('content', [])
                 current_text = ''.join(
