@@ -1,0 +1,85 @@
+---
+# OB1 REST API (PostgreSQL-backed)
+# Exposes the same HTTP REST interface as open-brain-rest but reads/writes
+# directly to the local PostgreSQL instance. The OB1 Dashboard (ob1-dashboard)
+# calls this service — it cannot talk to the MCP server (which is MCP-protocol only).
+#
+# Prerequisites:
+#   1. openbrain StatefulSet is running (provides the DB at openbrain-db svc)
+#   2. openbrain-db-service.yml has been applied (exposes port 5432 inside cluster)
+#   3. thoughts table exists in the openbrain database
+#   4. bash scripts/k8s-apply-env.sh has been run (creates job-search-secret, job-search-llm-config)
+#   5. Docker image ob1-rest-pg:latest is available on the cluster:
+#        docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ob1-rest-pg
+  namespace: openbrain
+  labels:
+    app: ob1-rest-pg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ob1-rest-pg
+  template:
+    metadata:
+      labels:
+        app: ob1-rest-pg
+    spec:
+      containers:
+        - name: ob1-rest-pg
+          image: ob1-rest-pg:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8002
+              name: http
+          envFrom:
+            # DB_HOST, DB_PORT, DB_NAME, DB_USER, EMBEDDING_API_BASE, EMBEDDING_MODEL
+            - configMapRef:
+                name: openbrain-configmap
+            # DB_PASSWORD, EMBEDDING_API_KEY (MCP_ACCESS_KEY is sourced separately below)
+            - secretRef:
+                name: job-search-secret
+          env:
+            - name: PORT
+              value: "8002"
+            # openbrain-configmap has DB_HOST=localhost (correct for the OB1 sidecar pod).
+            # This override sets it to the cluster-internal service DNS for remote access.
+            - name: DB_HOST
+              value: openbrain-db.openbrain.svc.cluster.local
+            # Auth key — uses OB1's own access key (openbrain-secret stores it as mcp-access-key)
+            - name: MCP_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: mcp-access-key
+          readinessProbe:
+            tcpSocket:
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ob1-rest-pg
+  namespace: openbrain
+spec:
+  selector:
+    app: ob1-rest-pg
+  ports:
+    - protocol: TCP
+      port: 8002
+      targetPort: http
+      name: http
+  type: ClusterIP

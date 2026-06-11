@@ -48,7 +48,7 @@ source "$ENV_FILE"
 # shellcheck source=../.env.services
 source "$SERVICES_ENV_FILE"
 
-REQUIRED=(DB_PASSWORD OB1_MCP_KEY JOB_SEARCH_MCP_KEY MINIO_ACCESS_KEY MINIO_SECRET_KEY LLM_API_KEY)
+REQUIRED=(DB_PASSWORD OB1_MCP_KEY JOB_SEARCH_MCP_KEY MINIO_ACCESS_KEY MINIO_SECRET_KEY LLM_API_KEY DASHBOARD_SESSION_SECRET)
 missing=()
 for var in "${REQUIRED[@]}"; do
   val="${!var:-}"
@@ -133,6 +133,14 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic webapp-se
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
 echo "webapp-secret updated in openbrain namespace."
+
+kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic dashboard-secret \
+  --namespace openbrain \
+  --from-literal=SESSION_SECRET="$DASHBOARD_SESSION_SECRET" \
+  --dry-run=client -o yaml \
+  | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
+
+echo "dashboard-secret updated in openbrain namespace."
 
 # Generate .mcp.json for Claude Code — auth keys live in .env, not committed.
 # "type": "http" is required for Claude Code to recognize the Streamable HTTP transport.

@@ -23,7 +23,7 @@ How OB1 services are deployed.
 
 | Option | Description |
 |--------|-------------|
-| **Docker Compose** | Self-managed — all 4 OB1 services in one compose stack, no K8s cluster required |
+| **Docker Compose** | Self-managed — all 5 OB1 services in one compose stack, no K8s cluster required |
 | **Kubernetes** | Self-managed — K8s cluster (Docker Desktop or cloud) with nginx Ingress |
 | **OB1 Default Deployment** | Follow the [OB1 getting-started guide](https://github.com/NateBJones-Projects/OB1/blob/main/docs/01-getting-started.md), then add the job-search extension |
 
@@ -246,6 +246,8 @@ bash scripts/start-ob1.sh exec postgres \
 | Webapp | [http://localhost:8000](http://localhost:8000) |
 | OB1 MCP | `http://localhost:8080/mcp` |
 | job-search MCP | `http://localhost:8081/mcp` |
+| OB1 REST API | `http://localhost:8002` |
+| OB1 Dashboard | [http://localhost:3000](http://localhost:3000) |
 | MinIO S3 API | `http://localhost:9000` |
 | MinIO console | [http://localhost:9001](http://localhost:9001) |
 | PostgreSQL | `localhost:5432` |
@@ -290,11 +292,11 @@ Fill in all credential vars from `.env.services.example`.
 bash scripts/k8s-apply-env.sh
 ```
 
-Reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, and `webapp-secret` in the `openbrain` namespace.
+Reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, `webapp-secret`, and `dashboard-secret` in the `openbrain` namespace.
 
 **Step 3 — Deploy OB1 services**
 
-Follow [integrations/ob1/README.md](integrations/ob1/README.md) steps 2–9:
+Follow [integrations/ob1/README.md](integrations/ob1/README.md) steps 2–11:
 1. Install nginx Ingress Controller (helm)
 2. Deploy OB1 (build `openbrain-mcp-server:latest`, apply `k8s/openbrain.yml`)
 3. Apply nginx Ingress (`k8s/ingress.yml`)
@@ -303,6 +305,8 @@ Follow [integrations/ob1/README.md](integrations/ob1/README.md) steps 2–9:
 6. Deploy MinIO (`k8s/minio-configmap.yml`, `k8s/minio.yml`, `k8s/minio-s3-nodeport.yml`)
 7. Deploy job-search-mcp (`k8s/job-search-configmap.yml`, build image, apply `k8s/job-search.yml`)
 8. Create MinIO bucket
+9. Deploy ob1-rest-pg REST API (`docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/`, apply `k8s/ob1-rest-pg.yml`) — PostgreSQL-backed REST layer required by the dashboard
+10. Deploy OB1 Dashboard (build `ob1-dashboard:latest` with `DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002`, apply `k8s/dashboard.yml`, `k8s/dashboard-nodeport.yml`) — access at `http://localhost:30303`
 
 **Step 4 — Deploy the webapp**
 
