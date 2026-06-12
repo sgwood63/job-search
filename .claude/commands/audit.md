@@ -1,6 +1,6 @@
 Audit an application folder for completeness before recording a submission.
 
-Read `$APP_DIR/.env` and check `DATA_BACKEND`. Set `OB1_MODE = (DATA_BACKEND == "ob1")`.
+Read `$APP_DIR/.env` and resolve `DATA_BACKEND` (default: `local`). Apply routing rule per `memory/feedback_ob1_integration.md` for all APPLICANT file operations below.
 
 **Usage:** `/audit [folder-name]`
 If no folder name is given:

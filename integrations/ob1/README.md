@@ -17,7 +17,7 @@ This directory contains the files needed to deploy the job search system as a co
 
 | Requirement | Notes |
 |---|---|
-| OB1 repo (local clone) | Required to build `openbrain-mcp-server:latest`. Set `OB1_REPO_PATH` in `.env` to the clone path. The image is built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/`. |
+| OB1 repo (local clone) | Required to build `openbrain-mcp-server:latest`. Set `OB1_REPO_PATH` in `.env.services` to the clone path. The image is built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/`. |
 | kubectl | Kubernetes CLI |
 | helm | For nginx Ingress Controller installation |
 | Docker | Image builds; Docker Desktop provides a local k8s cluster |
@@ -33,7 +33,11 @@ integrations/ob1/
 ├── job-search-server.ts            (job-search-mcp entry point — Deno HTTP server)
 ├── deno.json                       (import map for job-search-mcp)
 ├── Dockerfile                      (builds the job-search-mcp image)
-├── docker-compose.yml              (all 4 OB1 services — K8s-free alternative)
+├── docker-compose.yml              (all OB1 services — K8s-free alternative)
+├── ob1-rest-pg/
+│   ├── index.ts                    (PostgreSQL-backed REST API — serves the dashboard)
+│   ├── deno.json                   (import map for ob1-rest-pg)
+│   └── Dockerfile                  (builds the ob1-rest-pg image)
 ├── k8s/
 │   ├── openbrain.yml               (OB1 StatefulSet — job-search-managed; use instead of OB1 repo's copy)
 │   ├── openbrain-db-service.yml    (exposes OB1 PostgreSQL on port 5432 for job-search-mcp access)
@@ -42,30 +46,40 @@ integrations/ob1/
 │   ├── minio.yml                   (MinIO Deployment + ClusterIP Service)
 │   ├── minio-s3-nodeport.yml       (NodePort Service — exposes MinIO S3 API at localhost:30900)
 │   ├── job-search-configmap.yml    (non-sensitive config: cluster DNS, model names, ports)
-│   └── job-search.yml              (job-search-mcp Deployment + ClusterIP Service)
+│   ├── job-search.yml              (job-search-mcp Deployment + ClusterIP Service)
+│   ├── ob1-rest-pg.yml             (ob1-rest-pg Deployment + ClusterIP Service — REST API for dashboard)
+│   ├── dashboard.yml               (ob1-dashboard Deployment + ClusterIP Service)
+│   └── dashboard-nodeport.yml      (NodePort Service — exposes dashboard at localhost:30303)
 └── tests/
     └── test-deployment.sh          (deployment verification — 19 assertions)
 ```
 
 ## Setup Order
 
-### 1. Configure `.env`
+### 1. Configure `.env` and `.env.services`
 
-Copy the template from the **repo root** and fill in all OB1 credentials before running any commands below:
+Credentials are split across two gitignored files. Copy both templates and fill them in:
 
 ```bash
 # Run from the repo root ($APP_DIR), not from integrations/ob1/
 cp .env.example .env
-# Edit .env — update or confirm variable settings from .env.example
+cp .env.services.example .env.services
+# Edit both files — .env for Claude CLI config, .env.services for storage credentials
 ```
 
-Load the vars into your shell (re-run in any new terminal session):
+| File | Contents |
+|------|----------|
+| `.env` | Claude CLI config: paths, MCP access keys (`OB1_MCP_KEY`, `JOB_SEARCH_MCP_KEY`), `DATA_BACKEND` |
+| `.env.services` | Storage credentials: MinIO, PostgreSQL, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY`, `OB1_REPO_PATH` |
+
+Load both into your shell (re-run in any new terminal session):
 
 ```bash
 source .env
+source .env.services
 ```
 
-All commands in this guide use `$VARIABLE_NAME` references — they resolve correctly as long as `.env` is sourced. See `.env.example` for the full annotated list.
+All commands in this guide use `$VARIABLE_NAME` references — they resolve correctly as long as both files are sourced. See `.env.example` and `.env.services.example` for the full annotated lists.
 
 Then push all credentials and config to Kubernetes:
 
@@ -73,7 +87,7 @@ Then push all credentials and config to Kubernetes:
 bash scripts/k8s-apply-env.sh
 ```
 
-This creates `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, and `job-search-llm-config` in the `openbrain` namespace from your `.env` values. Re-run after any credential or config change (takes effect on next pod restart).
+This reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, and `webapp-secret` in the `openbrain` namespace. Re-run after any credential or config change (takes effect on next pod restart).
 
 ### 1b. Python virtual environment
 
@@ -115,7 +129,7 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 
 The job search extension ships its own `integrations/ob1/k8s/openbrain.yml` — a version of the OB1 manifest that sources all config from the `openbrain-configmap` and `openbrain-secret` created in step 1. Use this instead of the manifest in the OB1 repo. Do **not** apply OB1's `openbrain.yml` or `secrets.yml`.
 
-1. Build the OB1 MCP server image from your OB1 checkout (`$OB1_REPO_PATH` set in `.env`):
+1. Build the OB1 MCP server image from your OB1 checkout (`$OB1_REPO_PATH` set in `.env.services`):
 
    ```bash
    docker build -t openbrain-mcp-server:latest "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
@@ -193,7 +207,7 @@ kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f 
 
    **Option C — Python (using `.venv` from step 1b):**
    ```bash
-   source .venv/bin/activate && source .env
+   source .venv/bin/activate && source .env && source .env.services
    python3 -c "
    from minio import Minio; import os
    c = Minio(os.environ['MINIO_ENDPOINT'], os.environ['MINIO_ACCESS_KEY'], os.environ['MINIO_SECRET_KEY'], secure=False)
@@ -242,7 +256,73 @@ kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f 
    kubectl logs -n openbrain -l app=job-search-mcp
    ```
 
-### 9. Configure Claude Code MCP
+### 9. Build and deploy ob1-rest-pg
+
+`ob1-rest-pg` is a Deno/Hono REST API that serves the dashboard. The OB1 MCP server handles only MCP protocol — it returns 406 for plain HTTP — so a separate REST service is needed for browser access.
+
+1. Build the image:
+
+   ```bash
+   docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/
+
+   # For K3s:
+   docker save ob1-rest-pg:latest | sudo k3s ctr images import -
+
+   # For minikube:
+   minikube image load ob1-rest-pg:latest
+   ```
+
+2. Deploy:
+
+   ```bash
+   kubectl apply -f integrations/ob1/k8s/ob1-rest-pg.yml
+   ```
+
+3. Verify:
+
+   ```bash
+   kubectl get pods -n openbrain -l app=ob1-rest-pg
+   ```
+
+### 10. Build and deploy the OB1 Dashboard
+
+The dashboard build definition lives in `integrations/ob1/docker-compose.yml` — no Dockerfile in the OB1 repo is needed. The dashboard connects to `ob1-rest-pg` (step 9), not the OB1 MCP server.
+
+1. Add `DASHBOARD_SESSION_SECRET` to `.env.services` (generate: `openssl rand -hex 32`), then recreate secrets:
+
+   ```bash
+   bash scripts/k8s-apply-env.sh   # creates dashboard-secret
+   ```
+
+2. Build the image using docker compose (set `OB1_REPO_PATH` in `.env.services`):
+
+   ```bash
+   source .env.services
+   DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002 \
+     docker compose -f integrations/ob1/docker-compose.yml build dashboard
+
+   # For K3s:
+   docker save ob1-dashboard:latest | sudo k3s ctr images import -
+
+   # For minikube:
+   minikube image load ob1-dashboard:latest
+   ```
+
+3. Deploy:
+
+   ```bash
+   kubectl apply -f integrations/ob1/k8s/dashboard.yml
+   kubectl apply -f integrations/ob1/k8s/dashboard-nodeport.yml
+   ```
+
+4. Verify and open:
+
+   ```bash
+   kubectl get pods -n openbrain -l app=ob1-dashboard
+   open http://localhost:30303   # log in with OB1_MCP_KEY as the API key
+   ```
+
+### 11. Configure Claude Code MCP
 
 `.mcp.json` is generated automatically by `bash scripts/k8s-apply-env.sh` (step 1) — no manual editing required. It is gitignored; the file is recreated from `.env` each time you run the script.
 
@@ -272,12 +352,12 @@ curl -s "$JOB_SEARCH_MCP_URL/mcp" \
 # If 401: key mismatch — re-run bash scripts/k8s-apply-env.sh
 ```
 
-### 10. Run migration
+### 12. Run migration
 
 Migrate existing local applicant files to OB1. The migration script connects directly to `localhost:5432` — ensure the PostgreSQL port-forward is running first (see "Accessing Services Locally" → "PostgreSQL Port-Forward").
 
 ```bash
-source .venv/bin/activate && source .env
+source .venv/bin/activate && source .env && source .env.services
 python scripts/migrate-to-ob1.py --dry-run   # preview — check for parse errors first
 python scripts/migrate-to-ob1.py             # full run
 ```
@@ -288,23 +368,29 @@ python scripts/migrate-to-ob1.py             # full run
 
 ### Prerequisites
 
-- `openbrain-mcp-server:latest` must be pre-built from `$OB1_REPO_PATH` (same as K8s step 3):
+- `openbrain-mcp-server:latest` must be pre-built from `$OB1_REPO_PATH` (set in `.env.services`, same as K8s step 3):
 
   ```bash
   docker build -t openbrain-mcp-server:latest \
     "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
   ```
 
-### `.env` Overrides for Compose Mode
+### Env Overrides for Compose Mode
 
-These values differ from K8s defaults — update `.env` before running:
+Some values differ from K8s defaults. In `.env` (Claude CLI config):
 
 ```bash
 DATA_BACKEND=ob1
-DB_HOST=postgres              # compose service name (not localhost or cluster DNS)
-MINIO_ENDPOINT=minio:9000     # compose service name (not localhost:30900)
 OB1_MCP_URL=http://localhost:8080     # direct port (not /ob1 Ingress path)
 JOB_SEARCH_MCP_URL=http://localhost:8081
+JOB_SEARCH_REST_URL=http://job-search-mcp:8001   # webapp REST client (compose service name)
+```
+
+In `.env.services` (storage credentials):
+
+```bash
+DB_HOST=postgres              # compose service name (not localhost or cluster DNS)
+MINIO_ENDPOINT=minio:9000     # compose service name (not localhost:30900)
 ```
 
 Then regenerate `.mcp.json`:
@@ -315,18 +401,19 @@ bash scripts/k8s-apply-env.sh
 
 ### Running
 
+Use `bash scripts/start-ob1.sh` — it sources both `.env` and `.env.services` before invoking `docker compose`, so all `${VARNAME}` interpolations in the compose YAML resolve correctly.
+
 ```bash
 # OB1 services only
-docker compose -f integrations/ob1/docker-compose.yml up -d
+bash scripts/start-ob1.sh up -d
 
 # Apply schema once (first run only)
-docker compose -f integrations/ob1/docker-compose.yml exec postgres \
+bash scripts/start-ob1.sh exec postgres \
   psql -U postgres -d openbrain < integrations/ob1/job-search-schema.sql
 
 # Full stack with webapp
-docker compose \
-  -f webapp/docker-compose.yml \
-  -f integrations/ob1/docker-compose.yml up -d
+docker compose -f webapp/docker-compose.yml up -d &
+bash scripts/start-ob1.sh up -d
 ```
 
 ### Service Access (compose mode)
@@ -335,6 +422,8 @@ docker compose \
 |---|---|---|
 | OB1 MCP | `http://localhost:8080/mcp` | Used by Claude Code `.mcp.json` |
 | job-search MCP | `http://localhost:8081/mcp` | Used by Claude Code `.mcp.json` |
+| OB1 REST API | `http://localhost:8002` | PostgreSQL-backed REST API for the dashboard |
+| OB1 Dashboard | `http://localhost:3000` | Next.js browser UI for OB1 thoughts |
 | MinIO S3 API | `http://localhost:9000` | S3 SDK access |
 | MinIO console | `http://localhost:9001` | Web UI — bucket management |
 | PostgreSQL | `localhost:5432` | Direct DB access (no port-forward needed) |
@@ -350,13 +439,15 @@ Most services are permanently accessible once the Ingress controller and manifes
 |---|---|---|
 | OB1 MCP | `http://localhost/ob1/mcp` | Used by Claude Code `.mcp.json`; base path `/ob1` returns 401 |
 | job-search MCP | `http://localhost/job-search/mcp` | Used by Claude Code `.mcp.json`; base path `/job-search` returns 401 |
+| job-search REST API | `http://localhost/job-search/api/v2/*` | Used by the webapp; auth via `x-brain-key` header |
 | MinIO console | `http://localhost/minio` | Web UI — bucket management |
 | MinIO S3 API | `http://localhost:30900` | S3 SDK / `mc` access (NodePort — fixed) |
-| PostgreSQL | `localhost:5432` | **Requires persistent port-forward** — see below |
+| OB1 Dashboard | `http://localhost:30303` | Next.js browser UI for OB1 thoughts (NodePort — fixed) |
+| PostgreSQL | `localhost:5432` | Requires port-forward — needed for `migrate-to-ob1.py` only |
 
-### PostgreSQL Port-Forward (always-on)
+### PostgreSQL Port-Forward
 
-The webapp backend and migration script connect directly to `localhost:5432`. Start this forward before launching the webapp and keep it running for the duration of your session:
+Required for `migrate-to-ob1.py`. The webapp no longer connects directly to PostgreSQL — it routes all data access through the job-search-mcp REST API (`/api/v2/*`). Start this forward only when running the migration script:
 
 ```bash
 kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
@@ -368,6 +459,8 @@ To restart after a disconnect:
 pkill -f "kubectl port-forward svc/openbrain-db" 2>/dev/null || true
 kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
 ```
+
+> **Webapp users:** no port-forward needed for normal webapp use. The webapp calls the job-search-mcp REST API (`JOB_SEARCH_REST_URL`), which handles all Postgres queries internally.
 
 ## Verify Deployment
 
@@ -395,41 +488,64 @@ Exit 0 = all assertions pass. Exit 1 = one or more failures (check the color-cod
 
 ## Environment Variables
 
-`.env` is the single source of truth. See `.env.example` for the full annotated template.
+Credentials are split across two gitignored files — see `.env.example` and `.env.services.example` for the full annotated templates.
 
-The OB1 + job-search vars needed:
+| File | Contains |
+|------|----------|
+| `.env` | Claude CLI config: paths, MCP access keys, `DATA_BACKEND` |
+| `.env.services` | Storage credentials: MinIO, PostgreSQL, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY`, `OB1_REPO_PATH` |
+
+**Why the split:** Claude's shell inherits exported vars. Keeping storage credentials out of `.env` means Claude cannot reach MinIO or Postgres directly — all applicant data must flow through OB1 MCP tools. See [memory/feedback_ob1_integration.md](../../memory/feedback_ob1_integration.md).
+
+### Variables by file
+
+**`.env`** (Claude CLI — sourced by Claude Code shell):
 
 | Variable | Where used | Notes |
 |----------|-----------|-------|
+| `OB1_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/ob1` (via Ingress) · Compose: `http://localhost:8080` |
+| `OB1_MCP_KEY` | Claude Code `.mcp.json` | Auth header for OB1 MCP |
+| `JOB_SEARCH_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/job-search` (via Ingress) · Compose: `http://localhost:8081` |
+| `JOB_SEARCH_MCP_KEY` | k8s `webapp-secret` → `MCP_ACCESS_KEY`; webapp | Auth header for job-search MCP and REST API |
+| `JOB_SEARCH_REST_URL` | Webapp (`ObRestClient`) | K8s: set in `webapp-configmap.yml` · Compose: `http://job-search-mcp:8001` · Local dev: `http://localhost:8001` |
+| `DATA_BACKEND` | Webapp, Claude Code | `ob1` when OB1 services are running |
+
+**`.env.services`** (storage credentials — NOT sourced by Claude Code shell):
+
+| Variable | Where used | Notes |
+|----------|-----------|-------|
+| `OB1_REPO_PATH` | `docker build` | Path to OB1 repo checkout for building `openbrain-mcp-server:latest` |
 | `OBJECT_STORE_BACKEND` | job-search-tools.ts | `minio` or `supabase` |
-| `MINIO_ENDPOINT` | job-search-tools.ts | `localhost:30900` locally (NodePort); cluster DNS in k8s ConfigMap |
+| `MINIO_ENDPOINT` | job-search-tools.ts | `localhost:30900` locally (NodePort); `minio:9000` in compose |
 | `MINIO_ACCESS_KEY` | job-search-tools.ts, k8s Secret | |
 | `MINIO_SECRET_KEY` | job-search-tools.ts, k8s Secret | |
 | `MINIO_BUCKET` | job-search-tools.ts | `job-search` |
 | `MINIO_SECURE` | job-search-tools.ts | `false` for local K8s |
-| `DB_HOST` | job-search-server.ts | `localhost` locally; cluster DNS in k8s ConfigMap |
+| `DB_HOST` | job-search-server.ts | `localhost` locally; `postgres` in compose; cluster DNS in k8s ConfigMap |
 | `DB_PORT` | job-search-server.ts | `5432` |
 | `DB_NAME` | job-search-server.ts | `openbrain` |
 | `DB_USER` | job-search-server.ts | `postgres` |
 | `DB_PASSWORD` | job-search-server.ts, k8s Secret | |
-| `OB1_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/ob1` (via Ingress) · Compose: `http://localhost:8080` |
-| `OB1_MCP_KEY` | Claude Code `.mcp.json` | Auth header for OB1 MCP |
-| `JOB_SEARCH_MCP_URL` | Claude Code `.mcp.json` | K8s: `http://localhost/job-search` (via Ingress) · Compose: `http://localhost:8081` |
-| `JOB_SEARCH_MCP_KEY` | k8s Secret → `MCP_ACCESS_KEY` | Auth header for job-search MCP |
-| `LLM_API_KEY` | k8s Secret → `EMBEDDING_API_KEY`, `CHAT_API_KEY`; also patches `openbrain-secret` for OB1 | OpenRouter or OpenAI key |
+| `LLM_API_KEY` | k8s Secret → `EMBEDDING_API_KEY`, `CHAT_API_KEY`; also patches `openbrain-secret` | OpenRouter or OpenAI key |
 | `EMBEDDING_API_BASE` | `job-search-llm-config` ConfigMap → job-search-mcp | Default: `https://openrouter.ai/api/v1`; OpenAI: `https://api.openai.com/v1` |
 | `EMBEDDING_MODEL` | `job-search-llm-config` ConfigMap → job-search-mcp | Default: `openai/text-embedding-3-small`; OpenAI: `text-embedding-3-small` |
 | `CHAT_API_BASE` | `job-search-llm-config` ConfigMap → job-search-mcp | Default: `https://openrouter.ai/api/v1`; OpenAI: `https://api.openai.com/v1` |
 | `CHAT_MODEL` | `job-search-llm-config` ConfigMap → job-search-mcp | Default: `openai/gpt-4o-mini`; OpenAI: `gpt-4o-mini` |
+| `ANTHROPIC_API_DEPLOYMENT_KEY` | k8s `webapp-secret` → `ANTHROPIC_API_KEY` | Container-only; not needed for local Claude Code (uses OAuth) |
+| `DASHBOARD_SESSION_SECRET` | k8s `dashboard-secret` → `SESSION_SECRET` | iron-session cookie encryption key — min 32 chars; generate with `openssl rand -hex 32` |
 
-**k8s ConfigMap** (`job-search-configmap.yml`) holds the non-sensitive subset with cluster-internal DNS names — these override the localhost values from `.env` inside the cluster.
+Supabase alternative (if `OBJECT_STORE_BACKEND=supabase`): set `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` in `.env.services` instead of the MinIO vars.
 
-**k8s Secret** (`job-search-secret`) holds the 6 sensitive vars and is generated from `.env` by `bash scripts/k8s-apply-env.sh`. Never edit the Secret YAML directly.
+### K8s resources created by `k8s-apply-env.sh`
 
-**`job-search-llm-config` ConfigMap** holds the 4 LLM API settings (`EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `CHAT_API_BASE`, `CHAT_MODEL`) and is also created/updated by `bash scripts/k8s-apply-env.sh`. Defaults to OpenRouter; override in `.env` for OpenAI or another provider. Re-running the script after any change takes effect on the next pod restart.
+**k8s Secret** (`job-search-secret`) — 6 sensitive vars from `.env.services`. Never edit the Secret YAML directly.
 
-**`openbrain-secret`** is created/updated by `bash scripts/k8s-apply-env.sh` with all 4 keys the OB1 StatefulSet needs: `postgres-password` (`$DB_PASSWORD`), `mcp-access-key` (`$OB1_MCP_KEY`), `embedding-api-key` (`$LLM_API_KEY`), `chat-api-key` (`$LLM_API_KEY`). Do not apply the OB1 repo's `secrets.yml` — it contains hardcoded values.
+**k8s ConfigMap** (`job-search-configmap.yml`) — non-sensitive subset with cluster-internal DNS names; overrides localhost values inside the cluster.
 
-**`openbrain-configmap`** is created/updated by `bash scripts/k8s-apply-env.sh` with all non-sensitive OB1 config: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `CHAT_API_BASE`, `CHAT_MODEL`. The OB1 mcp-server container consumes these via `envFrom`, overriding any hardcoded values in `openbrain.yml`.
+**`job-search-llm-config` ConfigMap** — 4 LLM API settings from `.env.services`. Defaults to OpenRouter; override for OpenAI. Re-running the script after any change takes effect on next pod restart.
 
-Supabase alternative (if `OBJECT_STORE_BACKEND=supabase`): set `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` in `.env` instead of the MinIO vars.
+**`openbrain-secret`** — 4 keys for the OB1 StatefulSet: `postgres-password` (`$DB_PASSWORD`), `mcp-access-key` (`$OB1_MCP_KEY`), `embedding-api-key` (`$LLM_API_KEY`), `chat-api-key` (`$LLM_API_KEY`). Do not apply the OB1 repo's `secrets.yml` — it contains hardcoded values.
+
+**`dashboard-secret`** — 1 key for the OB1 Dashboard pod: `SESSION_SECRET` (`$DASHBOARD_SESSION_SECRET`). Required by the Next.js iron-session middleware for cookie encryption.
+
+**`openbrain-configmap`** — non-sensitive OB1 config from `.env.services` + `.env`. The OB1 mcp-server container consumes these via `envFrom`, overriding any hardcoded values in `openbrain.yml`.

@@ -19,10 +19,10 @@ Idempotent — safe to re-run; all inserts use ON CONFLICT DO UPDATE.
 Usage:
   python scripts/migrate-to-ob1.py [--dry-run] [--skip-files] [--only-sql]
 
-Environment (loaded from .env):
-  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
-  OBJECT_STORE_BACKEND, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET
-  APPLICANT_DIR, APP_DIR
+Environment (loaded from .env and .env.services):
+  APPLICANT_DIR, APP_DIR                                 ← .env
+  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD        ← .env.services
+  OBJECT_STORE_BACKEND, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET  ← .env.services
 """
 
 import argparse
@@ -40,17 +40,21 @@ import psycopg2
 import psycopg2.extras
 
 # ---------------------------------------------------------------------------
-# Load env
+# Load .env and .env.services
 # ---------------------------------------------------------------------------
-env_file = Path(__file__).parent.parent / ".env"
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if line.startswith("export "):
-            line = line[7:]
-        if "=" in line and not line.startswith("#"):
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip().strip('"'))
+def _load_env_file(path):
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[7:]
+            if "=" in line and not line.startswith("#"):
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip().strip('"'))
+
+_root = Path(__file__).parent.parent
+_load_env_file(_root / ".env")
+_load_env_file(_root / ".env.services")
 
 APPLICANT_DIR = Path(os.environ["APPLICANT_DIR"])
 APP_DIR = Path(os.environ["APP_DIR"])

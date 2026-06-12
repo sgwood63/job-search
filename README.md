@@ -29,7 +29,7 @@ One setup: you describe your background, experience, and goals once. After that,
 |---|---|
 | [Claude Code](https://claude.ai/code) | The CLI that runs all AI-assisted steps. Install via the desktop app or `npm install -g @anthropic-ai/claude-code`. |
 | Anthropic API key | Required if not using Claude Code OAuth. Get one at [console.anthropic.com](https://console.anthropic.com). Set during `scripts/setup.sh`. |
-| `ANTHROPIC_API_DEPLOYMENT_KEY` | **Container deployments only** (webapp docker-compose, K8s OB1 stack). OAuth does not work inside Docker — set this separately in `.env`. Not needed for local Claude Code sessions. |
+| `ANTHROPIC_API_DEPLOYMENT_KEY` | **Container deployments only** (webapp docker-compose, K8s OB1 stack). OAuth does not work inside Docker — set this in `.env.services`. Not needed for local Claude Code sessions. |
 | Claude Haiku | Used for JD screening (fast, low-cost). Included with Pro subscription or API key. |
 | Claude Sonnet | Used for resume and document generation (quality). Included with Pro subscription or API key. |
 | pandoc + Playwright + poppler | PDF generation. Installed/detected by `scripts/setup.sh`. |

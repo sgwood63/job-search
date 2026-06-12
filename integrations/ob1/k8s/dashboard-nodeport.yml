@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ob1-dashboard-nodeport
+  namespace: openbrain
+spec:
+  selector:
+    app: ob1-dashboard
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: http
+      nodePort: 30303
+      name: http

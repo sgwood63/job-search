@@ -35,7 +35,7 @@ The script detects whether an existing applicant is already configured and offer
 
 | Step | What it does |
 |---|---|
-| Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key. **Note:** OAuth works for local Claude Code sessions only. If you plan to run the webapp or OB1 stack via Docker/K8s, also add `ANTHROPIC_API_DEPLOYMENT_KEY` to `.env` after setup — OAuth does not work inside containers. See [DEPLOYMENT.md](DEPLOYMENT.md) for full container deployment instructions. |
+| Auth | Runs `claude auth status` — exits if Claude Code is not installed; detects OAuth or prompts for API key. **Note:** OAuth works for local Claude Code sessions only. If you plan to run the webapp or OB1 stack via Docker/K8s, also add `ANTHROPIC_API_DEPLOYMENT_KEY` to `.env.services` after setup — OAuth does not work inside containers. See [DEPLOYMENT.md](DEPLOYMENT.md) for full container deployment instructions. |
 | Existing check | If a valid `.env` + applicant directory is found, offers to refresh the existing setup and exit |
 | Applicant name | Prompts for the applicant's full name |
 | 1 | Installs PDF generation dependencies — pandoc, poppler (checks first, skips if installed); detects Playwright Python installation |

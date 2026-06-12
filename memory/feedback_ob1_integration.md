@@ -5,21 +5,41 @@ metadata:
   type: feedback
 ---
 
+## CANONICAL ROUTING RULE
+
+This is the single source of truth for DATA_BACKEND routing. Command files and workflow docs reference this file — they do NOT restate the rule. Changes to OB1 routing must be made here only.
+
+**Summary:** When `DATA_BACKEND=ob1` — use OB1 MCP tools for all APPLICANT operations. When `DATA_BACKEND=local` — use direct filesystem. If OB1 is configured but MCP tools are absent → hard stop, no fallback.
+
+---
+
 When `DATA_BACKEND=ob1` in `.env`, OB1 is configured and **all APPLICANT file operations must go through OB1 MCP tools** — both reads (`get_file`, `get_pipeline`, `get_overdue_followups`, etc.) and writes (`upload_file`, `update_application_status`, `upsert_company`, `add_contact`, etc.). Direct GDrive/`$APPLICANT_DIR` file access is forbidden when OB1 is configured.
 
 **Why:** OB1 is the authoritative data store when configured. Bypassing it creates drift between OB1 state and local GDrive files, breaking pipeline tracking, semantic search, and vector indexing.
 
 **How to apply:** At every file read or write that would normally touch `$APPLICANT_DIR` (applicant.md, profiles, applications, memory, tracker), substitute the corresponding OB1 MCP call instead. `$APP_DIR` files (tooling, memory, workflow docs) are still read locally — only the applicant data directory is in OB1.
 
+## Two MCP servers, two roles
+
+Two MCP servers are registered when OB1 is configured. They have distinct, non-overlapping responsibilities:
+
+- **`mcp__job_search__*`** — owns ALL file I/O for APPLICANT content. `upload_file`, `get_file`, `list_files`, `delete_file`, and `get_file_url` are general-purpose and apply to every key under `$APPLICANT_DIR`: applicant.md, profiles, memory files, applications, search results — all of it. The name `job-search` is the server namespace, not a scope restriction to job application folders.
+
+- **`mcp__open_brain__*`** — owns thought querying and capture: `search_thoughts`, `list_thoughts`, `thought_stats`, `capture_thought`, `fetch`, `search`. It does NOT own file reads or writes. Do not use it as a substitute for `upload_file` or `get_file`.
+
+If in doubt about which server to call: file operations → `mcp__job_search__*`, thought/search operations → `mcp__open_brain__*`.
+
 ## Session start check
 
-At session start (during `/context` workflow), verify OB1 MCP tools appear in the session's deferred tool list before reading any applicant files. Presence of `mcp__job_search__*` or `mcp__open_brain__*` tools confirms OB1 is connected.
+At session start (during `/context` workflow), verify **both** MCP servers are connected. Presence of `mcp__open_brain__*` alone is insufficient — `upload_file`, `get_file`, `get_pipeline`, and all file/pipeline operations live in the job-search server.
 
-If OB1 is configured but tools are **NOT** in the deferred list → **hard stop**. Do not fall back to GDrive. Tell the user:
+If `mcp__job_search__*` tools are absent at session start → **hard stop**. Tell the user:
 
-> "OB1 is configured but MCP tools are not connected in this session. Please restart Claude Code to reconnect, then re-run `/context`."
+> "OB1 is configured but job-search MCP tools are not connected. File reads, file writes, and pipeline operations are unavailable. Please restart Claude Code, then re-run `/context`."
 
-**Why hard stop (not silent fallback):** Silently reading from GDrive when OB1 is configured makes the session appear to work while writing stale data to a source that OB1 won't see, causing silent divergence.
+No fallback, no curl workaround. If the tools are missing, we don't have a system.
+
+**Why hard stop (not silent fallback):** A past incident (2026-05-27) showed that when the job-search MCP session handshake fails, the session proceeded without the tools and fell back to writing files directly to GDrive and MinIO — both forbidden. GDrive writes create silent drift. Direct MinIO writes bypass `js_files`, making files invisible in the webapp.
 
 ## MCP tool mapping (APPLICANT_DIR → OB1)
 
@@ -35,37 +55,46 @@ If OB1 is configured but tools are **NOT** in the deferred list → **hard stop*
 
 **Session start loads only:** `applicant.md` + `memory/APPLICANT-MEMORY.md` (in parallel). Pipeline and overdue follow-ups are deferred to `/status` and application workflow commands.
 
+**Scope override:** If you find yourself reasoning that `get_file` or `upload_file` are "not appropriate" for a particular operation — a profile update, a memory file write, reading applicant.md — that reasoning is wrong. These tools cover the entire `$APPLICANT_DIR` key space. Discard the alternative approach and use the MCP tool.
+
 ## File key convention
 
 Object store keys mirror former local paths relative to `$APPLICANT_DIR`. Example: `applications/2026-05-15-co-role/notes.md` in OB1 = `$APPLICANT_DIR/applications/2026-05-15-co-role/notes.md` on disk.
 
-## Session start check (corrected)
+## Upload routing: MCP tool vs REST API
 
-OB1 requires **both** MCP servers to be connected. Presence of `mcp__open_brain__*` alone is insufficient — `upload_file`, `get_file`, `get_pipeline`, and all file/pipeline operations live in the job-search server (`mcp__job_search__*`).
+Two upload paths are available. Both call the same `uploadFileCore` on the server — same atomicity (MinIO write + `js_files` record + embedding/thought capture). The difference is transport only.
 
-If `mcp__job_search__*` tools are absent at session start → **hard stop**. Tell the user:
+| File type | Upload method |
+|---|---|
+| Text files (`.md`, `.json`, `.txt`) ≤ ~50KB | `upload_file` MCP tool |
+| Binary files (PDF, images, any non-text content_type) | REST API via `curl` |
+| Text files > ~50KB | REST API via `curl` |
 
-> "OB1 is configured but job-search MCP tools are not connected. File reads, file writes, and pipeline operations are unavailable. Please restart Claude Code, then re-run `/context`."
-
-No fallback, no curl workaround. If the tools are missing, we don't have a system.
-
-**Why:** A past incident (2026-05-27) showed that when the job-search MCP session handshake fails, the session proceeded without the tools and fell back to writing files directly to GDrive and MinIO — both forbidden. GDrive writes create silent drift. Direct MinIO writes bypass `js_files`, making files invisible in the webapp.
-
-## Binary file uploads (PDFs)
-
-`upload_file` accepts binary content as base64 with `binary: true`:
-
+**MCP tool** — use for small text files:
 ```
-upload_file(key, base64_content, content_type='application/pdf', binary=True)
+upload_file(key, content, content_type='text/markdown')
 ```
 
-A 75KB PDF encodes to ~102KB base64 — well within MCP limits. There is no file size reason to bypass this tool for typical resumes.
+**REST API** — use for binary or large files:
+```bash
+source "$APP_DIR/.env"
+FILE_B64=$(base64 -i "$LOCAL_FILE_PATH")
+curl -s -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
+  -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"$FILE_B64\",\"content_type\":\"$CONTENT_TYPE\",\"binary\":true}"
+```
 
-If `upload_file` fails or times out: **hard stop**. Do NOT fall back to GDrive or direct MinIO. Report the failure to the user and let them decide how to recover.
+Note: `binary: true` tells the server the content is base64-encoded bytes. Text files sent via REST API should use `binary: false` and pass the raw text as `content` (no base64).
 
-The two permanently forbidden fallbacks, regardless of the reason:
+**Why the REST API for large files:** The MCP tool passes content as a JSON-RPC parameter. MCP transport imposes size limits that binary files (e.g., resume PDFs at 75–150KB) exceed. The REST API accepts the same payload as a direct HTTP body — no parameter size constraint. Proven failure: 75KB PDF via MCP tool = "base64 is too large for the MCP upload parameter" (2026-06-08).
+
+**The server is still the transaction boundary.** Both paths route through `uploadFileCore` — the forbidden fallbacks remain forbidden:
 - Writing to `$APPLICANT_DIR` (GDrive) — creates silent drift with OB1 as authoritative store
-- Writing to MinIO directly (Python, mc CLI) — bypasses `js_files`, file becomes invisible in webapp
+- Writing to MinIO directly (mc, boto3, curl to MinIO port) — bypasses `js_files` and thought capture; file is invisible to semantic search
+
+If `upload_file` or the REST API `curl` fails or times out: **hard stop** for non-size errors. For size errors (MCP transport limit), switch to the REST API path. Report any other failure to the user.
 
 ## PDF generation workflow in OB1 mode
 
@@ -73,18 +102,14 @@ PDF generation (pandoc + Playwright/Chromium) works in **all three contexts** �
 - Mac (CLI/webapp): set to Anaconda path in `.env`
 - K8s (webapp container + claude-runner sidecar): `python3` — set in `webapp-configmap.yml`
 
-`curl http://127.0.0.1:8000/api/upload` also works in all three contexts:
-- Mac CLI/webapp subprocess: hits local uvicorn on port 8000
-- K8s claude-runner sidecar: hits the webapp container at port 8000 — both containers are in the same pod and share the network namespace
+**Generate to `/tmp`, not to `$APPLICANT_DIR`.** After generation, upload to OB1 via the job-search REST API (PDFs are binary and exceed MCP transport limits — see "Upload routing" section above).
 
-**Generate to `/tmp`, not to `$APPLICANT_DIR`.** After generation, upload to OB1 via the webapp endpoint.
-
-**Correct sequence (works in all three contexts):**
+**Correct sequence:**
 ```bash
-# $APP_DIR, $PLAYWRIGHT_PYTHON are context-specific but always set correctly
+source "$APP_DIR/.env"
 TMP_HTML="/tmp/resume.html"
-TMP_PDF="/tmp/resume.pdf"
-FOLDER="applications/<folder>"
+TMP_PDF="/tmp/<Name_Role>.pdf"
+KEY="applications/<folder>/<Name_Role>.pdf"
 
 # 1. .md must come from OB1 (get_file) — write content to $TMP_MD before this
 pandoc "$TMP_MD" -o "$TMP_HTML" --css="$APP_DIR/templates/resume.css" --standalone
@@ -92,8 +117,12 @@ pandoc "$TMP_MD" -o "$TMP_HTML" --css="$APP_DIR/templates/resume.css" --standalo
 rm "$TMP_HTML"
 pdfinfo "$TMP_PDF" | grep Pages
 
-# 2. Upload to OB1 via webapp (writes both MinIO + js_files)
-curl -s -X POST "http://127.0.0.1:8000/api/upload?dir=$FOLDER" -F "file=@$TMP_PDF"
+# 2. Upload PDF to OB1 via REST API (binary — too large for MCP tool parameter)
+PDF_B64=$(base64 -i "$TMP_PDF")
+curl -s -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
+  -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"$PDF_B64\",\"content_type\":\"application/pdf\",\"binary\":true}"
 rm "$TMP_PDF"
 ```
 
@@ -104,4 +133,4 @@ Before touching local APPLICANT_DIR files, check what is stale:
 2. Verify OB1 state with `list_files` — sizes and timestamps tell you what's current
 3. Never read local APPLICANT_DIR to "check" — trust the MCP tool return values
 
-If .md uploaded successfully (MCP returned size) but webapp shows old PDF: the PDF was not uploaded to OB1. Upload it via `curl http://127.0.0.1:8000/api/upload` — do NOT write files to local APPLICANT_DIR as a workaround.
+If .md uploaded successfully (MCP returned size) but webapp shows old PDF: the PDF was not uploaded to OB1. Upload it via the REST API curl command above — do NOT write files to local APPLICANT_DIR as a workaround.

@@ -24,7 +24,7 @@ This document covers system architecture, DEV_MODE operation, hook configuration
 
 ## DEV_MODE — Modifying the System
 
-`$APP_DIR` is read-only by default. A `PreToolUse` hook (`scripts/check-dev-mode.sh`) intercepts every `Write` and `Edit` call to files inside `$APP_DIR` and blocks them when `DEV_MODE=false`.
+`$APP_DIR` is read-only by default. A `PreToolUse` hook (`scripts/check-dev-mode.sh`) intercepts every `Write` and `Edit` call to files inside `$APP_DIR` and blocks them when `DEV_MODE=false`. The same hook also blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`, enforcing MCP-only access to applicant data.
 
 **To enable APP_DIR editing:**
 1. Open `.env` and set `DEV_MODE="true"` — no restart needed
@@ -93,7 +93,7 @@ $APP_DIR/
 │   ├── k8s-apply-env.sh         # Creates k8s Secrets/ConfigMaps + generates .mcp.json (OB1)
 │   ├── migrate-to-ob1.py        # Migrates local APPLICANT_DIR to OB1 (MinIO + Postgres)
 │   ├── check-md-hygiene.sh      # Pre-commit hook: no personal names or hard-coded paths
-│   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes when DEV_MODE=false
+│   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes (DEV_MODE) + APPLICANT_DIR writes (OB1)
 │   ├── install-hooks.sh         # Installs git hooks into .git/hooks/
 │   ├── sync-memory.sh           # Commits memory/ and copies to ~/.claude/
 │   ├── status-line.sh           # Dynamic status bar for Claude Code VS Code extension
@@ -169,11 +169,13 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 | Component | What it is | URL |
 |---|---|---|
 | `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server, 17 MCP tools | `http://localhost/job-search/mcp` |
+| `job-search-mcp` | Deployment: Deno/Hono server — 17 MCP tools + REST API (`/api/v2/*`) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
 | `minio` | Deployment: S3-compatible object store | `http://localhost/minio` (console) / `localhost:30900` (S3) |
 | nginx Ingress | Routes `/ob1`, `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
 
-All services are permanently accessible through nginx Ingress once deployed. PostgreSQL is cluster-internal; use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand (required for `migrate-to-ob1.py`).
+All services are permanently accessible through nginx Ingress once deployed. PostgreSQL is cluster-internal; use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand (required for `migrate-to-ob1.py` only — the webapp no longer accesses Postgres directly).
+
+**Single write path:** In OB1 mode, both Claude Code (via MCP tools) and the webapp (via REST) write through the same `*Core()` functions in `job-search-tools.ts`. This ensures every file write triggers the same 4-step embedding transaction (S3 write → thought embedding → metadata extraction → Postgres upsert) regardless of which client initiates it. The webapp drops all direct Postgres and MinIO credentials — it needs only `JOB_SEARCH_REST_URL` and `JOB_SEARCH_MCP_KEY`.
 
 ### MCP transport
 
@@ -196,7 +198,8 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 
 | Script | Purpose |
 |---|---|
-| `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env`; generates `.mcp.json` |
+| `scripts/start-ob1.sh` | Start OB1 docker-compose services (sources both `.env` and `.env.services`) |
+| `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
 | `integrations/ob1/tests/test-deployment.sh` | 19-assertion deployment verification suite |
 
@@ -244,32 +247,58 @@ kubectl apply -f integrations/ob1/k8s/webapp-nodeport.yml
 
 Access at `http://localhost:30800`. Requires `ANTHROPIC_API_DEPLOYMENT_KEY` in `.env` (no OAuth in containers) for chat sessions.
 
+### Environment file split
+
+Two files, both gitignored, serve different audiences:
+
+| File | Contents | Who sources it |
+|------|----------|----------------|
+| `.env` | Claude CLI config: paths, MCP keys, search API, `DEV_MODE` | Claude Code shell session |
+| `.env.services` | Storage credentials: MinIO, Postgres, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY` | `scripts/start-ob1.sh`, `scripts/k8s-apply-env.sh` |
+
+**Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [memory/feedback_ob1_integration.md](memory/feedback_ob1_integration.md).
+
+Copy both example files to get started:
+```bash
+cp .env.example .env
+cp .env.services.example .env.services
+# Fill in both files with your values
+```
+
 ### docker-compose
 
 Two compose files, combine with `-f` flags:
 
 | File | Contents |
 |------|---------|
-| `webapp/docker-compose.yml` | Webapp service only |
+| `webapp/docker-compose.yml` | Webapp service only (needs `.env` only — no storage credentials required) |
 | `integrations/ob1/docker-compose.yml` | PostgreSQL + MinIO + openbrain MCP + job-search-mcp |
 
 ```bash
 # Webapp only (local mode)
 docker compose -f webapp/docker-compose.yml up
 
+# OB1 infrastructure only (postgres + minio + mcp servers)
+bash scripts/start-ob1.sh up -d
+
 # Full OB1 stack (webapp + all 4 OB1 services)
-docker compose \
-  -f webapp/docker-compose.yml \
-  -f integrations/ob1/docker-compose.yml up
+docker compose -f webapp/docker-compose.yml up &
+bash scripts/start-ob1.sh up -d
 ```
 
-For OB1 compose mode, set these in `.env` before running (values differ from K8s defaults):
+`scripts/start-ob1.sh` sources both `.env` and `.env.services` before invoking `docker compose` so the `${VARNAME}` interpolations in `integrations/ob1/docker-compose.yml` resolve correctly. Run it with any `docker compose` subcommand (`up`, `down`, `logs`, `ps`, etc.).
+
+For OB1 compose mode, set these in `.env.services` before running (values differ from K8s defaults):
 ```
-DATA_BACKEND=ob1
 DB_HOST=postgres
 MINIO_ENDPOINT=minio:9000
+```
+And in `.env`:
+```
+DATA_BACKEND=ob1
 OB1_MCP_URL=http://localhost:8080
 JOB_SEARCH_MCP_URL=http://localhost:8081
+JOB_SEARCH_REST_URL=http://job-search-mcp:8001
 ```
 Then re-run `bash scripts/k8s-apply-env.sh` to regenerate `.mcp.json` with the compose-mode URLs.
 
@@ -305,7 +334,9 @@ Hooks are configured in `.claude/settings.json` under the `hooks` key.
 
 ### PreToolUse — DEV_MODE gate
 
-Runs `scripts/check-dev-mode.sh` before every `Write` or `Edit` tool call. If the target path is inside `$APP_DIR` and `DEV_MODE=false`, the hook exits non-zero and blocks the operation.
+Runs `scripts/check-dev-mode.sh` before every `Write` or `Edit` tool call. Two rules enforced:
+- If target path is inside `$APP_DIR` and `DEV_MODE=false` → blocked (set `DEV_MODE=true` to enable)
+- If target path is inside `$APPLICANT_DIR` and `DATA_BACKEND=ob1` → blocked (use `upload_file()` MCP tool instead)
 
 The script reads `DEV_MODE` from `.env` on every invocation — toggling the value mid-session takes effect immediately.
 
@@ -493,7 +524,8 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `OB1_MCP_URL` | Manual | Base URL for OB1 MCP server (e.g. `http://localhost/ob1`) |
 | `OB1_MCP_KEY` | Manual | Auth key for OB1 MCP server (`x-brain-key` header) |
 | `JOB_SEARCH_MCP_URL` | Manual | Base URL for job-search MCP server (e.g. `http://localhost/job-search`) |
-| `JOB_SEARCH_MCP_KEY` | Manual | Auth key for job-search MCP server (`x-brain-key` header) |
+| `JOB_SEARCH_MCP_KEY` | Manual | Auth key for job-search MCP and REST API (`x-brain-key` header) |
+| `JOB_SEARCH_REST_URL` | Manual | Base URL for job-search REST API — consumed by the webapp; K8s: `http://job-search-mcp.openbrain.svc.cluster.local:8001`; Compose: `http://job-search-mcp:8001`; local dev: `http://localhost:8001` |
 | `MINIO_ENDPOINT` | Manual | MinIO S3 API address (e.g. `localhost:30900`) |
 | `MINIO_ACCESS_KEY` | Manual | MinIO access key |
 | `MINIO_SECRET_KEY` | Manual | MinIO secret key |

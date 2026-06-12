@@ -1,0 +1,80 @@
+---
+# OB1 Dashboard (Next.js)
+# Serves the open-brain-dashboard-next UI at localhost:30303 (via dashboard-nodeport.yml).
+#
+# The dashboard calls the ob1-rest-pg REST API (port 8002), NOT the OB1 MCP server (port 8000).
+# The OB1 MCP server handles only MCP protocol and returns 406 for plain HTTP.
+#
+# Prerequisites:
+#   1. ob1-rest-pg.yml has been applied and ob1-rest-pg pod is Running
+#   2. bash scripts/k8s-apply-env.sh has been run (creates dashboard-secret)
+#   3. Docker image is available on the cluster — build via docker compose (build
+#      definition lives in integrations/ob1/docker-compose.yml):
+#        DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002 \
+#          docker compose -f integrations/ob1/docker-compose.yml build dashboard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ob1-dashboard
+  namespace: openbrain
+  labels:
+    app: ob1-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ob1-dashboard
+  template:
+    metadata:
+      labels:
+        app: ob1-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: ob1-dashboard:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: NODE_ENV
+              value: production
+            # SESSION_SECRET is injected at runtime from dashboard-secret.
+            # NEXT_PUBLIC_API_URL is baked into the image at build time (server-only module).
+            # Note: auth.ts also validates SESSION_SECRET at Next.js build time (page data
+            # collection). The Dockerfile uses a build-time placeholder for this; only
+            # the runtime value from dashboard-secret is cryptographically significant.
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dashboard-secret
+                  key: SESSION_SECRET
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ob1-dashboard
+  namespace: openbrain
+spec:
+  selector:
+    app: ob1-dashboard
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: http
+      name: http
+  type: ClusterIP

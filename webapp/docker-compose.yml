@@ -5,15 +5,17 @@ name: job-search-webapp
 #   # Local mode (reads files from APPLICANT_DIR)
 #   docker compose -f webapp/docker-compose.yml up
 #
-#   # OB1 mode (webapp + PostgreSQL + MinIO)
+#   # OB1 mode (webapp + OB1 infrastructure — PostgreSQL, MinIO, MCP servers)
 #   docker compose \
 #     -f webapp/docker-compose.yml \
 #     -f integrations/ob1/docker-compose.yml up
 #
-# OB1 mode requires these overrides in .env (different from K8s cluster-internal DNS):
+# OB1 mode requires these overrides in .env:
 #   DATA_BACKEND=ob1
-#   DB_HOST=postgres
-#   MINIO_ENDPOINT=minio:9000
+#   JOB_SEARCH_REST_URL=http://job-search-mcp:8001   # docker-compose service name
+#
+# In OB1 mode the webapp routes all data access through the job-search-mcp REST API
+# (/api/v2/*) — no direct PostgreSQL or MinIO credentials are needed in the webapp.
 #
 # ANTHROPIC_API_DEPLOYMENT_KEY must be set in .env for chat sessions (no OAuth in containers).
 
@@ -33,6 +35,8 @@ services:
       APPLICANT_DIR: /applicant   # ignored when DATA_BACKEND=ob1
       DEV_MODE: "false"           # APP_DIR is always read-only in container
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_DEPLOYMENT_KEY:-}  # use deployment key, not personal OAuth key
+      # OB1 mode: webapp REST client — must match job-search-mcp service name in combined compose
+      JOB_SEARCH_REST_URL: ${JOB_SEARCH_REST_URL:-http://job-search-mcp:8001}
     volumes:
       # Local mode: mount APPLICANT_DIR read-only
       # OB1 mode: this mount is ignored (webapp reads from PostgreSQL/MinIO)

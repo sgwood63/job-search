@@ -33,3 +33,16 @@ For every JD processed, two files must be created in the application folder:
 Never stop at step 1 failure without attempting step 2.
 
 **Post-regeneration sync:** After updating jd-*.md or job-description.md for an existing application, compare the new fit assessment against the current notes.md status and tracker row. If regeneration reveals a status change (hard stop confirmed, job closed, deadline passed), apply the two-file rule (notes.md + tracker) before closing the task. See `workflow.md §JD Regeneration`.
+
+## Common violation: summarizing jd-*.md
+
+The most frequent failure mode is writing a structured summary into `jd-*.md` instead of verbatim content — extracting requirements and responsibilities as bullets rather than copying the raw text. This is incorrect.
+
+Signs you are about to make this mistake:
+- You are about to write bullet points into `jd-*.md`
+- You are about to use headings like "Requirements:", "About the role:", etc.
+- You are constructing the content from Haiku's screening output rather than from `full_jd_content`
+
+The test: `jd-*.md` should be nearly identical in length to the original page/paste. If it is shorter than the source, you have summarized it.
+
+`job-description.md` is the structured extraction. `jd-*.md` is the raw source. They cannot substitute for each other — downstream tooling uses both.

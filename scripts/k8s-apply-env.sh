@@ -6,10 +6,11 @@
 #   minio-secret             — MinIO credentials
 #   job-search-secret        — DB password, job-search MCP key, MinIO keys, LLM API keys
 #   job-search-llm-config    — LLM API base URLs and model names for job-search-mcp (ConfigMap)
-#   webapp-secret            — DB password, MinIO keys, ANTHROPIC_API_DEPLOYMENT_KEY for webapp + runner
+#   webapp-secret            — ANTHROPIC_API_KEY, OB1_MCP_KEY, JOB_SEARCH_MCP_KEY for webapp + runner
 #
 # Safe to re-run — uses --dry-run=client | kubectl apply for all resources — no delete/recreate.
-# Run after any .env credential or config change before redeploying affected pods.
+# Run after any .env or .env.services change before redeploying affected pods.
+# Requires both .env (MCP keys) and .env.services (DB/MinIO/LLM credentials).
 #
 # Usage:
 #   bash scripts/k8s-apply-env.sh
@@ -35,10 +36,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+SERVICES_ENV_FILE="$SCRIPT_DIR/../.env.services"
+if [[ ! -f "$SERVICES_ENV_FILE" ]]; then
+  echo "ERROR: .env.services not found at $SERVICES_ENV_FILE" >&2
+  echo "Copy .env.services.example to .env.services and fill in your credentials." >&2
+  exit 1
+fi
+
 # shellcheck source=../.env
 source "$ENV_FILE"
+# shellcheck source=../.env.services
+source "$SERVICES_ENV_FILE"
 
-REQUIRED=(DB_PASSWORD OB1_MCP_KEY JOB_SEARCH_MCP_KEY MINIO_ACCESS_KEY MINIO_SECRET_KEY LLM_API_KEY)
+REQUIRED=(DB_PASSWORD OB1_MCP_KEY JOB_SEARCH_MCP_KEY MINIO_ACCESS_KEY MINIO_SECRET_KEY LLM_API_KEY DASHBOARD_SESSION_SECRET)
 missing=()
 for var in "${REQUIRED[@]}"; do
   val="${!var:-}"
@@ -47,7 +57,7 @@ for var in "${REQUIRED[@]}"; do
   fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "ERROR: the following vars are unset or still FILL_IN in .env:" >&2
+  echo "ERROR: the following vars are unset or still placeholder in .env / .env.services:" >&2
   printf '  %s\n' "${missing[@]}" >&2
   exit 1
 fi
@@ -116,9 +126,6 @@ echo "openbrain-configmap updated in openbrain namespace."
 
 kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic webapp-secret \
   --namespace openbrain \
-  --from-literal=DB_PASSWORD="$DB_PASSWORD" \
-  --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
-  --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_DEPLOYMENT_KEY:-}" \
   --from-literal=OB1_MCP_KEY="$OB1_MCP_KEY" \
   --from-literal=JOB_SEARCH_MCP_KEY="$JOB_SEARCH_MCP_KEY" \
@@ -126,6 +133,14 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic webapp-se
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
 echo "webapp-secret updated in openbrain namespace."
+
+kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic dashboard-secret \
+  --namespace openbrain \
+  --from-literal=SESSION_SECRET="$DASHBOARD_SESSION_SECRET" \
+  --dry-run=client -o yaml \
+  | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
+
+echo "dashboard-secret updated in openbrain namespace."
 
 # Generate .mcp.json for Claude Code — auth keys live in .env, not committed.
 # "type": "http" is required for Claude Code to recognize the Streamable HTTP transport.

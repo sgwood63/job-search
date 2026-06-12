@@ -1,7 +1,7 @@
 name: ob1
 
-# Complete OB1 stack: PostgreSQL + MinIO + openbrain MCP + job-search-mcp.
-# Runs the same 4 services as the K8s deployment without needing a cluster.
+# Complete OB1 stack: PostgreSQL + MinIO + openbrain MCP + job-search-mcp + OB1 Dashboard.
+# Runs the same services as the K8s deployment without needing a cluster.
 #
 # Standalone (data services + MCP only):
 #   docker compose -f integrations/ob1/docker-compose.yml up
@@ -29,9 +29,14 @@ name: ob1
 #     docker build -t openbrain-mcp-server:latest \
 #       "$OB1_REPO_PATH/integrations/kubernetes-deployment/"
 #
+#   OB1_REPO_PATH must be set in .env.services (path to OB1 repo checkout).
+#   DASHBOARD_SESSION_SECRET must be set in .env.services (min 32 chars).
+#
 # Service access (compose mode):
 #   OB1 MCP:          http://localhost:8080/mcp
 #   job-search MCP:   http://localhost:8081/mcp
+#   OB1 REST API:     http://localhost:8002
+#   OB1 Dashboard:    http://localhost:3000
 #   MinIO S3 API:     http://localhost:9000
 #   MinIO console:    http://localhost:9001
 #   PostgreSQL:       localhost:5432
@@ -135,6 +140,74 @@ services:
       PORT: "8001"
     ports:
       - "8081:8001"   # job-search MCP — localhost:8081
+    restart: unless-stopped
+
+  ob1-rest-pg:
+    build:
+      context: ob1-rest-pg    # relative to this compose file's directory (integrations/ob1/)
+      dockerfile: Dockerfile
+    image: ob1-rest-pg:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-openbrain}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      MCP_ACCESS_KEY: ${OB1_MCP_KEY:?OB1_MCP_KEY must be set in .env}
+      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}
+      EMBEDDING_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set in .env}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      PORT: "8002"
+    ports:
+      - "8002:8002"   # OB1 REST (PG) — http://localhost:8002
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      # Source lives in the OB1 repo; Dockerfile is inlined here so the OB1
+      # repo stays unmodified. OB1_REPO_PATH must be set in .env.services.
+      context: ${OB1_REPO_PATH:?OB1_REPO_PATH must be set in .env.services}/dashboards/open-brain-dashboard-next
+      args:
+        # NEXT_PUBLIC_API_URL is baked at build time (server-only module).
+        # Defaults to the ob1-rest-pg compose service name.
+        # Override for K8s image builds:
+        #   DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002 \
+        #     docker compose -f integrations/ob1/docker-compose.yml build dashboard
+        NEXT_PUBLIC_API_URL: ${DASHBOARD_OB1_URL:-http://ob1-rest-pg:8002}
+      dockerfile_inline: |
+        FROM node:20-alpine AS deps
+        WORKDIR /app
+        COPY package.json package-lock.json ./
+        RUN npm ci
+
+        FROM node:20-alpine AS builder
+        WORKDIR /app
+        COPY --from=deps /app/node_modules ./node_modules
+        COPY . .
+        ARG NEXT_PUBLIC_API_URL=http://ob1-rest-pg:8002
+        ENV NEXT_PUBLIC_API_URL=$$NEXT_PUBLIC_API_URL
+        RUN SESSION_SECRET="build-time-placeholder-not-used-at-runtime-xx" npm run build
+
+        FROM node:20-alpine AS runner
+        WORKDIR /app
+        ENV NODE_ENV=production
+        COPY --from=builder /app/.next/standalone ./
+        COPY --from=builder /app/.next/static ./.next/static
+        COPY --from=builder /app/public ./public
+        EXPOSE 3000
+        CMD ["node", "server.js"]
+    image: ob1-dashboard:latest
+    depends_on:
+      ob1-rest-pg:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:?DASHBOARD_SESSION_SECRET must be set in .env.services}
+    ports:
+      - "3000:3000"   # OB1 Dashboard — http://localhost:3000
     restart: unless-stopped
 
 volumes:

@@ -110,21 +110,21 @@ def test_tracker_empty(client, tmp_applicant):
     resp = client.get("/api/tracker")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["active"] == []
-    assert data["phase_d"] == []
-    assert data["closed"] == []
+    assert data["rows"] == []
 
 
 def test_tracker_with_data(client, tmp_applicant):
     (tmp_applicant / "application-tracker.md").write_text(TRACKER_CONTENT, encoding="utf-8")
     resp = client.get("/api/tracker")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["active"]) == 1
-    assert data["active"][0]["company"] == "Acme Corp"
-    assert data["active"][0]["role"] == "Solutions Engineer"
-    assert len(data["closed"]) == 1
-    assert data["closed"][0]["company"] == "OldCo"
+    rows = resp.json()["rows"]
+    active = [r for r in rows if r["status"] not in ("closed",)]
+    closed = [r for r in rows if r["status"] == "closed"]
+    assert len(active) == 1
+    assert active[0]["company"] == "Acme Corp"
+    assert active[0]["role"] == "Solutions Engineer"
+    assert len(closed) == 1
+    assert closed[0]["company"] == "OldCo"
 
 
 # ---------------------------------------------------------------------------

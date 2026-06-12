@@ -15,11 +15,11 @@ Re-runnable — skips files that already have a thought_id.
 Usage:
   python scripts/backfill-thoughts.py [--dry-run] [--only-fk] [--limit N] [--delay SECS]
 
-Environment (loaded from .env):
-  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
-  OBJECT_STORE_BACKEND, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET
-  EMBEDDING_API_BASE, EMBEDDING_API_KEY (or LLM_API_KEY), EMBEDDING_MODEL
-  CHAT_API_BASE, CHAT_API_KEY (or LLM_API_KEY), CHAT_MODEL
+Environment (loaded from .env and .env.services):
+  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD        ← .env.services
+  OBJECT_STORE_BACKEND, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET  ← .env.services
+  EMBEDDING_API_BASE, EMBEDDING_API_KEY (or LLM_API_KEY), EMBEDDING_MODEL  ← .env.services
+  CHAT_API_BASE, CHAT_API_KEY (or LLM_API_KEY), CHAT_MODEL                 ← .env.services
 """
 
 import argparse
@@ -35,17 +35,21 @@ import psycopg2
 import psycopg2.extras
 
 # ---------------------------------------------------------------------------
-# Load .env
+# Load .env and .env.services
 # ---------------------------------------------------------------------------
-env_file = Path(__file__).parent.parent / ".env"
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if line.startswith("export "):
-            line = line[7:]
-        if "=" in line and not line.startswith("#"):
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip())
+def _load_env_file(path):
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[7:]
+            if "=" in line and not line.startswith("#"):
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip())
+
+_root = Path(__file__).parent.parent
+_load_env_file(_root / ".env")
+_load_env_file(_root / ".env.services")
 
 # ---------------------------------------------------------------------------
 # Args

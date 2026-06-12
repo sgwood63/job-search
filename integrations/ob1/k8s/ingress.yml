@@ -9,6 +9,11 @@ metadata:
     # /job-search/sse → /sse  (job-search MCP)
     # /minio/   → /      (MinIO console)
     nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # MCP servers use SSE streams for tool-call responses; the default 60s
+    # proxy_read_timeout kills POST SSE streams during long LLM turns.
+    # 300s covers all realistic tool call durations. The real fix is adding
+    # POST SSE keepalive pings to @hono/mcp (tracked separately).
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:
   ingressClassName: nginx
   rules:

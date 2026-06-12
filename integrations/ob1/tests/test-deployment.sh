@@ -14,9 +14,6 @@
 #   minikube:             K8S_BASE_URL=http://$(minikube ip)
 #   k3d:                  K8S_BASE_URL=http://$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 #
-# PostgreSQL note:
-#   The webapp and migrate-to-ob1.py connect to localhost:5432 — the port-forward must always be running:
-#   kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &
 
 set -euo pipefail
 
@@ -134,15 +131,6 @@ test_pods() {
 # ---------------------------------------------------------------------------
 # Database tests
 # ---------------------------------------------------------------------------
-
-test_postgres_portforward() {
-  header "PostgreSQL Port-Forward (localhost:5432)"
-  if python3 -c "import socket; s=socket.create_connection(('localhost', 5432), timeout=2); s.close()" 2>/dev/null; then
-    pass "localhost:5432 is reachable (port-forward active)"
-  else
-    fail "localhost:5432 not reachable — start: kubectl port-forward svc/openbrain-db -n openbrain 5432:5432 &"
-  fi
-}
 
 test_postgres_connect() {
   header "PostgreSQL"
@@ -420,7 +408,6 @@ ALL_TESTS=(
   test_namespace
   test_secrets
   test_pods
-  test_postgres_portforward
   test_postgres_connect
   test_js_tables
   test_minio_bucket
