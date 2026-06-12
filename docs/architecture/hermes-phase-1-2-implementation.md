@@ -38,6 +38,8 @@ Implemented 2026-06-12 on branch `hermes`. Source design doc: [2026-06-job-searc
 
 ## Deferred (decisions made, not built)
 
+> Full design detail for picking these up: [hermes-phase-3-4-roadmap.md](hermes-phase-3-4-roadmap.md).
+
 - **Phase 3 — Workflow API + Temporal**: `CreateApplication` workflow, Temporal **self-hosted on the existing openbrain k8s cluster**, **Python SDK**. Activities wrap `adapter.run_skill()` directly or call `POST /api/skills/{name}/run`; `workflows/*/skill.yaml` gains a `steps:` list mapping 1:1 to workflow steps; `inputs/outputs` become typed payloads.
 - **Phase 4 — audit + learning loop**: `js_audit_events` table in `integrations/ob1/job-search-schema.sql`; swap the `events.py` backend without touching call sites; correction → skill-update → regression-test → promote loop using immutable `vN.md` + changelog as before/after pairs.
 - **Content migrations**: `/ingest` + `/ingestLI` full extraction into a workflow; `applicant-setup.md` as a workflow.

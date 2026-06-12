@@ -59,7 +59,7 @@ $APP_DIR/
 ├── applicant-setup.md           # Onboarding phases A–E + Phase F (profile maintenance)
 │
 ├── docs/
-│   └── architecture/            # Reference: source design PDF, as-approved plan, implementation record
+│   └── architecture/            # Reference: design PDF, approved plan, implementation record, phase 3/4 roadmap
 │
 ├── skills/                      # Versioned generative procedures (source of truth)
 │   ├── registry.yaml            # Index of all skills/policies/workflows
