@@ -55,8 +55,17 @@ $APP_DIR/
 ├── QUICK-START.md               # Setup guide for new users
 ├── USER-GUIDE.md                # End-user workflow and command reference
 ├── DEVELOPER-README.md          # This file
-├── workflow.md                  # Full pipeline documentation (JD → resume → submit)
+├── workflow.md                  # Pointer to the versioned workflow/skill entries (kept for references)
 ├── applicant-setup.md           # Onboarding phases A–E + Phase F (profile maintenance)
+│
+├── skills/                      # Versioned generative procedures (source of truth)
+│   ├── registry.yaml            # Index of all skills/policies/workflows
+│   ├── README.md                # Format spec, version resolution, draft → promote flow
+│   └── <name>/                  # skill.yaml manifest + immutable v1.md, v2.md… (+ draft.md while revising)
+├── policies/                    # Versioned cross-cutting rules (factuality, evidence-grounding,
+│                                #   company-descriptors, storage-routing) — same layout as skills/
+├── workflows/                   # Versioned multi-step orchestrations (create-application,
+│                                #   prepare-interview) — invoke skills by name
 │
 ├── .claude/
 │   ├── settings.json            # Hooks, permissions, statusLine
@@ -67,11 +76,12 @@ $APP_DIR/
 │       ├── interview.md
 │       ├── memory.md
 │       ├── setup.md
+│       ├── skill.md             # /skill list|show|draft|diff|promote
 │       └── status.md
 │
 ├── memory/                      # Process memory (git-tracked, auto-synced)
 │   ├── MEMORY.md                # Index — loaded at session start
-│   └── feedback_*.md            # Accumulated process rules
+│   └── feedback_*.md            # Session/tooling rules; migrated entries are pointer stubs into skills/
 │
 ├── templates/
 │   ├── resume.css               # Default PDF stylesheet (2-page)
@@ -188,7 +198,7 @@ Both servers use the **Streamable HTTP** transport. Claude Code requires:
 
 ### Session-start protocol
 
-When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `memory/feedback_ob1_integration.md`.
+When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `policies/storage-routing/` (pinned version).
 
 ### Data persistence (Docker Desktop)
 
@@ -256,7 +266,7 @@ Two files, both gitignored, serve different audiences:
 | `.env` | Claude CLI config: paths, MCP keys, search API, `DEV_MODE` | Claude Code shell session |
 | `.env.services` | Storage credentials: MinIO, Postgres, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY` | `scripts/start-ob1.sh`, `scripts/k8s-apply-env.sh` |
 
-**Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [memory/feedback_ob1_integration.md](memory/feedback_ob1_integration.md).
+**Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [policies/storage-routing/](policies/storage-routing/) (pinned version).
 
 Copy both example files to get started:
 ```bash
@@ -390,15 +400,18 @@ Use this after editing memory files outside a Claude session (e.g., directly in 
 
 ## Customizing Workflow Rules
 
-Process rules live in three locations with different scopes:
+Process rules live in four locations with different scopes:
 
 | Location | Scope | When to use |
 |---|---|---|
+| `skills/`, `policies/`, `workflows/` | Versioned procedures; resolved per mode (interactive: draft-first; webapp: pinned-only) | **Preferred for procedural rules** — JD screening, resume generation, interview prep, storage routing, domain connection. Change via `/skill draft` → `/skill promote` |
 | `CLAUDE.md` | Always-loaded; applies every session | Critical rules and workflow triggers that must be visible at session start |
-| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Detailed rules, feedback, and preferences — preferred for most rule changes (keeps `CLAUDE.md` lean) |
+| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Session/tooling mechanics (DEV_MODE, commits, model selection, doc maintenance). Migrated procedural entries are pointer stubs — do not add rules to them |
 | `$APPLICANT_DIR/memory/` | Applicant-specific; local only | Role preferences, deal-breakers, search state |
 
-**To add or update a rule:**
+**To add or update a procedural rule:** run `/skill draft <name>`, edit `draft.md`, exercise it on real work, then `/skill promote <name> [--pin]` (test-gated; `--pin` moves the version the webapp executes). Requires `DEV_MODE=true`.
+
+**To add or update a session/tooling rule:**
 1. Edit the relevant `memory/feedback_*.md` file (or `CLAUDE.md` for session-critical rules). Requires `DEV_MODE=true`.
 2. If you edited `CLAUDE.md` or a `memory/` file, run the sync script so the live session picks up the change:
    ```bash

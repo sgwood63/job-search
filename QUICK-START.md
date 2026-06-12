@@ -79,3 +79,9 @@ See [USER-GUIDE.md → Finding Jobs Proactively](USER-GUIDE.md) and [USER-GUIDE.
 After each call, tell Claude who you spoke with and what was said — it updates your notes. Run `/interview [company]` before any call for a targeted prep brief. After the interview, debrief with Claude — gaps and positioning signals carry forward automatically.
 
 See [USER-GUIDE.md → Preparing for an Interview](USER-GUIDE.md) for details.
+
+---
+
+## Where the Rules Live
+
+The procedures the assistant follows — JD screening, resume generation, interview prep, storage routing — are versioned documents under `skills/`, `policies/`, and `workflows/` in this repo. When you correct how something is done, the assistant proposes a draft revision of the relevant skill; once it proves out, `/skill promote` makes it the new version. You rarely need to touch these directly — see [USER-GUIDE.md](USER-GUIDE.md) for the `/skill` command.

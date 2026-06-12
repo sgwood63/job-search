@@ -30,6 +30,8 @@ The backend loads all configuration from the `.env` file at the project root.
 | `APPLICANT_DIR` | Path to applicant data directory (required for local mode) |
 | `DEV_MODE` | `true` = APP_DIR file edits allowed; `false` (default) = read-only |
 | `CLAUDE_BINARY` | Path to the Claude Code binary for chat sessions (default: `claude` in PATH). Must be 2.1.152+. |
+| `RUNTIME_ADAPTER` | Skill runtime adapter: `claude-runner` (default) or `hermes` (experimental) |
+| `RUNTIME_ALLOW_DRAFT` | `true` allows running `draft` skill versions via `/api/skills/{name}/run` (dev escape hatch; default `false`) |
 
 ### OB1 mode — PostgreSQL
 
@@ -225,6 +227,10 @@ Files render as formatted markdown. Markdown files can be edited inline. File up
 | `POST` | `/api/sessions` | Create a Claude Code chat session |
 | `GET` | `/api/sessions` | List active sessions |
 | `WS` | `/ws/session/{id}` | Stream Claude Code output |
+| `GET` | `/api/skills` | List versioned skills/policies/workflows from `skills/registry.yaml` (`?reload=1` to re-read) |
+| `GET` | `/api/skills/{name}` | Manifest + available versions for one entry |
+| `POST` | `/api/skills/{name}/run` | Execute a skill headlessly (pinned version; body `{version?, task, timeout_s?}`; `?stream=1` streams NDJSON) |
+| `POST` | `/api/skills/{name}/corrections` | Record a user correction against a run (`{run_id, correction, context?}`) |
 
 ## Verifying Connectivity
 

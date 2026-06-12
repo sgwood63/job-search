@@ -42,7 +42,7 @@ This system uses two directories with distinct purposes:
 
 | Directory | Purpose | Git-tracked |
 |---|---|---|
-| `$APP_DIR` (this repo) | Process, tooling, templates, memory | Yes |
+| `$APP_DIR` (this repo) | Process, tooling, templates, memory, versioned skills | Yes |
 | `$APPLICANT_DIR` | Applicant data, applications, profiles, tracker | No |
 
 Paths are defined in `.env` — see [QUICK-START.md](QUICK-START.md) for setup.
@@ -65,5 +65,5 @@ Applicant data is kept out of git to protect personal information and keep the p
 
 - **Factual accuracy** — every resume bullet traces to a verified source; nothing is invented.
 - **Authentic voice** — all materials are generated from your own words and experience, not generic templates.
-- **Compounding improvement** — corrections, debrief notes, and new experience carry forward automatically into every future application.
+- **Compounding improvement** — corrections, debrief notes, and new experience carry forward automatically into every future application. Procedural rules live as versioned skill documents (`skills/`, `policies/`, `workflows/`) with a draft → test → promote flow, so improvements are explicit, reviewable versions rather than scattered notes.
 - **Full-cycle coverage** — JD screening, resume, cover letter, portal questions, interview prep, and post-call tracking in one place.
