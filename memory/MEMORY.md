@@ -15,7 +15,7 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 
 ## Automated Workflow (DO NOT ASK, JUST DO)
 
-When a JD is provided, execute the workflow `$APP_DIR/workflows/create-application/` (pinned version per its `skill.yaml`). It covers: fetch fallback chain, Haiku screening via skill `jd-evaluation`, folder + JD file rules for every JD (fit or no-fit), no-fit close, fit resume generation via skill `resume-generation` (Sonnet), tracker two-file rule, and notes.md structure.
+When a JD is provided, execute the workflow `$APP_DIR/workflows/create-application/` (pinned version per its `skill.yaml`). It covers: fetch fallback chain → delegate to `workflows/process-jd/` (screen via `jd-evaluation` Haiku, create folder + JD files + initial notes, register in tracker) → no-fit stop → fit: expand notes to full structure + resume via `resume-generation` (Sonnet) + tracker update.
 
 ## Resume Generation Workflow
 - See `$APP_DIR/skills/resume-generation/` (pinned version) plus the policies in its `skill.yaml` — two-phase flow, role ordering, Education/Certs, no unverified percentages, PDF via Playwright, file naming, signal density, evaluation report. Cover letters: `$APP_DIR/skills/cover-letter/`.
@@ -45,15 +45,13 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
 - When target roles or JD signal keywords change: update the `## Search Queries` table row in `PROFILES-QUICK-REFERENCE.md`; include adjacent titles (names other companies use for the same function); aim for 8–14 terms per query; when a profile is removed, delete its row
 
-## Job Ingestion (/ingest command)
-- Run `/ingest <profile>` to search Google Jobs via SearchAPI for a given profile
-- Uses one OR-query per profile from `## Search Queries` table in `PROFILES-QUICK-REFERENCE.md`
-- Deduplicates against `$APPLICANT_DIR/profiles/<profile>/search-results/seen-jobs.json`
-- Saves fit jobs as application stubs (folder + JD files + notes stub) — does NOT auto-generate resumes
-- Saves per-run summary (all screened jobs — fit + no-fit with scores and reasons) to `$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`
-- Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`; CSV columns: `date,time,profile,pages_fetched,total_results,new_after_dedup,screened,fit_count,query,summary_file`
-- Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
-- Requires `SEARCHAPI_KEY` in `.env`
+## Job Ingestion (/ingest, /linkedin-ingest commands)
+- `/ingest <profile>` → runs workflow `search-jobs` (Google Jobs via SearchAPI); `/linkedin-ingest` → runs workflow `search-jobs-linkedin` (LinkedIn recommendations)
+- Both delegate per-job processing to workflow `process-jd` (canonical: screen via `jd-evaluation` Haiku, folder creation, JD files, notes stub, tracker registration)
+- Fetch-failed stubs (when JD URL unreachable) are handled inline in each ingest workflow — not delegated to `process-jd`
+- Saves fit jobs as application stubs — does NOT auto-generate resumes
+- Per-run summary: `$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`; log: `search-log.csv`
+- Requires `SEARCHAPI_KEY` (`/ingest`) or `PLAYWRIGHT_PYTHON` (`/linkedin-ingest`) in `.env`
 
 ## OB1 Integration
 - See `$APP_DIR/policies/storage-routing/` (pinned version) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback); upload routing MCP vs REST
@@ -64,9 +62,11 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 ## Versioned Skills (source of truth for migrated rules)
 Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workflows/` (index: `skills/registry.yaml`; the old `feedback_*` files are pointer stubs). Interactive sessions prefer `draft.md` when present, else the pinned version. Changes go through `/skill draft` → `/skill promote`.
 - Application tracking + status updates (two-file rule) → `workflows/create-application/`
+- JD screening, folder creation, file composition, OB1/local routing, tracker registration → `workflows/process-jd/` (canonical shared module — used by create-application, search-jobs, search-jobs-linkedin)
 - Unknown-company research → `skills/jd-evaluation/`
 - Domain connection → `policies/company-descriptors/`
-- JD file saving (verbatim `jd-*.md` + structured `job-description.md`) → `workflows/create-application/`
+- JD file saving (verbatim `jd-*.md` + structured `job-description.md`) → `workflows/process-jd/`
+- Google Jobs ingestion → `workflows/search-jobs/`; LinkedIn ingestion → `workflows/search-jobs-linkedin/`
 - Resume generation → `skills/resume-generation/`; cover letters → `skills/cover-letter/`
 - Interview prep → `skills/interview-prep/` + `workflows/prepare-interview/`
 - OB1 routing → `policies/storage-routing/`
