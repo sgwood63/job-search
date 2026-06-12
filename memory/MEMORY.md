@@ -58,6 +58,9 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 ## OB1 Integration
 - See `$APP_DIR/policies/storage-routing/` (pinned version) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback); upload routing MCP vs REST
 
+## Architecture Roadmap
+- See [project_hermes_architecture_phases.md](project_hermes_architecture_phases.md) — phases 1+2 (versioned skills + runtime) landed on branch `hermes` 2026-06-12; phase 3 (Temporal self-hosted on openbrain k8s, Python SDK) and phase 4 (OB1 audit events + learning loop) decided but deferred
+
 ## Versioned Skills (source of truth for migrated rules)
 Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workflows/` (index: `skills/registry.yaml`; the old `feedback_*` files are pointer stubs). Interactive sessions prefer `draft.md` when present, else the pinned version. Changes go through `/skill draft` → `/skill promote`.
 - Application tracking + status updates (two-file rule) → `workflows/create-application/`
