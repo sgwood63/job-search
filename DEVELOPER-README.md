@@ -58,6 +58,9 @@ $APP_DIR/
 ├── workflow.md                  # Pointer to the versioned workflow/skill entries (kept for references)
 ├── applicant-setup.md           # Onboarding phases A–E + Phase F (profile maintenance)
 │
+├── docs/
+│   └── architecture/            # Reference: source design PDF, as-approved plan, implementation record
+│
 ├── skills/                      # Versioned generative procedures (source of truth)
 │   ├── registry.yaml            # Index of all skills/policies/workflows
 │   ├── README.md                # Format spec, version resolution, draft → promote flow

@@ -14,4 +14,4 @@ The "rigorous development process" architecture (Temporal + OB1 + versioned skil
 - Phase 4: OB1 audit-event table (`js_audit_events` in integrations/ob1/job-search-schema.sql) + correction→skill-update→regression-test→promote learning loop; `runtime/events.py` is the single chokepoint to swap backends; `run_id` joins runs↔corrections↔promotions
 - Runtime: **both adapters behind the AgentAdapter protocol** — Claude primary, Hermes experimental (no documented headless mode as of 2026-06; gated behind HERMES_HEADLESS_CMD)
 
-Deferred content migrations: /ingest + /ingestLI full workflow extraction; applicant-setup.md as a workflow. Original plan file: ~/.claude/plans/implement-the-new-architecture-kind-quasar.md.
+Deferred content migrations: /ingest + /ingestLI full workflow extraction; applicant-setup.md as a workflow. Reference artifacts archived in `$APP_DIR/docs/architecture/`: source design PDF, as-approved plan, and implementation record.
