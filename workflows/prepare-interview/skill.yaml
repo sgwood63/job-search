@@ -1,0 +1,19 @@
+name: prepare-interview
+kind: workflow
+description: Locate an application, load its context files, and produce an interview prep brief via the interview-prep skill
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+skills:
+  - interview-prep
+inputs:
+  - company
+  - stage               # optional
+outputs:
+  - prep_brief
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from .claude/commands/interview.md orchestration steps, invoking skill interview-prep

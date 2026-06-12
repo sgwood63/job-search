@@ -1,0 +1,10 @@
+name: company-descriptors
+kind: policy
+description: Surface the applicant's domain connection to the target company's business (four sources) and include short company descriptions for employers in role entries
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from memory/feedback_domain_connection.md (four sources) and the company-descriptions rule from memory/feedback_resume_generation.md (commit 960eda8)

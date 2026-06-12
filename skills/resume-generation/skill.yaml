@@ -1,0 +1,21 @@
+name: resume-generation
+kind: skill
+description: Generate a tailored, factual resume from profile content for a screened JD, with verification gate and evaluation report
+status: active
+pinned: v1
+latest: v1
+policies:
+  - factuality
+  - evidence-grounding
+  - company-descriptors
+  - storage-routing
+inputs:
+  - application_folder   # e.g. applications/2026-06-12-acme-se/
+  - profile              # matched profile name
+outputs:
+  - resume_md            # the resume markdown artifact
+  - evaluation_report    # JD-coverage scoring + Recruiter & ATS Appeal Analysis (written to notes.md)
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from memory/feedback_resume_generation.md (minus cover-letter rules), CLAUDE.md Resume Generation + Review-before-PDF, workflow.md Resume Generation Pipeline, and memory/MEMORY.md construction standards

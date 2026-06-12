@@ -1,0 +1,21 @@
+name: create-application
+kind: workflow
+description: Full JD pipeline — fetch, screen via jd-evaluation, create application folder, then no-fit close or fit resume generation via resume-generation
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+skills:
+  - jd-evaluation
+  - resume-generation
+inputs:
+  - jd_source            # URL, document, or pasted text
+outputs:
+  - application_folder
+  - verdict
+  - resume_md            # fit only
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from workflow.md steps 1-3 + fit/no-fit branches + JD regeneration + notes.md structure, memory/feedback_jd_file_saving.md, memory/feedback_application_tracking.md, memory/feedback_application_status_update.md

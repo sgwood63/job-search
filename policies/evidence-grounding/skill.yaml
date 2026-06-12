@@ -1,0 +1,10 @@
+name: evidence-grounding
+kind: policy
+description: Source content only from the profile content library and EXPERIENCE-REFERENCE.md; verify role order; content-library headers are not job titles; base-documents is setup-only
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from CLAUDE.md/MEMORY.md source-only rules, role-order verification, content-library-headers rule, and memory/project_profiles_directory.md

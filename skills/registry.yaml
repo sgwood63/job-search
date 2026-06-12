@@ -1,0 +1,16 @@
+# Registry of all skills, policies, and workflows.
+# Membership only — pinned/latest/metadata live in each entry's skill.yaml.
+# A pytest test (webapp/backend/tests/test_runtime_registry.py) enforces that
+# this list and the directory tree stay in 1:1 sync.
+version: 1
+entries:
+  - { name: jd-evaluation,       kind: skill,    path: skills/jd-evaluation }
+  - { name: resume-generation,   kind: skill,    path: skills/resume-generation }
+  - { name: cover-letter,        kind: skill,    path: skills/cover-letter }
+  - { name: interview-prep,      kind: skill,    path: skills/interview-prep }
+  - { name: factuality,          kind: policy,   path: policies/factuality }
+  - { name: evidence-grounding,  kind: policy,   path: policies/evidence-grounding }
+  - { name: company-descriptors, kind: policy,   path: policies/company-descriptors }
+  - { name: storage-routing,     kind: policy,   path: policies/storage-routing }
+  - { name: create-application,  kind: workflow, path: workflows/create-application }
+  - { name: prepare-interview,   kind: workflow, path: workflows/prepare-interview }

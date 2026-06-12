@@ -1,0 +1,10 @@
+name: storage-routing
+kind: policy
+description: Canonical DATA_BACKEND routing — when OB1 is configured, all APPLICANT file reads/writes go through OB1 MCP tools; MCP not connected = hard stop; upload routing MCP vs REST
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated verbatim from memory/feedback_ob1_integration.md plus the DATA_BACKEND bullet from CLAUDE.md Profile Maintenance

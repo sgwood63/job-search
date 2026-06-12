@@ -1,0 +1,18 @@
+name: interview-prep
+kind: skill
+description: Generate an interview prep brief for a specific application and stage — required reading, output structure, stage inference, warm connections
+status: active
+pinned: v1
+latest: v1
+policies:
+  - factuality
+  - storage-routing
+inputs:
+  - application_folder
+  - stage               # optional; inferred from notes.md Process section when absent
+outputs:
+  - prep_brief
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from memory/feedback_interview_preparation.md and the output structure of .claude/commands/interview.md
