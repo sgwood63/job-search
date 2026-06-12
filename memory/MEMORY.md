@@ -60,7 +60,7 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - See [project_hermes_architecture_phases.md](project_hermes_architecture_phases.md) — phases 1+2 (versioned skills + runtime) landed on branch `hermes` 2026-06-12; phase 3 (Temporal self-hosted on openbrain k8s, Python SDK) and phase 4 (OB1 audit events + learning loop) decided but deferred
 
 ## Versioned Skills (source of truth for migrated rules)
-Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workflows/` (index: `skills/registry.yaml`; the old `feedback_*` files are pointer stubs). Interactive sessions prefer `draft.md` when present, else the pinned version. Changes go through `/skill draft` → `/skill promote`.
+Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workflows/` (index: `skills/registry.yaml`; the old `feedback_*` files are pointer stubs). Interactive sessions prefer `draft.md` when present, else the pinned version. Changes go through the draft → promote flow: tell Claude "draft skill <name>" or "promote skill <name>".
 - Application tracking + status updates (two-file rule) → `workflows/create-application/`
 - JD screening, folder creation, file composition, OB1/local routing, tracker registration → `workflows/process-jd/` (canonical shared module — used by create-application, search-jobs, search-jobs-linkedin)
 - Unknown-company research → `skills/jd-evaluation/`
@@ -87,6 +87,12 @@ To sync manually (e.g., after editing outside a session):
 bash "$APP_DIR/scripts/sync-memory.sh"
 ```
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in real-time during sessions — no sync step needed.
+
+## Application Disambiguation
+- See [feedback_application_disambiguation.md](feedback_application_disambiguation.md) — when a search returns 2+ applications matching a company/query, always pause and ask which one; show numbered list with: Company — Role Title | Created | Profile | Status
+
+## Resume Generation Reporting
+- See [feedback_resume_reporting.md](feedback_resume_reporting.md) — after uploading a resume .md, report only the OB1 key; never surface the /tmp/ local copy path in user-facing output
 
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)

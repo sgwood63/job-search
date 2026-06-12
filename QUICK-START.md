@@ -84,4 +84,4 @@ See [USER-GUIDE.md → Preparing for an Interview](USER-GUIDE.md) for details.
 
 ## Where the Rules Live
 
-The procedures the assistant follows — JD screening, resume generation, interview prep, storage routing — are versioned documents under `skills/`, `policies/`, and `workflows/` in this repo. When you correct how something is done, the assistant proposes a draft revision of the relevant skill; once it proves out, `/skill promote` makes it the new version. You rarely need to touch these directly — see [USER-GUIDE.md](USER-GUIDE.md) for the `/skill` command.
+The procedures the assistant follows — JD screening, resume generation, interview prep, storage routing — are versioned documents under `skills/`, `policies/`, and `workflows/` in this repo. When you correct how something is done, the assistant proposes a draft revision of the relevant skill; once it proves out, tell Claude "promote skill <name>" to make it the new version. You rarely need to touch these directly.

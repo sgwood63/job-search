@@ -10,4 +10,4 @@ metadata:
 
 Cover letter rules live in `$APP_DIR/skills/cover-letter/`.
 
-Do not add new rules here — use `/skill draft resume-generation`.
+Do not add new rules here — tell Claude "draft skill resume-generation" to propose changes.

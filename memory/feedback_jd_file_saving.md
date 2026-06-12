@@ -6,4 +6,4 @@ type: feedback
 
 **Migrated to versioned skills.** The JD file-saving rules — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`, fetch fallback chain, post-regeneration sync — live in `$APP_DIR/workflows/create-application/`. Read the pinned version per its `skill.yaml`.
 
-Do not add new rules here — use `/skill draft create-application`.
+Do not add new rules here — tell Claude "draft skill create-application" to propose changes.

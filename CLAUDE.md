@@ -25,6 +25,7 @@ Procedural knowledge lives in versioned documents under `$APP_DIR/skills/`, `$AP
 - **Policies listed in a skill's `skill.yaml` are mandatory companion reading** — read them alongside the skill
 - Never edit a committed `vN.md`. Changes go through the draft → promote flow: tell Claude "draft skill <name>" or "promote skill <name>"
 - When the user gives procedural feedback on a migrated area (resume rules, JD screening, interview prep, storage routing, domain connection), propose drafting the relevant skill — do not edit the old `memory/feedback_*` pointer stubs
+- For new cross-cutting session-mechanic feedback that doesn't fit a versioned skill, write a `feedback_*.md` directly to `$APP_DIR/memory/` — not to `~/.claude/projects/.../memory/` (the auto-memory path, which is downstream)
 
 The webapp executes skills via `POST /api/skills/{name}/run` using pinned versions only.
 

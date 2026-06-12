@@ -6,4 +6,4 @@ type: feedback
 
 **Migrated to versioned skills.** The domain-connection rule — identify the target company's business domain, check all four sources, surface in notes.md and resume bullets — lives in `$APP_DIR/policies/company-descriptors/` (together with the company-descriptions-in-role-entries rule). Read the pinned version per its `skill.yaml`.
 
-Do not add new rules here — use `/skill draft company-descriptors`.
+Do not add new rules here — tell Claude "draft skill company-descriptors" to propose changes.

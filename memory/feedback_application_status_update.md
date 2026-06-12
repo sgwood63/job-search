@@ -8,4 +8,4 @@ metadata:
 
 **Migrated to versioned skills.** The status-update rules — two-target update (tracker + notes.md) for all transitions, duplicate-folder handling, Application Log format (no `## Submission Log` section) — live in `$APP_DIR/workflows/create-application/` ("Status changes — Two-File Rule"). Read the pinned version per its `skill.yaml`.
 
-Do not add new rules here — use `/skill draft create-application`.
+Do not add new rules here — tell Claude "draft skill create-application" to propose changes.
