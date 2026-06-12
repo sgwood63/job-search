@@ -23,7 +23,9 @@ from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+import runtime as runtime_pkg
 from runtime import claude_exec as runtime_claude_exec
+from runtime.claude_adapter import ClaudeRunnerAdapter
 
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
@@ -682,6 +684,131 @@ async def delete_file(path: str = Query(...)):
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
     return {'ok': True}
+
+
+# ── Skill runtime ─────────────────────────────────────────────────────────────
+
+RUNTIME_ADAPTER = os.environ.get('RUNTIME_ADAPTER', 'claude-runner')
+RUNTIME_ALLOW_DRAFT = os.environ.get('RUNTIME_ALLOW_DRAFT', '').lower() == 'true'
+
+_registry = None
+_adapter = None
+
+
+def _get_registry(reload: bool = False):
+    global _registry
+    if _registry is None or reload:
+        _registry = runtime_pkg.load_registry(APP_DIR)
+    return _registry
+
+
+def _get_adapter():
+    global _adapter
+    if _adapter is None:
+        if RUNTIME_ADAPTER == 'hermes':
+            from runtime.hermes_adapter import HermesAdapter
+            _adapter = HermesAdapter(app_dir=APP_DIR)
+        else:
+            _adapter = ClaudeRunnerAdapter(
+                app_dir=APP_DIR, env_path=env_path, runner_url=CLAUDE_RUNNER_URL)
+    return _adapter
+
+
+def _skill_summary(entry) -> dict:
+    return {
+        'name': entry.name,
+        'kind': entry.kind,
+        'status': entry.status,
+        'description': entry.manifest.get('description', ''),
+        'pinned': entry.pinned,
+        'latest': entry.latest,
+        'versions': entry.versions(),
+        'has_draft': entry.has_draft(),
+        'policies': entry.policies,
+    }
+
+
+@app.get('/api/skills')
+async def list_skills(reload: bool = Query(False)):
+    try:
+        reg = _get_registry(reload=reload)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return [_skill_summary(e) for e in reg.entries.values()]
+
+
+@app.get('/api/skills/{name}')
+async def get_skill(name: str):
+    try:
+        entry = _get_registry().get(name)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {**_skill_summary(entry), 'manifest': entry.manifest}
+
+
+@app.post('/api/skills/{name}/run')
+async def run_skill(name: str, body: dict, stream: bool = Query(False)):
+    """Execute a skill in webapp mode (pinned versions only).
+
+    draft is allowed only with RUNTIME_ALLOW_DRAFT=true — a dev escape hatch.
+    """
+    reg = _get_registry()
+    version = body.get('version')
+    try:
+        if version == 'draft':
+            if not RUNTIME_ALLOW_DRAFT:
+                raise HTTPException(status_code=403,
+                                    detail='draft execution requires RUNTIME_ALLOW_DRAFT=true')
+            resolved = runtime_pkg.resolve(reg, name, version='draft', mode='interactive')
+        else:
+            resolved = runtime_pkg.resolve(reg, name, version=version, mode='webapp')
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    prompt = runtime_pkg.compose_prompt(resolved, reg, 'webapp')
+    req = runtime_pkg.SkillRunRequest(
+        skill=name, version=resolved.version, mode='webapp',
+        task=body.get('task') or {}, timeout_s=int(body.get('timeout_s') or 600),
+    )
+    adapter = _get_adapter()
+
+    if stream:
+        iter_events = getattr(adapter, 'iter_events', None)
+        if iter_events is None:
+            raise HTTPException(status_code=501,
+                                detail=f'adapter {adapter.name} does not support streaming')
+
+        def _gen():
+            for event in iter_events(req, prompt):
+                yield json.dumps(event) + '\n'
+        return StreamingResponse(_gen(), media_type='application/x-ndjson')
+
+    try:
+        result = await adapter.run_skill(req, prompt)
+    except runtime_pkg.AdapterUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    runtime_pkg.record_event('skill_run', {
+        'run_id': result.run_id, 'skill': name, 'version': result.version,
+        'mode': 'webapp', 'status': result.status, 'adapter': result.adapter,
+    }, app_dir=APP_DIR)
+    return result.model_dump()
+
+
+@app.post('/api/skills/{name}/corrections')
+async def record_correction(name: str, body: dict):
+    """Log a user correction against a skill run — phase-4 learning-loop seam."""
+    run_id, correction = body.get('run_id'), body.get('correction')
+    if not run_id or not correction:
+        raise HTTPException(status_code=422, detail='run_id and correction are required')
+    try:
+        _get_registry().get(name)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    record = runtime_pkg.record_event('correction', {
+        'skill': name, 'run_id': run_id, 'correction': correction,
+        'context': body.get('context'),
+    }, app_dir=APP_DIR)
+    return {'ok': True, 'recorded': record}
 
 
 # ── Session management (subprocess --print mode) ──────────────────────────────
