@@ -80,7 +80,6 @@ $APP_DIR/
 │       ├── interview.md
 │       ├── memory.md
 │       ├── setup.md
-│       ├── skill.md             # /skill list|show|draft|diff|promote
 │       └── status.md
 │
 ├── memory/                      # Process memory (git-tracked, auto-synced)
@@ -408,12 +407,12 @@ Process rules live in four locations with different scopes:
 
 | Location | Scope | When to use |
 |---|---|---|
-| `skills/`, `policies/`, `workflows/` | Versioned procedures; resolved per mode (interactive: draft-first; webapp: pinned-only) | **Preferred for procedural rules** — JD screening, resume generation, interview prep, storage routing, domain connection. Change via `/skill draft` → `/skill promote` |
+| `skills/`, `policies/`, `workflows/` | Versioned procedures; resolved per mode (interactive: draft-first; webapp: pinned-only) | **Preferred for procedural rules** — JD screening, resume generation, interview prep, storage routing, domain connection. Change via the draft → promote flow (tell Claude "draft skill <name>" / "promote skill <name>") |
 | `CLAUDE.md` | Always-loaded; applies every session | Critical rules and workflow triggers that must be visible at session start |
 | `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Session/tooling mechanics (DEV_MODE, commits, model selection, doc maintenance). Migrated procedural entries are pointer stubs — do not add rules to them |
 | `$APPLICANT_DIR/memory/` | Applicant-specific; local only | Role preferences, deal-breakers, search state |
 
-**To add or update a procedural rule:** run `/skill draft <name>`, edit `draft.md`, exercise it on real work, then `/skill promote <name> [--pin]` (test-gated; `--pin` moves the version the webapp executes). Requires `DEV_MODE=true`.
+**To add or update a procedural rule:** tell Claude "draft skill <name>", edit `draft.md`, exercise it on real work, then tell Claude "promote skill <name> [--pin]" (test-gated; `--pin` moves the version the webapp executes). Requires `DEV_MODE=true`.
 
 **To add or update a session/tooling rule:**
 1. Edit the relevant `memory/feedback_*.md` file (or `CLAUDE.md` for session-critical rules). Requires `DEV_MODE=true`.

@@ -23,8 +23,8 @@ Procedural knowledge lives in versioned documents under `$APP_DIR/skills/`, `$AP
 
 - **Interactive sessions:** use `draft.md` when present (announce "using DRAFT <name>"), otherwise the `pinned` version from the entry's `skill.yaml`
 - **Policies listed in a skill's `skill.yaml` are mandatory companion reading** — read them alongside the skill
-- Never edit a committed `vN.md`. Changes go through `/skill draft` → `/skill promote` (see the `/skill` command)
-- When the user gives procedural feedback on a migrated area (resume rules, JD screening, interview prep, storage routing, domain connection), propose `/skill draft` on the relevant entry — do not edit the old `memory/feedback_*` pointer stubs
+- Never edit a committed `vN.md`. Changes go through the draft → promote flow: tell Claude "draft skill <name>" or "promote skill <name>"
+- When the user gives procedural feedback on a migrated area (resume rules, JD screening, interview prep, storage routing, domain connection), propose drafting the relevant skill — do not edit the old `memory/feedback_*` pointer stubs
 
 The webapp executes skills via `POST /api/skills/{name}/run` using pinned versions only.
 
@@ -100,7 +100,6 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/audit [folder]` | Validate application folder completeness before submitting |
 | `/apply "Co" "Role" "date" [url?]` | Record submission atomically in tracker + notes.md |
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
-| `/skill [list\|show\|draft\|diff\|promote]` | Manage versioned skills/policies/workflows; draft → promote flow |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
 | `/ingest [profile]` | Run workflow `search-jobs` (Google Jobs via SearchAPI); per-job processing via `process-jd`; saves fit jobs as stubs + summary |
 | `/linkedin-ingest [--max-pages N]` | Run workflow `search-jobs-linkedin` (LinkedIn recommendations); per-job processing via `process-jd`; saves fit jobs as stubs + summary |

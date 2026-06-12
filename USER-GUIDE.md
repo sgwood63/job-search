@@ -443,7 +443,6 @@ To reload context mid-conversation (for example, after a status change):
 | `/apply "Co" "Role" "date" [url?]` | `company`, `role`, `date` (YYYY-MM-DD) required; `url` — portal URL, optional | Records submission; sets 14-day follow-up reminder | Right after submitting |
 | `/interview [company] [stage?]` | `company` — partial name match required; `stage` — interview stage (optional; inferred from notes if omitted) | Interview brief: talking points, questions, positioning | Night before any call |
 | `/memory [subcommand]` | No arg: list all; `read [name]`; `update`; `add [topic]` | Navigate and update the memory system | See subcommands below |
-| `/skill [subcommand]` | `list`; `show <name> [version]`; `draft <name>`; `diff <name>`; `promote <name> [--pin]` | Manage versioned skills/policies/workflows — the source of truth for procedural rules | When changing how the assistant screens JDs, writes resumes, preps interviews, or routes storage |
 | `/setup [phase?]` | `phase` — A–E (optional; auto-detects current state if omitted) | First-time onboarding; phases A–E | Once at the beginning; `/setup A` to restart |
 
 ### /memory subcommands
