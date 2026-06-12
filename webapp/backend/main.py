@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import glob
 import json
 import mimetypes
 import os
@@ -23,6 +22,8 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+from runtime import claude_exec as runtime_claude_exec
 
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
@@ -738,53 +739,12 @@ def _broadcast(session: ChatSession, msg: dict) -> None:
 
 def _stream_via_runner(cmd: list, message: str):
     """Call the claude-runner sidecar and yield NDJSON lines from its streaming response."""
-    import http.client
-    import urllib.parse
-    parsed = urllib.parse.urlparse(CLAUDE_RUNNER_URL)
-    body = json.dumps({'args': cmd, 'cwd': str(APP_DIR), 'message': message}).encode()
-    conn = http.client.HTTPConnection(parsed.netloc, timeout=300)
-    try:
-        conn.request('POST', (parsed.path or '') + '/run', body,
-                     {'Content-Type': 'application/json'})
-        resp = conn.getresponse()
-        for raw in resp:
-            yield raw.decode('utf-8')
-    finally:
-        conn.close()
+    yield from runtime_claude_exec.stream_via_runner(cmd, message, CLAUDE_RUNNER_URL, str(APP_DIR))
 
 
 def _resolve_claude_binary() -> str:
-    """Return the best available Claude binary path.
-
-    When CLAUDE_RUNNER_URL is set (container/runner mode), the cmd is forwarded
-    to the runner sidecar which executes it inside its own container — never
-    send a local VS Code extension path there.
-
-    Local mode priority:
-      1. CLAUDE_BINARY env var if set and the file exists (explicit pin / fallback)
-      2. Latest VS Code extension binary, auto-discovered by semver
-      3. System PATH 'claude'
-    """
-    load_dotenv(env_path, override=True)
-    explicit = os.environ.get('CLAUDE_BINARY', '')
-
-    if CLAUDE_RUNNER_URL:
-        return explicit or 'claude'
-
-    if explicit and os.path.isfile(explicit):
-        return explicit
-
-    candidates = glob.glob(os.path.expanduser(
-        '~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude'
-    ))
-    if candidates:
-        def _ver(path: str):
-            m = re.search(r'claude-code-(\d+)\.(\d+)\.(\d+)', path)
-            return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (0, 0, 0)
-        candidates.sort(key=_ver, reverse=True)
-        return candidates[0]
-
-    return shutil.which('claude') or 'claude'
+    """Return the best available Claude binary path (see runtime.claude_exec)."""
+    return runtime_claude_exec.resolve_claude_binary(env_path=env_path, runner_url=CLAUDE_RUNNER_URL)
 
 
 def _run_message_thread(session: ChatSession, message: str) -> None:
