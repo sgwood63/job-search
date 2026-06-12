@@ -1,0 +1,21 @@
+name: search-jobs-linkedin
+kind: workflow
+description: >
+  Fetch LinkedIn job recommendations via Playwright scraper; screen all results
+  with jd-evaluation (Haiku via process-jd) against all active profiles; save fit
+  jobs as application stubs for review. Reports a per-run summary file and log entry.
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+  - factuality
+inputs:
+  - max_pages    # optional; defaults to 4; pass 0 for unlimited
+outputs:
+  - summary_file
+  - search_log_entry
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from .claude/commands/ingestLI.md; per-job processing now delegates to workflows/process-jd/

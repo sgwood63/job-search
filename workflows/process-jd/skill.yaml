@@ -1,0 +1,35 @@
+name: process-jd
+kind: workflow
+description: >
+  Core JD processing module — screen via jd-evaluation (Haiku), derive folder slug,
+  compose job-description.md / jd-*.md / notes.md stub / search-result.json (if provided),
+  save per storage-routing, and register in tracker. Called by create-application,
+  search-jobs, and search-jobs-linkedin.
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+  - factuality
+  - evidence-grounding
+  - company-descriptors
+inputs:
+  - jd_content          # full JD text, already fetched by caller
+  - source_url          # apply URL or canonical source reference
+  - source_name         # e.g. "SearchAPI / Google Jobs", "LinkedIn Recommendations", "Manual"
+  - profile_hint        # optional profile slug; jd-evaluation may override
+  - source_metadata     # optional dict: {via?, posted_at?, job_id?, raw_source_json?}
+outputs:
+  - folder_slug         # YYYY-MM-DD-company-role
+  - application_id      # OB1 UUID or local folder path
+  - verdict             # true/false
+  - score               # 1-10
+  - profile_match       # profile slug selected by jd-evaluation
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: >
+      Extracted shared JD processing logic from create-application/v1.md and
+      commands/ingest.md + commands/ingestLI.md. Canonical single source for
+      screening, folder creation, file composition, OB1/local routing, and
+      tracker registration.

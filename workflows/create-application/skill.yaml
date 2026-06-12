@@ -1,13 +1,13 @@
 name: create-application
 kind: workflow
-description: Full JD pipeline — fetch, screen via jd-evaluation, create application folder, then no-fit close or fit resume generation via resume-generation
+description: Full JD pipeline — fetch, delegate screening and folder creation to process-jd, then fit resume generation and full notes expansion
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 policies:
   - storage-routing
 skills:
-  - jd-evaluation
+  - process-jd
   - resume-generation
 inputs:
   - jd_source            # URL, document, or pasted text
@@ -19,3 +19,6 @@ changelog:
   - version: v1
     date: 2026-06-12
     summary: Migrated from workflow.md steps 1-3 + fit/no-fit branches + JD regeneration + notes.md structure, memory/feedback_jd_file_saving.md, memory/feedback_application_tracking.md, memory/feedback_application_status_update.md
+  - version: v2
+    date: 2026-06-12
+    summary: Delegates JD screening, folder creation, and file composition to workflows/process-jd/ (eliminates duplication with search-jobs and search-jobs-linkedin); v2 handles JD fetch + process-jd call + fit resume generation + full notes expansion

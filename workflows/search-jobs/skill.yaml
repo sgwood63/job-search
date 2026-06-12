@@ -1,0 +1,23 @@
+name: search-jobs
+kind: workflow
+description: >
+  Search Google Jobs via SearchAPI for a profile; screen results with jd-evaluation
+  (Haiku via process-jd); deduplicate against seen-jobs.json; save fit jobs as
+  application stubs for review. Reports a per-run summary file and CSV log entry.
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+  - factuality
+inputs:
+  - profile_slug    # target profile (e.g. "presales-se")
+  - target_fits     # optional; defaults to SEARCH_TARGET_FITS env var (default 10)
+  - batch_size      # optional; defaults to SEARCH_BATCH_SIZE env var (default 10)
+outputs:
+  - summary_file    # $APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md
+  - search_log_entry # appended to search-log.csv or logged via log_search_run()
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from .claude/commands/ingest.md; per-job processing now delegates to workflows/process-jd/

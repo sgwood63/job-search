@@ -68,7 +68,8 @@ $APP_DIR/
 ├── policies/                    # Versioned cross-cutting rules (factuality, evidence-grounding,
 │                                #   company-descriptors, storage-routing) — same layout as skills/
 ├── workflows/                   # Versioned multi-step orchestrations (create-application,
-│                                #   prepare-interview) — invoke skills by name
+│                                #   prepare-interview, process-jd, search-jobs,
+│                                #   search-jobs-linkedin) — invoke skills by name
 │
 ├── .claude/
 │   ├── settings.json            # Hooks, permissions, statusLine

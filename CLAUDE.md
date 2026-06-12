@@ -38,7 +38,7 @@ When the user says "start setup", "set up applicant", or expresses clear intent 
 
 ## Automated Workflow — DO NOT ASK, JUST DO
 
-When the user provides a job description (URL, document, or paste), execute the workflow `workflows/create-application` (pinned version) immediately. In brief: **Fetch** (fallback chain in the workflow) → **Screen** via skill `jd-evaluation` (Haiku agent) → **Folder** for every JD, fit or no-fit → **No fit:** brief `notes.md`, tracker update, stop → **Fit:** switch to Sonnet, generate resume via skill `resume-generation`, detailed `notes.md`, tracker update, present for review.
+When the user provides a job description (URL, document, or paste), execute the workflow `workflows/create-application` (pinned version) immediately. In brief: **Fetch** (fallback chain in the workflow) → **Delegate to `process-jd`** (screen via `jd-evaluation` Haiku agent, create folder + JD files + initial notes, register in tracker) → **No fit:** stop — `process-jd` closed it → **Fit:** switch to Sonnet, expand notes to full structure, generate resume via skill `resume-generation`, update tracker, present for review.
 
 ## Profile Maintenance — DO NOT ASK, JUST DO
 
@@ -102,8 +102,8 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/skill [list\|show\|draft\|diff\|promote]` | Manage versioned skills/policies/workflows; draft → promote flow |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
-| `/ingest [profile]` | Search Google Jobs via SearchAPI for a profile; save fit jobs for review; writes per-run summary with all fit + no-fit results |
-| `/linkedin-ingest [--max-pages N]` | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs for review |
+| `/ingest [profile]` | Run workflow `search-jobs` (Google Jobs via SearchAPI); per-job processing via `process-jd`; saves fit jobs as stubs + summary |
+| `/linkedin-ingest [--max-pages N]` | Run workflow `search-jobs-linkedin` (LinkedIn recommendations); per-job processing via `process-jd`; saves fit jobs as stubs + summary |
 
 ## OB1 Integration
 

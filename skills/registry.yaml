@@ -12,5 +12,8 @@ entries:
   - { name: evidence-grounding,  kind: policy,   path: policies/evidence-grounding }
   - { name: company-descriptors, kind: policy,   path: policies/company-descriptors }
   - { name: storage-routing,     kind: policy,   path: policies/storage-routing }
-  - { name: create-application,  kind: workflow, path: workflows/create-application }
-  - { name: prepare-interview,   kind: workflow, path: workflows/prepare-interview }
+  - { name: create-application,       kind: workflow, path: workflows/create-application }
+  - { name: prepare-interview,        kind: workflow, path: workflows/prepare-interview }
+  - { name: process-jd,               kind: workflow, path: workflows/process-jd }
+  - { name: search-jobs,              kind: workflow, path: workflows/search-jobs }
+  - { name: search-jobs-linkedin,     kind: workflow, path: workflows/search-jobs-linkedin }
