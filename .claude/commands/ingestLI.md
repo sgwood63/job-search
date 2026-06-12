@@ -160,6 +160,7 @@ Increment `screened`.
 Spawn a **Haiku agent** for this single job with:
 - The full `full_jd_content` text
 - Pre-extracted criteria from Step 5 preamble (location/hard-stops/comp from applicant.md, Hard Stops + all profile slugs/summaries from PROFILES-QUICK-REFERENCE.md)
+- The fit-check criteria follow the skill `$APP_DIR/skills/jd-evaluation/` (pinned version) — extraction fields, applicant criteria check, profile match
 - Instruction: return a single JSON object. Apply Hard Stops first — any Hard Stop hit = no-fit. Return `fit=true` only if `score >= 7` and no Hard Stop applies. Include `profile_match` — the single best-matching profile slug from the list provided.
 
   ```

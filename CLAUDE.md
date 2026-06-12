@@ -1,6 +1,6 @@
 # Claude Code — Job Search 2026
 
-This file is auto-loaded at session start. It contains core context and workflow triggers. Detailed steps live in `workflow.md` (JD processing, resume pipeline) and `applicant-setup.md` (onboarding phases).
+This file is auto-loaded at session start. It contains core context and workflow triggers. Detailed procedures live in versioned skill documents under `skills/`, `policies/`, and `workflows/` (see "Skills Are the Source of Truth" below) and in `applicant-setup.md` (onboarding phases).
 
 ## Directory Paths
 
@@ -17,6 +17,17 @@ Applicant-specific context (identity, location, experience, job criteria) is in 
 
 Every `.md` file in `$APP_DIR` must use "the applicant" or "the user" (never the applicant's name) and must never contain hard-coded absolute paths. A pre-commit hook (`scripts/check-md-hygiene.sh`) enforces both rules at commit time.
 
+## Skills Are the Source of Truth
+
+Procedural knowledge lives in versioned documents under `$APP_DIR/skills/`, `$APP_DIR/policies/`, and `$APP_DIR/workflows/` — indexed by `skills/registry.yaml`, format spec in `skills/README.md`. Before executing a task covered by an entry, read the relevant version:
+
+- **Interactive sessions:** use `draft.md` when present (announce "using DRAFT <name>"), otherwise the `pinned` version from the entry's `skill.yaml`
+- **Policies listed in a skill's `skill.yaml` are mandatory companion reading** — read them alongside the skill
+- Never edit a committed `vN.md`. Changes go through `/skill draft` → `/skill promote` (see the `/skill` command)
+- When the user gives procedural feedback on a migrated area (resume rules, JD screening, interview prep, storage routing, domain connection), propose `/skill draft` on the relevant entry — do not edit the old `memory/feedback_*` pointer stubs
+
+The webapp executes skills via `POST /api/skills/{name}/run` using pinned versions only.
+
 ## New Applicant Setup — DO NOT ASK, JUST DO
 
 When the user says "start setup", "set up applicant", or expresses clear intent to begin onboarding:
@@ -27,17 +38,7 @@ When the user says "start setup", "set up applicant", or expresses clear intent 
 
 ## Automated Workflow — DO NOT ASK, JUST DO
 
-When the user provides a job description (URL, document, or paste), execute immediately. See `workflow.md` for full detail.
-
-**Fetch:** Try WebFetch first. On login wall or failure, fall back to `"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"`. Exit code 2 = auth required — show user the stderr setup command; exit code 1 = ask user to paste.
-
-**Screen (Haiku):** Spawn a Haiku agent to extract company/role/location/travel/comp, check fit against `$APPLICANT_DIR/applicant.md`, and match to best profile using `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`.
-
-**Folder (every JD, fit or no-fit):** `$APPLICANT_DIR/applications/YYYY-MM-DD-company-role/` with `job-description.md` and original JD file (`jd-<company>-<role>.[ext]`).
-
-**No fit:** Brief `notes.md`, tracker update (Rejected section), stop.
-
-**Fit:** Switch to Sonnet. Read matched profile files from `$APPLICANT_DIR/profiles/[profile]/` (the working source of truth; `base-documents/` is setup-only — do not read it). Generate resume, create detailed `notes.md`, update tracker (Active section).
+When the user provides a job description (URL, document, or paste), execute the workflow `workflows/create-application` (pinned version) immediately. In brief: **Fetch** (fallback chain in the workflow) → **Screen** via skill `jd-evaluation` (Haiku agent) → **Folder** for every JD, fit or no-fit → **No fit:** brief `notes.md`, tracker update, stop → **Fit:** switch to Sonnet, generate resume via skill `resume-generation`, detailed `notes.md`, tracker update, present for review.
 
 ## Profile Maintenance — DO NOT ASK, JUST DO
 
@@ -50,11 +51,11 @@ When the user provides new experience, achievements, preference changes, or care
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice; when a new profile is created, always update career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations)
 - Do not update `APPLICANT-MEMORY.md` for maintenance changes
 - When a profile's target roles or JD signal keywords change, also update the `## Search Queries` table row for that profile in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`. Queries use role/title terms only — no domain expertise appended. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms per query for broad market coverage. When a profile is removed, delete its row from the Search Queries table.
-- **DATA_BACKEND=ob1:** All writes to `$APPLICANT_DIR` files (applicant-maintenance.md, career-advice.md, profile CONTENT files, PROFILES-QUICK-REFERENCE.md, EXPERIENCE-REFERENCE.md) must use `upload_file('<key>', content, 'text/markdown')` instead of the Write/Edit tool. All reads must use `get_file('<key>')`. Keys mirror the former local paths relative to `$APPLICANT_DIR` (e.g., `profiles/PROFILES-QUICK-REFERENCE.md`). For binary files or large files (>~50KB), use the REST API via `curl` instead of the MCP tool — see `memory/feedback_ob1_integration.md` Upload routing section.
+- **DATA_BACKEND=ob1:** All `$APPLICANT_DIR` reads and writes route through OB1 MCP tools per the policy `policies/storage-routing` (pinned version) — including the MCP-vs-REST upload routing for binary/large files.
 
 ## Documentation Maintenance — DO NOT ASK, JUST DO
 
-After editing any `$APP_DIR` source file (CLAUDE.md, workflow.md, applicant-setup.md, .claude/commands/*.md, scripts/*.sh, scripts/*.py, .claude/settings.json, templates/), check whether QUICK-START.md, README.md, USER-GUIDE.md, DEVELOPER-README.md, or scripts/README.md references the changed area, and update only the affected passages.
+After editing any `$APP_DIR` source file (CLAUDE.md, workflow.md, applicant-setup.md, skills/, policies/, workflows/, .claude/commands/*.md, scripts/*.sh, scripts/*.py, .claude/settings.json, templates/), check whether QUICK-START.md, README.md, USER-GUIDE.md, DEVELOPER-README.md, or scripts/README.md references the changed area, and update only the affected passages.
 
 **Key rules:**
 - Use the lookup table in `memory/feedback_doc_maintenance.md` to identify which docs to check for each source file
@@ -77,24 +78,15 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 **Communication level.** During multi-step workflows (JD processing, resume generation, profile maintenance), report at the impact level when a logical step completes — not at the file level. Do not narrate individual Write or Edit calls. Report: "JD screened — fit confirmed, folder created." or "Resume draft complete — 2-page, 7/9 JD requirements covered." Name a file only if a specific write fails.
 
-**No fabrication.** Source only from `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`. Never invent companies, titles, achievements, metrics, projects, skills, or certifications. If uncertain, ask.
+**No fabrication.** The policy `policies/factuality` (pinned version) applies to every generated document: never invent companies, titles, achievements, metrics, projects, skills, or certifications; no unverified percentage metrics. Source only per `policies/evidence-grounding`. If uncertain, ask.
 
-**No unverified percentage metrics.** Verified, sourced percentages are allowed. Unverified/estimated X% claims must use qualitative language instead ("substantially improved", "significantly reduced"). Counts and named outputs are always fine (50+ engagements, 400+ customers).
+**Domain connection.** For every application: identify the target company's business domain and surface the applicant's connections per the policy `policies/company-descriptors` — check all four sources (professional roles; personal/life experience — cover letter only, not bullets; specific artifacts built; use-case connections) and capture in `notes.md` (Fit Assessment → Domain Connection subsection) and resume bullets.
 
-**Domain connection.** For every application: identify the target company's business domain and surface the applicant's connections in `notes.md` (Fit Assessment → Domain Connection subsection) and in resume bullets. Check all four sources: (1) professional roles; (2) personal/life experience (cover letter only, not bullets); (3) specific artifacts built — demos, reference implementations, POCs in the domain; (4) use-case connections — adjacent industry or process exposure that maps to what the company's product does. See `memory/feedback_domain_connection.md`.
-
-**Review before PDF.** Write `.md` → assess vs. JD → edit → generate PDF → verify page count. Never skip. See `workflow.md` for PDF command.
+**Review before PDF.** Write `.md` → assess vs. JD → edit → generate PDF → verify page count. Never skip. Full pipeline in skill `resume-generation`.
 
 ## Resume Generation
 
-**Before generating any resume:** Read `$APP_DIR/memory/feedback_resume_generation.md` in full and apply all rules.
-
-**Length:** 2 pages for enterprise/consulting/governance roles; 1 page for networking, warm referrals, recruiter outreach, pre-sales SE, pivots.
-
-**After generating:** Produce a detailed evaluation report scoring each JD requirement vs. resume coverage, flagging gaps and competitive positioning.
-
-See `workflow.md` for: notes.md structure, PDF command, file naming, section labels, earlier career rules, evaluation report format.
-See `memory/` feedback files (indexed in MEMORY.md) for: bullet formula, role ordering, education/certs, signal density, no-duplication rules.
+**Before generating any resume:** Read the skill `skills/resume-generation` (pinned version, or `draft.md` if present) plus the policies listed in its `skill.yaml`, and apply all rules — length, structure, signal density, verification gate, evaluation report, PDF command.
 
 ## Available Commands
 
@@ -108,13 +100,14 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/audit [folder]` | Validate application folder completeness before submitting |
 | `/apply "Co" "Role" "date" [url?]` | Record submission atomically in tracker + notes.md |
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
+| `/skill [list\|show\|draft\|diff\|promote]` | Manage versioned skills/policies/workflows; draft → promote flow |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
 | `/ingest [profile]` | Search Google Jobs via SearchAPI for a profile; save fit jobs for review; writes per-run summary with all fit + no-fit results |
 | `/linkedin-ingest [--max-pages N]` | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs for review |
 
 ## OB1 Integration
 
-**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, all APPLICANT file operations must use OB1 MCP tools — direct `$APPLICANT_DIR` reads and writes are forbidden. For the canonical routing rule, MCP tool mapping table, and hard-stop protocol, see `memory/feedback_ob1_integration.md`.
+**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, all APPLICANT file operations must use OB1 MCP tools — direct `$APPLICANT_DIR` reads and writes are forbidden. For the canonical routing rule, MCP tool mapping table, and hard-stop protocol, see the policy `policies/storage-routing` (pinned version).
 
 Port-forwards (nginx Ingress routes them; no port-forward needed when Ingress is up):
 ```bash
