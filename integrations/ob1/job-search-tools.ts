@@ -413,10 +413,64 @@ export async function getPipelineCore(pool: unknown, filters: PipelineFilters = 
   } finally { client.release(); }
 }
 
-export async function getApplicationCore(pool: unknown, identifier: string): Promise<unknown | null> {
+// Separators recognized when surrounded by spaces (avoids splitting on hyphens within names)
+const SEPARATOR_RE = / (?:·|\||—|-|:) /;
+
+export async function getApplicationCore(pool: unknown, identifier: string): Promise<unknown[]> {
   const client = await (pool as any).connect();
   try {
     const isUuid = /^[0-9a-f-]{36}$/.test(identifier);
+
+    if (isUuid) {
+      const { rows } = await client.queryObject(
+        `SELECT a.id::text AS id, a.company_name_raw, a.role_title, a.folder_prefix,
+                a.source_url, a.status, a.status_detail, a.applied_date, a.follow_up_date,
+                a.priority, a.resume_key, a.created_at, a.updated_at,
+                a.jd_thought_id::text AS jd_thought_id,
+                a.notes_thought_id::text AS notes_thought_id,
+                COALESCE(c.name, a.company_name_raw) AS company_name,
+                c.industry, c.remote_policy, p.slug AS profile_slug, p.display_name AS profile_name
+         FROM js_applications a
+         LEFT JOIN js_companies c ON a.company_id = c.id
+         LEFT JOIN js_profiles p ON a.profile_id = p.id
+         WHERE a.id = $1::uuid`,
+        [identifier],
+      );
+      if (!rows.length) return [];
+      const app = rows[0] as any;
+      const { rows: files } = await client.queryObject(
+        "SELECT storage_key, content_type, file_size FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
+        [((app.folder_prefix ?? "") + "%")],
+      );
+      const { rows: interviews } = await client.queryObject(
+        "SELECT stage, scheduled_at, completed_at, rating FROM js_interviews WHERE application_id = $1 ORDER BY created_at",
+        [app.id],
+      );
+      return [{ ...app, files, interviews }];
+    }
+
+    // Text search: parse optional company · role separator
+    const sepMatch = SEPARATOR_RE.exec(identifier);
+    const where: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+
+    if (sepMatch) {
+      const company = identifier.slice(0, sepMatch.index).trim();
+      const role = identifier.slice(sepMatch.index + sepMatch[0].length).trim();
+      where.push(`LOWER(COALESCE(c.name, a.company_name_raw)) LIKE '%' || LOWER($${p++}) || '%'`);
+      params.push(company);
+      where.push(`LOWER(a.role_title) LIKE '%' || LOWER($${p++}) || '%'`);
+      params.push(role);
+    } else {
+      where.push(
+        `(LOWER(COALESCE(c.name, a.company_name_raw)) LIKE '%' || LOWER($${p}) || '%' OR LOWER(a.role_title) LIKE '%' || LOWER($${p}) || '%')`,
+      );
+      params.push(identifier);
+      p++;
+    }
+
+    params.push(50);
     const { rows } = await client.queryObject(
       `SELECT a.id::text AS id, a.company_name_raw, a.role_title, a.folder_prefix,
               a.source_url, a.status, a.status_detail, a.applied_date, a.follow_up_date,
@@ -428,22 +482,12 @@ export async function getApplicationCore(pool: unknown, identifier: string): Pro
        FROM js_applications a
        LEFT JOIN js_companies c ON a.company_id = c.id
        LEFT JOIN js_profiles p ON a.profile_id = p.id
-       WHERE ${isUuid ? "a.id = $1::uuid" : "LOWER(COALESCE(c.name, a.company_name_raw)) LIKE LOWER($1)"}
-       LIMIT 1`,
-      [isUuid ? identifier : `%${identifier}%`],
+       WHERE ${where.join(" AND ")}
+       ORDER BY a.priority DESC, a.follow_up_date ASC NULLS LAST, a.created_at DESC
+       LIMIT $${p}`,
+      params,
     );
-    if (!rows.length) return null;
-
-    const app = rows[0] as any;
-    const { rows: files } = await client.queryObject(
-      "SELECT storage_key, content_type, file_size FROM js_files WHERE storage_key LIKE $1 ORDER BY storage_key",
-      [((app.folder_prefix ?? "") + "%")],
-    );
-    const { rows: interviews } = await client.queryObject(
-      "SELECT stage, scheduled_at, completed_at, rating FROM js_interviews WHERE application_id = $1 ORDER BY created_at",
-      [app.id],
-    );
-    return { ...app, files, interviews };
+    return rows as unknown[];
   } finally { client.release(); }
 }
 
@@ -742,12 +786,12 @@ export function registerGetPipelineTool(server: unknown, pool: unknown) {
 export function registerGetApplicationTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "get_application",
-    "Get full application record plus list of associated files. Accepts company name fragment or UUID.",
-    { identifier: z.string().describe("Company name (partial match OK) or application UUID") },
+    "Get application record(s) matching a company name, role title, 'Company · Role Title' combo, or UUID. Returns all matches — disambiguate with a UUID when multiple results are returned.",
+    { identifier: z.string().describe("Company name, role title, 'Company · Role Title' (any space-surrounded separator OK, partial matches OK), or application UUID") },
     async ({ identifier }: { identifier: string }) => {
-      const result = await getApplicationCore(pool, identifier);
-      if (!result) return { content: [{ type: "text", text: `No application found matching: ${identifier}` }] };
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      const results = await getApplicationCore(pool, identifier);
+      if (!results.length) return { content: [{ type: "text", text: `No application found matching: ${identifier}` }] };
+      return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
     },
   );
 }

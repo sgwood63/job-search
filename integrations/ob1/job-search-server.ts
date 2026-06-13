@@ -315,7 +315,8 @@ app.post("/api/v2/applications", async (c) => {
 
 app.get("/api/v2/applications/:id", async (c) => {
   const id = c.req.param("id");
-  const result = await getApplicationCore(pool, id);
+  const results = await getApplicationCore(pool, id);
+  const result = results[0];
   if (!result) return c.json({ error: "Not found" }, 404, corsHeaders);
   return c.json(result, 200, corsHeaders);
 });
