@@ -2,7 +2,7 @@ name: resume-generation
 kind: skill
 description: Generate a tailored, factual resume from profile content for a screened JD, with verification gate and evaluation report
 status: active
-pinned: v1
+pinned: v2
 latest: v2
 policies:
   - factuality
