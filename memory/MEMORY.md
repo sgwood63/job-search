@@ -50,7 +50,9 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Both delegate per-job processing to workflow `process-jd` (canonical: screen via `jd-evaluation` Haiku, folder creation, JD files, notes stub, tracker registration)
 - Fetch-failed stubs (when JD URL unreachable) are handled inline in each ingest workflow — not delegated to `process-jd`
 - Saves fit jobs as application stubs — does NOT auto-generate resumes
-- Per-run summary: `$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`; log: `search-log.csv`
+- Per-run summary `.md` is always generated (`$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`); in OB1 mode it is also uploaded to OB1 and the storage key saved in `js_search_runs.summary_key`
+- Run stats: OB1 mode → `log_search_run(...)` (returns `search_run_id` UUID); local mode → append to `search-log.csv`
+- Position audit trail: OB1 mode → `log_ingested_position(...)` (links to `search_run_id`); local mode → append to `search/ingested-positions.csv`
 - Requires `SEARCHAPI_KEY` (`/ingest`) or `PLAYWRIGHT_PYTHON` (`/linkedin-ingest`) in `.env`
 
 ## OB1 Integration
@@ -100,7 +102,7 @@ Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in re
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-06-12
+**Last Updated**: 2026-06-14
 
 ---
 
