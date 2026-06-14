@@ -138,6 +138,47 @@ class ObRestClient:
         r.raise_for_status()
         return r.json()
 
+    async def update_application_fields(self, app_id: str, **fields) -> dict:
+        r = await self._http.patch(f'/api/v2/applications/{app_id}/fields', json=fields)
+        r.raise_for_status()
+        return r.json()
+
+    async def search_chunks(self, query: str, storage_key_prefix: str | None = None, limit: int = 10) -> list[dict]:
+        body: dict = {'query': query, 'limit': limit}
+        if storage_key_prefix:
+            body['storage_key_prefix'] = storage_key_prefix
+        r = await self._http.post('/api/v2/search/chunks', json=body)
+        r.raise_for_status()
+        return r.json()
+
+    async def find_similar_applications(self, query: str, exclude_id: str | None = None, limit: int = 5) -> list[dict]:
+        body: dict = {'query': query, 'limit': limit}
+        if exclude_id:
+            body['exclude_id'] = exclude_id
+        r = await self._http.post('/api/v2/search/similar-applications', json=body)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_ingestion_history(self, profile_slug: str | None = None, outcome: str | None = None, limit: int = 50) -> list[dict]:
+        params: dict = {'limit': limit}
+        if profile_slug:
+            params['profile_slug'] = profile_slug
+        if outcome:
+            params['outcome'] = outcome
+        r = await self._http.get('/api/v2/ingestion/history', params=params)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_search_runs(self, profile_slug: str | None = None, since: str | None = None, limit: int = 20) -> list[dict]:
+        params: dict = {'limit': limit}
+        if profile_slug:
+            params['profile_slug'] = profile_slug
+        if since:
+            params['since'] = since
+        r = await self._http.get('/api/v2/search-runs', params=params)
+        r.raise_for_status()
+        return r.json()
+
     async def ping(self) -> bool:
         try:
             r = await self._http.get('/api/v2/profiles', timeout=5.0)
@@ -341,6 +382,8 @@ async def get_tracker():
             'follow_up_date': fup[:10] if fup else '',
             'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(pri, ''),
             'folder': (r.get('folder_prefix') or '').removeprefix('applications/').rstrip('/'),
+            'domain_connection': r.get('domain_connection') or '',
+            'domain_tags': r.get('domain_tags') or [],
         })
     return {'rows': result_rows}
 
@@ -439,15 +482,24 @@ async def get_application(folder: str):
         rows = await asyncio.to_thread(lambda: _local_scan(f'applications/{folder}'))
         if not rows:
             raise HTTPException(status_code=404, detail='Application folder not found')
-        return {'name': folder, 'path': f'applications/{folder}', 'files': _rows_to_tree(rows)}
+        return {
+            'name': folder, 'path': f'applications/{folder}', 'files': _rows_to_tree(rows),
+            'domain_connection': '', 'domain_tags': [], 'jd_requirements': {},
+        }
 
-    files = await _ob_rest.list_files(prefix=prefix)
+    files, app_record = await asyncio.gather(
+        _ob_rest.list_files(prefix=prefix),
+        _ob_rest.get_application(folder),
+    )
     if not files:
         raise HTTPException(status_code=404, detail='Application folder not found')
     return {
         'name': folder,
         'path': f'applications/{folder}',
         'files': _rows_to_tree(files),
+        'domain_connection': (app_record or {}).get('domain_connection') or '',
+        'domain_tags': (app_record or {}).get('domain_tags') or [],
+        'jd_requirements': (app_record or {}).get('jd_requirements') or {},
     }
 
 
@@ -669,6 +721,80 @@ async def semantic_search(body: dict):
         limit=body.get('limit', 5),
     )
     return results
+
+
+# ── Application fields (Phase 3 metadata) ─────────────────────────────────────
+
+@app.patch('/api/applications/{folder}/fields')
+async def patch_application_fields(folder: str, body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    app_record = await _ob_rest.get_application(folder)
+    if not app_record:
+        raise HTTPException(status_code=404, detail='Application not found')
+    allowed = {k: v for k, v in body.items() if k in ('domain_connection', 'domain_tags', 'jd_requirements')}
+    if not allowed:
+        raise HTTPException(status_code=422, detail='No valid fields provided')
+    result = await _ob_rest.update_application_fields(str(app_record['id']), **allowed)
+    return result
+
+
+# ── Chunk-level semantic search (Phase 2) ─────────────────────────────────────
+
+@app.post('/api/chunk-search')
+async def chunk_search(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    results = await _ob_rest.search_chunks(
+        body.get('query', ''),
+        storage_key_prefix=body.get('storage_key_prefix'),
+        limit=int(body.get('limit', 10)),
+    )
+    return {'results': results}
+
+
+# ── Similar applications (Phase 3) ────────────────────────────────────────────
+
+@app.post('/api/similar-applications')
+async def similar_applications(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    results = await _ob_rest.find_similar_applications(
+        body.get('query', ''),
+        exclude_id=body.get('exclude_id'),
+        limit=int(body.get('limit', 5)),
+    )
+    return {'results': results}
+
+
+# ── Ingestion history ─────────────────────────────────────────────────────────
+
+@app.get('/api/ingestion-history')
+async def ingestion_history(
+    profile_slug: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    limit: int = Query(50),
+):
+    if not _ob_rest:
+        return {'records': []}
+    records = await _ob_rest.get_ingestion_history(
+        profile_slug=profile_slug, outcome=outcome, limit=min(limit, 200)
+    )
+    return {'records': records}
+
+
+@app.get('/api/search-runs')
+async def search_runs(
+    profile_slug: Optional[str] = Query(None),
+    since: Optional[str] = Query(None),
+    limit: int = Query(20),
+):
+    if not _ob_rest:
+        return {'records': []}
+    records = await _ob_rest.get_search_runs(
+        profile_slug=profile_slug, since=since, limit=min(limit, 200)
+    )
+    return {'records': records}
 
 
 # ── Delete file ───────────────────────────────────────────────────────────────

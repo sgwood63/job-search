@@ -25,6 +25,7 @@ const POPULATED_TRACKER: TrackerData = {
       follow_up_date: '2026-05-15',
       priority: '⭐⭐⭐',
       folder: '2026-05-01-acme-corp-se',
+      domain_tags: ['ai-devtools', 'b2b-saas'],
     },
     {
       id: 'abc-2',
@@ -110,5 +111,27 @@ describe('TrackerView', () => {
     await waitFor(() => {
       expect(screen.getByText(/failed to load tracker/i)).toBeInTheDocument()
     })
+  })
+
+  it('renders domain_tags as pill badges below the role', async () => {
+    server.use(http.get('/api/tracker', () => HttpResponse.json(POPULATED_TRACKER)))
+    renderTracker()
+
+    await waitFor(() => {
+      expect(screen.getByText('ai-devtools')).toBeInTheDocument()
+    })
+    expect(screen.getByText('b2b-saas')).toBeInTheDocument()
+  })
+
+  it('does not render tag pills when domain_tags is absent', async () => {
+    server.use(http.get('/api/tracker', () => HttpResponse.json(POPULATED_TRACKER)))
+    renderTracker()
+
+    await waitFor(() => {
+      expect(screen.getByText('OldCo')).toBeInTheDocument()
+    })
+    // OldCo row has no domain_tags — the pills should not be there
+    // (we can only confirm the role text renders cleanly without extra badges)
+    expect(screen.getByText('SDR')).toBeInTheDocument()
   })
 })

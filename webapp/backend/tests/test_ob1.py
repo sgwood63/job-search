@@ -560,3 +560,522 @@ def test_get_file_url_ob1_returns_url(ob1_client):
     assert resp.status_code == 200
     assert resp.json()["url"] == "http://minio.test/file.pdf?token=abc"
     mock.get_file_url.assert_called_once_with("applications/2026-01-01/resume.pdf")
+
+
+# ===========================================================================
+# ObRestClient — new Phase 2+3 methods
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_update_application_fields_sends_patch():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.patch = AsyncMock(return_value=FakeResponse(200, {"id": "1", "domain_connection": "AI tools"}))
+    client._client = http_mock
+
+    result = await client.update_application_fields("app-uuid-1", domain_connection="AI tools", domain_tags=["ai", "saas"])
+
+    http_mock.patch.assert_called_once()
+    args, kwargs = http_mock.patch.call_args
+    assert "/api/v2/applications/app-uuid-1/fields" in (args[0] if args else kwargs.get("url", ""))
+    assert kwargs["json"]["domain_connection"] == "AI tools"
+    assert kwargs["json"]["domain_tags"] == ["ai", "saas"]
+    assert result["domain_connection"] == "AI tools"
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_posts_correct_body():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.post = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.search_chunks("customer success", limit=5)
+
+    _, kwargs = http_mock.post.call_args
+    assert kwargs["json"]["query"] == "customer success"
+    assert kwargs["json"]["limit"] == 5
+    assert "storage_key_prefix" not in kwargs["json"]
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_includes_prefix_when_given():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.post = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.search_chunks("query", storage_key_prefix="applications/2026-05-01-acme/")
+
+    _, kwargs = http_mock.post.call_args
+    assert kwargs["json"]["storage_key_prefix"] == "applications/2026-05-01-acme/"
+
+
+@pytest.mark.asyncio
+async def test_find_similar_applications_posts_without_exclude():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.post = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.find_similar_applications("presales enterprise SaaS")
+
+    _, kwargs = http_mock.post.call_args
+    assert kwargs["json"]["query"] == "presales enterprise SaaS"
+    assert "exclude_id" not in kwargs["json"]
+
+
+@pytest.mark.asyncio
+async def test_find_similar_applications_includes_exclude_id():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.post = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.find_similar_applications("query", exclude_id="app-uuid-99")
+
+    _, kwargs = http_mock.post.call_args
+    assert kwargs["json"]["exclude_id"] == "app-uuid-99"
+
+
+@pytest.mark.asyncio
+async def test_get_ingestion_history_default_params():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_ingestion_history()
+
+    _, kwargs = http_mock.get.call_args
+    assert kwargs["params"]["limit"] == 50
+    assert "profile_slug" not in kwargs["params"]
+    assert "outcome" not in kwargs["params"]
+
+
+@pytest.mark.asyncio
+async def test_get_ingestion_history_passes_filters():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_ingestion_history(profile_slug="presales-se", outcome="fit", limit=25)
+
+    _, kwargs = http_mock.get.call_args
+    assert kwargs["params"]["profile_slug"] == "presales-se"
+    assert kwargs["params"]["outcome"] == "fit"
+    assert kwargs["params"]["limit"] == 25
+
+
+# ===========================================================================
+# GET /api/tracker — domain fields
+# ===========================================================================
+
+TRACKER_ROW_WITH_DOMAIN = {
+    "id": "42",
+    "applied_date": "2026-05-01",
+    "company": "Acme Corp",
+    "role_title": "Solutions Engineer",
+    "profile": "presales-se",
+    "status": "applied",
+    "status_detail": "",
+    "follow_up_date": "2026-05-15",
+    "priority": 3,
+    "folder_prefix": "applications/2026-05-01-acme-corp-se/",
+    "domain_connection": "Applicant built AI DevTools used in similar B2B workflows.",
+    "domain_tags": ["ai-devtools", "b2b-saas"],
+}
+
+
+def test_tracker_ob1_includes_domain_connection(ob1_client):
+    client, mock = ob1_client
+    mock.get_tracker = AsyncMock(return_value=[TRACKER_ROW_WITH_DOMAIN])
+    row = client.get("/api/tracker").json()["rows"][0]
+    assert row["domain_connection"] == "Applicant built AI DevTools used in similar B2B workflows."
+
+
+def test_tracker_ob1_includes_domain_tags(ob1_client):
+    client, mock = ob1_client
+    mock.get_tracker = AsyncMock(return_value=[TRACKER_ROW_WITH_DOMAIN])
+    row = client.get("/api/tracker").json()["rows"][0]
+    assert row["domain_tags"] == ["ai-devtools", "b2b-saas"]
+
+
+def test_tracker_ob1_domain_fields_default_to_empty(ob1_client):
+    """Rows without domain fields don't cause errors and return empty defaults."""
+    client, mock = ob1_client
+    mock.get_tracker = AsyncMock(return_value=[TRACKER_ROW])  # no domain fields
+    row = client.get("/api/tracker").json()["rows"][0]
+    assert row["domain_connection"] == ""
+    assert row["domain_tags"] == []
+
+
+# ===========================================================================
+# GET /api/applications/{folder} — domain metadata pass-through
+# ===========================================================================
+
+def test_get_application_folder_ob1_includes_domain_fields(ob1_client):
+    client, mock = ob1_client
+    mock.list_files = AsyncMock(return_value=[
+        {"key": "applications/2026-05-01-acme/notes.md", "size": 100},
+    ])
+    mock.get_application = AsyncMock(return_value={
+        "id": "uuid-1",
+        "domain_connection": "Applicant built payments infra for similar B2B scale.",
+        "domain_tags": ["fintech", "b2b-saas"],
+        "jd_requirements": {"required": ["5+ yrs Python"], "preferred": ["Kubernetes"]},
+    })
+    resp = client.get("/api/applications/2026-05-01-acme")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["domain_connection"] == "Applicant built payments infra for similar B2B scale."
+    assert data["domain_tags"] == ["fintech", "b2b-saas"]
+    assert data["jd_requirements"]["required"] == ["5+ yrs Python"]
+
+
+def test_get_application_folder_ob1_domain_empty_when_app_record_none(ob1_client):
+    """When get_application returns None, domain fields default to empty."""
+    client, mock = ob1_client
+    mock.list_files = AsyncMock(return_value=[
+        {"key": "applications/2026-05-01-acme/notes.md", "size": 100},
+    ])
+    mock.get_application = AsyncMock(return_value=None)
+    resp = client.get("/api/applications/2026-05-01-acme")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["domain_connection"] == ""
+    assert data["domain_tags"] == []
+    assert data["jd_requirements"] == {}
+
+
+# ===========================================================================
+# PATCH /api/applications/{folder}/fields — ob1 mode
+# ===========================================================================
+
+def test_patch_application_fields_ob1_happy_path(ob1_client):
+    client, mock = ob1_client
+    mock.get_application = AsyncMock(return_value={"id": "uuid-1", "company_name": "Acme"})
+    mock.update_application_fields = AsyncMock(return_value={"id": "uuid-1", "domain_connection": "AI tools"})
+
+    resp = client.patch(
+        "/api/applications/2026-05-01-acme/fields",
+        json={"domain_connection": "AI tools"},
+    )
+    assert resp.status_code == 200
+    mock.get_application.assert_called_once_with("2026-05-01-acme")
+    mock.update_application_fields.assert_called_once_with("uuid-1", domain_connection="AI tools")
+
+
+def test_patch_application_fields_ob1_passes_domain_tags(ob1_client):
+    client, mock = ob1_client
+    mock.get_application = AsyncMock(return_value={"id": "uuid-2"})
+
+    client.patch(
+        "/api/applications/2026-05-01-acme/fields",
+        json={"domain_tags": ["ai", "b2b"], "domain_connection": "Match"},
+    )
+    _, kwargs = mock.update_application_fields.call_args
+    assert kwargs["domain_tags"] == ["ai", "b2b"]
+    assert kwargs["domain_connection"] == "Match"
+
+
+def test_patch_application_fields_ob1_ignores_unknown_keys(ob1_client):
+    client, mock = ob1_client
+    mock.get_application = AsyncMock(return_value={"id": "uuid-3"})
+
+    client.patch(
+        "/api/applications/2026-05-01-acme/fields",
+        json={"domain_connection": "ok", "evil_field": "injected"},
+    )
+    _, kwargs = mock.update_application_fields.call_args
+    assert "evil_field" not in kwargs
+
+
+def test_patch_application_fields_ob1_app_not_found(ob1_client):
+    client, mock = ob1_client
+    mock.get_application = AsyncMock(return_value=None)
+
+    resp = client.patch(
+        "/api/applications/missing-folder/fields",
+        json={"domain_connection": "anything"},
+    )
+    assert resp.status_code == 404
+    mock.update_application_fields.assert_not_called()
+
+
+def test_patch_application_fields_ob1_no_valid_fields_422(ob1_client):
+    client, mock = ob1_client
+    mock.get_application = AsyncMock(return_value={"id": "uuid-4"})
+
+    resp = client.patch(
+        "/api/applications/2026-05-01-acme/fields",
+        json={"totally_unknown": "value"},
+    )
+    assert resp.status_code == 422
+    mock.update_application_fields.assert_not_called()
+
+
+def test_patch_application_fields_local_mode_returns_404(client):
+    """Fields PATCH is OB1-only; returns 404 in local mode."""
+    resp = client.patch(
+        "/api/applications/2026-05-01-acme/fields",
+        json={"domain_connection": "anything"},
+    )
+    assert resp.status_code == 404
+
+
+# ===========================================================================
+# POST /api/chunk-search
+# ===========================================================================
+
+def test_chunk_search_ob1_returns_results(ob1_client):
+    client, mock = ob1_client
+    chunk = {
+        "storage_key": "applications/2026-05-01-acme/notes.md",
+        "section_title": "Domain Connection",
+        "section_index": 2,
+        "content": "Applicant built similar tooling.",
+        "similarity": 0.87,
+    }
+    mock.search_chunks = AsyncMock(return_value=[chunk])
+
+    resp = client.post("/api/chunk-search", json={"query": "domain experience", "limit": 5})
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert len(results) == 1
+    assert results[0]["similarity"] == 0.87
+    mock.search_chunks.assert_called_once_with("domain experience", storage_key_prefix=None, limit=5)
+
+
+def test_chunk_search_ob1_passes_prefix(ob1_client):
+    client, mock = ob1_client
+    client.post("/api/chunk-search", json={
+        "query": "q", "storage_key_prefix": "applications/2026-05-01-acme/",
+    })
+    _, kwargs = mock.search_chunks.call_args
+    assert kwargs["storage_key_prefix"] == "applications/2026-05-01-acme/"
+
+
+def test_chunk_search_local_mode_returns_404(client):
+    resp = client.post("/api/chunk-search", json={"query": "anything"})
+    assert resp.status_code == 404
+
+
+# ===========================================================================
+# POST /api/similar-applications
+# ===========================================================================
+
+def test_similar_applications_ob1_returns_results(ob1_client):
+    client, mock = ob1_client
+    similar = {
+        "id": "uuid-old",
+        "company_name": "SimilarCo",
+        "role_title": "Solutions Engineer",
+        "domain_connection": "Also AI DevTools.",
+        "domain_tags": ["ai-devtools"],
+        "status": "applied",
+        "similarity": 0.91,
+    }
+    mock.find_similar_applications = AsyncMock(return_value=[similar])
+
+    resp = client.post("/api/similar-applications", json={"query": "AI developer tooling", "limit": 3})
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert len(results) == 1
+    assert results[0]["company_name"] == "SimilarCo"
+    mock.find_similar_applications.assert_called_once_with("AI developer tooling", exclude_id=None, limit=3)
+
+
+def test_similar_applications_ob1_passes_exclude_id(ob1_client):
+    client, mock = ob1_client
+    client.post("/api/similar-applications", json={"query": "q", "exclude_id": "uuid-current"})
+    _, kwargs = mock.find_similar_applications.call_args
+    assert kwargs["exclude_id"] == "uuid-current"
+
+
+def test_similar_applications_local_mode_returns_404(client):
+    resp = client.post("/api/similar-applications", json={"query": "anything"})
+    assert resp.status_code == 404
+
+
+# ===========================================================================
+# GET /api/ingestion-history
+# ===========================================================================
+
+INGESTION_RECORD = {
+    "id": "rec-1",
+    "company_name": "Acme Corp",
+    "role_title": "Solutions Engineer",
+    "profile_slug": "presales-se",
+    "outcome": "fit",
+    "no_fit_reason": None,
+    "is_repost": False,
+    "first_seen_at": None,
+    "created_at": "2026-05-01T10:00:00",
+}
+
+
+def test_ingestion_history_ob1_returns_records(ob1_client):
+    client, mock = ob1_client
+    mock.get_ingestion_history = AsyncMock(return_value=[INGESTION_RECORD])
+
+    resp = client.get("/api/ingestion-history")
+    assert resp.status_code == 200
+    records = resp.json()["records"]
+    assert len(records) == 1
+    assert records[0]["company_name"] == "Acme Corp"
+    assert records[0]["outcome"] == "fit"
+
+
+def test_ingestion_history_ob1_passes_profile_slug(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/ingestion-history", params={"profile_slug": "presales-se"})
+    mock.get_ingestion_history.assert_called_once_with(
+        profile_slug="presales-se", outcome=None, limit=50
+    )
+
+
+def test_ingestion_history_ob1_passes_outcome_filter(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/ingestion-history", params={"outcome": "no-fit", "limit": 20})
+    mock.get_ingestion_history.assert_called_once_with(
+        profile_slug=None, outcome="no-fit", limit=20
+    )
+
+
+def test_ingestion_history_ob1_caps_limit(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/ingestion-history", params={"limit": 999})
+    _, kwargs = mock.get_ingestion_history.call_args
+    assert kwargs["limit"] == 200  # capped at 200
+
+
+def test_ingestion_history_local_mode_returns_empty(client):
+    """Local mode returns gracefully — no 4xx, just empty records."""
+    resp = client.get("/api/ingestion-history")
+    assert resp.status_code == 200
+    assert resp.json() == {"records": []}
+
+
+# ===========================================================================
+# ObRestClient.get_search_runs — unit tests
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_get_search_runs_default_params():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_search_runs()
+
+    _, kwargs = http_mock.get.call_args
+    assert kwargs["params"]["limit"] == 20
+    assert "profile_slug" not in kwargs["params"]
+    assert "since" not in kwargs["params"]
+
+
+@pytest.mark.asyncio
+async def test_get_search_runs_passes_profile_slug():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_search_runs(profile_slug="presales-se")
+
+    _, kwargs = http_mock.get.call_args
+    assert kwargs["params"]["profile_slug"] == "presales-se"
+
+
+@pytest.mark.asyncio
+async def test_get_search_runs_passes_since():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_search_runs(since="2026-01-01")
+
+    _, kwargs = http_mock.get.call_args
+    assert kwargs["params"]["since"] == "2026-01-01"
+
+
+@pytest.mark.asyncio
+async def test_get_search_runs_omits_none_params():
+    """None values for profile_slug and since must not appear in params."""
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_search_runs(profile_slug=None, since=None, limit=10)
+
+    _, kwargs = http_mock.get.call_args
+    assert "profile_slug" not in kwargs["params"]
+    assert "since" not in kwargs["params"]
+    assert kwargs["params"]["limit"] == 10
+
+
+# ===========================================================================
+# GET /api/search-runs — endpoint tests
+# ===========================================================================
+
+SEARCH_RUN_ROW = {
+    "id": "run-1",
+    "profile_slug": "presales-se",
+    "query": "Solutions Engineer | Account Executive",
+    "pages_fetched": 3,
+    "total_results": 60,
+    "new_after_dedup": 45,
+    "screened": 44,
+    "fit_count": 7,
+    "fetch_failed_count": 1,
+    "summary_key": "search/2026-05-01-120000-presales-se-summary.md",
+    "run_at": "2026-05-01T12:00:00",
+}
+
+
+def test_search_runs_ob1_returns_records(ob1_client):
+    client, mock = ob1_client
+    mock.get_search_runs = AsyncMock(return_value=[SEARCH_RUN_ROW])
+
+    resp = client.get("/api/search-runs")
+    assert resp.status_code == 200
+    records = resp.json()["records"]
+    assert len(records) == 1
+    assert records[0]["profile_slug"] == "presales-se"
+    assert records[0]["fit_count"] == 7
+    assert records[0]["fetch_failed_count"] == 1
+
+
+def test_search_runs_ob1_passes_profile_slug(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/search-runs", params={"profile_slug": "presales-se"})
+    mock.get_search_runs.assert_called_once_with(
+        profile_slug="presales-se", since=None, limit=20
+    )
+
+
+def test_search_runs_ob1_passes_since(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/search-runs", params={"since": "2026-05-01"})
+    mock.get_search_runs.assert_called_once_with(
+        profile_slug=None, since="2026-05-01", limit=20
+    )
+
+
+def test_search_runs_ob1_caps_limit(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/search-runs", params={"limit": 999})
+    _, kwargs = mock.get_search_runs.call_args
+    assert kwargs["limit"] == 200  # capped at 200
+
+
+def test_search_runs_local_mode_returns_empty(client):
+    """Local mode returns gracefully — no 4xx, just empty records."""
+    resp = client.get("/api/search-runs")
+    assert resp.status_code == 200
+    assert resp.json() == {"records": []}

@@ -330,6 +330,16 @@ export default function TrackerView() {
                 </td>
                 <td className="px-3 py-2 text-gray-600 max-w-xs">
                   <span className="line-clamp-2">{row.role}</span>
+                  {row.domain_tags && row.domain_tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {row.domain_tags.slice(0, 2).map(tag => (
+                        <span key={tag} className="bg-slate-100 text-slate-500 px-1 py-0 rounded text-[10px] leading-4">{tag}</span>
+                      ))}
+                      {row.domain_tags.length > 2 && (
+                        <span className="text-slate-400 text-[10px] leading-4">+{row.domain_tags.length - 2}</span>
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-xs">{row.profile}</span>

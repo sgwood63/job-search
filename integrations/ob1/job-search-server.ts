@@ -23,10 +23,14 @@ import { Hono } from "hono";
 import { Pool } from "postgres";
 import {
   registerJobSearchTools,
+  chunkMarkdown,
   uploadFileCore, getFileCore, getFileUrlCore, listFilesCore, deleteFileCore, deleteApplicationCore,
   getPipelineCore, getApplicationCore, getProfilesCore, getOverdueFollowupsCore,
   createApplicationCore, updateApplicationStatusCore, logInterviewCore, completeInterviewCore,
-  addContactCore, upsertCompanyCore, searchApplicationsSemanticCore,
+  addContactCore, upsertCompanyCore, searchApplicationsSemanticCore, searchChunksSemanticCore,
+  updateApplicationFieldsCore, findSimilarApplicationsCore, getIngestionHistoryCore,
+  logSearchRunCore, logIngestedPositionCore, getSearchRunsCore,
+  type ChunkContentFn, type EmbedQueryFn, type LogSearchRunArgs, type LogIngestedPositionArgs,
 } from "./job-search-tools.ts";
 
 // --- Configuration ---
@@ -191,6 +195,49 @@ async function searchThoughts(
   }
 }
 
+// --- embedQuery: thin wrapper so getEmbedding satisfies EmbedQueryFn ---
+
+const embedQuery: EmbedQueryFn = (query: string): Promise<number[]> => getEmbedding(query);
+
+// --- chunkContent: H2-section chunking + per-chunk embedding (Phase 2) ---
+
+const chunkContent: ChunkContentFn = async (content: string, storageKey: string): Promise<void> => {
+  const chunks = chunkMarkdown(content);
+  if (chunks.length === 0) return;
+
+  const client = await pool.connect();
+  try {
+    // Idempotent: remove stale chunks before re-inserting
+    await client.queryObject(`DELETE FROM js_chunks WHERE storage_key = $1`, [storageKey]);
+
+    // Resolve file_id (js_files row was already upserted by uploadFileCore before this call)
+    const { rows: fileRows } = await client.queryObject(
+      `SELECT id FROM js_files WHERE storage_key = $1`, [storageKey],
+    );
+    const fileId: string | null = (fileRows[0] as any)?.id ?? null;
+
+    for (const chunk of chunks) {
+      let thoughtId: string | null = null;
+      try {
+        thoughtId = await captureThought(chunk.content, {
+          type: "file-chunk",
+          storage_key: storageKey,
+          section_title: chunk.title,
+          section_index: chunk.index,
+        });
+      } catch { /* best-effort: chunk still stored without embedding */ }
+
+      await client.queryObject(
+        `INSERT INTO js_chunks (storage_key, file_id, section_title, section_index, content, char_count, thought_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [storageKey, fileId, chunk.title, chunk.index, chunk.content, chunk.content.length, thoughtId],
+      );
+    }
+  } finally {
+    client.release();
+  }
+};
+
 // --- MCP Server ---
 
 const server = new McpServer({
@@ -198,7 +245,7 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-registerJobSearchTools(server, pool, { captureThought, searchThoughts });
+registerJobSearchTools(server, pool, { captureThought, searchThoughts, embedQuery, chunkContent });
 
 // --- Hono App ---
 
@@ -264,7 +311,7 @@ app.put("/api/v2/files/*", async (c) => {
     content: body.content,
     content_type: body.content_type ?? "text/markdown",
     binary: body.binary ?? false,
-  });
+  }, chunkContent);
   return c.json(result, 201, corsHeaders);
 });
 
@@ -459,6 +506,67 @@ app.post("/api/v2/search", async (c) => {
   const results = await searchApplicationsSemanticCore(searchThoughts, query, limit);
   if (results === null) return c.json({ error: "Search not configured" }, 503, corsHeaders);
   return c.json(results, 200, corsHeaders);
+});
+
+// Phase 2: section-level chunk search
+app.post("/api/v2/search/chunks", async (c) => {
+  const { query, storage_key_prefix, limit = 5 } = await c.req.json();
+  const results = await searchChunksSemanticCore(pool, embedQuery, { query, storage_key_prefix, limit });
+  if (results === null) return c.json({ error: "Chunk search not configured" }, 503, corsHeaders);
+  return c.json(results, 200, corsHeaders);
+});
+
+// Phase 3: structured metadata
+app.patch("/api/v2/applications/:id/fields", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const result = await updateApplicationFieldsCore(pool, {
+    id,
+    domain_connection: body.domain_connection,
+    domain_tags: body.domain_tags,
+    jd_requirements: body.jd_requirements,
+  });
+  if (!result) return c.json({ error: "Not found or no fields to update" }, 404, corsHeaders);
+  return c.json(result, 200, corsHeaders);
+});
+
+// Phase 3: cross-app pattern matching
+app.post("/api/v2/search/similar-applications", async (c) => {
+  const { query, exclude_id, limit = 5 } = await c.req.json();
+  const results = await findSimilarApplicationsCore(pool, embedQuery, { query, exclude_id, limit });
+  if (results === null) return c.json({ error: "Similar application search not configured" }, 503, corsHeaders);
+  return c.json(results, 200, corsHeaders);
+});
+
+// Ingestion history (dedup audit trail)
+app.get("/api/v2/ingestion/history", async (c) => {
+  const profile_slug = c.req.query("profile_slug") || undefined;
+  const outcome = c.req.query("outcome") || undefined;
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10), 200);
+  const rows = await getIngestionHistoryCore(pool, { profile_slug, outcome, limit });
+  return c.json(rows, 200, corsHeaders);
+});
+
+// --- Search run routes ---
+
+app.get("/api/v2/search-runs", async (c) => {
+  const profile_slug = c.req.query("profile_slug") || undefined;
+  const since = c.req.query("since") || undefined;
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 200);
+  const rows = await getSearchRunsCore(pool, { profile_slug, since, limit });
+  return c.json(rows, 200, corsHeaders);
+});
+
+app.post("/api/v2/search-runs", async (c) => {
+  const body = await c.req.json() as LogSearchRunArgs;
+  const id = await logSearchRunCore(pool, body);
+  return c.json({ id }, 201, corsHeaders);
+});
+
+app.post("/api/v2/ingested-positions", async (c) => {
+  const body = await c.req.json() as LogIngestedPositionArgs;
+  const result = await logIngestedPositionCore(pool, body);
+  return c.json(result, 201, corsHeaders);
 });
 
 // ===========================================================================

@@ -207,6 +207,65 @@ CREATE INDEX IF NOT EXISTS js_search_runs_profile_idx ON js_search_runs(profile_
 CREATE INDEX IF NOT EXISTS js_search_runs_run_at_idx  ON js_search_runs(run_at DESC);
 
 -- ---------------------------------------------------------------------------
+-- js_ingested_positions: audit trail of every job position encountered
+-- Replaces seen-jobs.json and linkedin-seen-jobs.json.
+-- Covers batch ingest (/ingest, /linkedin-ingest) AND direct submissions via chat.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS js_ingested_positions (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_url      text,                   -- original job posting URL (null for paste submissions)
+  company_name    text,
+  role_title      text,
+  profile_slug    text        REFERENCES js_profiles(slug) ON DELETE SET NULL,
+  search_run_id   uuid        REFERENCES js_search_runs(id) ON DELETE SET NULL,
+  application_id  uuid        REFERENCES js_applications(id) ON DELETE SET NULL,
+  outcome         text        NOT NULL CHECK (outcome IN ('fit','no-fit','duplicate','fetch-failed')),
+  no_fit_reason   text,
+  is_repost       bool        NOT NULL DEFAULT false,
+  first_seen_at   timestamptz,            -- when this position was first encountered (for repost detection)
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+-- URL uniqueness: one canonical row per URL (duplicates reference it via outcome='duplicate')
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingested_url_unique
+  ON js_ingested_positions(source_url) WHERE source_url IS NOT NULL AND outcome != 'duplicate';
+CREATE INDEX IF NOT EXISTS idx_ingested_company_role
+  ON js_ingested_positions(lower(company_name), lower(role_title));
+CREATE INDEX IF NOT EXISTS idx_ingested_profile
+  ON js_ingested_positions(profile_slug) WHERE profile_slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ingested_created ON js_ingested_positions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ingested_search_run
+  ON js_ingested_positions(search_run_id) WHERE search_run_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- js_chunks: H2-section-level chunks for text files (Phase 2)
+-- Enables search_chunks_semantic to return section-precise results.
+-- One row per H2 section per file; whole-document thought still exists in js_files.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS js_chunks (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  storage_key     text        NOT NULL,
+  file_id         uuid        REFERENCES js_files(id) ON DELETE CASCADE,
+  section_title   text,                   -- H2 header text; null for pre-header preamble
+  section_index   int         NOT NULL,   -- 0-based position in document
+  content         text        NOT NULL,
+  char_count      int,
+  thought_id      bigint      REFERENCES thoughts(id) ON DELETE SET NULL,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chunks_storage_key ON js_chunks(storage_key);
+CREATE INDEX IF NOT EXISTS idx_chunks_file_id     ON js_chunks(file_id) WHERE file_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Phase 3 — Extend js_applications with structured metadata
+-- Populated by process-jd (domain_tags, jd_requirements) and
+-- create-application during full notes expansion (domain_connection).
+-- ---------------------------------------------------------------------------
+ALTER TABLE js_applications ADD COLUMN IF NOT EXISTS domain_connection text;
+ALTER TABLE js_applications ADD COLUMN IF NOT EXISTS domain_tags       text[];
+ALTER TABLE js_applications ADD COLUMN IF NOT EXISTS jd_requirements   jsonb;
+-- format: {"required": ["...", ...], "preferred": ["...", ...]}
+
+-- ---------------------------------------------------------------------------
 -- auto-updated updated_at triggers
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION js_set_updated_at()

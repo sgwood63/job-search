@@ -86,7 +86,68 @@ export type SearchThoughtsFn = (
   limit: number,
   filter: Record<string, unknown>,
 ) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; similarity: number; created_at: string }>>;
-export type JobSearchCallbacks = { captureThought?: CaptureThoughtFn; searchThoughts?: SearchThoughtsFn };
+export type EmbedQueryFn = (query: string) => Promise<number[]>;
+export type ChunkContentFn = (content: string, storageKey: string) => Promise<void>;
+export type JobSearchCallbacks = {
+  captureThought?: CaptureThoughtFn;
+  searchThoughts?: SearchThoughtsFn;
+  embedQuery?: EmbedQueryFn;
+  chunkContent?: ChunkContentFn;
+};
+
+// ---------------------------------------------------------------------------
+// chunkMarkdown: split a markdown document into H2-section-level chunks
+// ---------------------------------------------------------------------------
+
+export interface MarkdownChunk {
+  title: string | null;
+  index: number;
+  content: string;
+}
+
+export function chunkMarkdown(text: string): MarkdownChunk[] {
+  const MAX_CHUNK = 8000;
+  const MIN_CHUNK = 30;
+  const chunks: MarkdownChunk[] = [];
+  // Split on H2 boundaries; keep the ## header with its section
+  const parts = text.split(/(?=\n## )/);
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.length < MIN_CHUNK) continue;
+    const headerMatch = trimmed.match(/^## (.+)/);
+    const title = headerMatch ? headerMatch[1].trim() : null;
+    // If this chunk is oversized, split at paragraph boundaries
+    if (trimmed.length <= MAX_CHUNK) {
+      chunks.push({ title, index: chunks.length, content: trimmed });
+    } else {
+      const paras = trimmed.split(/\n\n+/);
+      let buf = "";
+      let subIdx = 0;
+      for (const para of paras) {
+        if (buf.length + para.length + 2 > MAX_CHUNK && buf.length >= MIN_CHUNK) {
+          chunks.push({
+            title: subIdx === 0 ? title : `${title ?? "…"} (continued ${subIdx})`,
+            index: chunks.length,
+            content: buf.trim(),
+          });
+          buf = para;
+          subIdx++;
+        } else {
+          buf = buf ? buf + "\n\n" + para : para;
+        }
+      }
+      if (buf.trim().length >= MIN_CHUNK) {
+        chunks.push({
+          title: subIdx === 0 ? title : `${title ?? "…"} (continued ${subIdx})`,
+          index: chunks.length,
+          content: buf.trim(),
+        });
+      }
+    }
+  }
+  return chunks;
+}
 
 // ===========================================================================
 // FILE CORE FUNCTIONS
@@ -96,6 +157,7 @@ export async function uploadFileCore(
   pool: unknown,
   captureThoughtFn: CaptureThoughtFn | undefined,
   args: { key: string; content: string; content_type: string; binary: boolean },
+  chunkContentFn?: ChunkContentFn,
 ): Promise<{ key: string; bytes: number }> {
   const bytes = args.binary
     ? Uint8Array.from(atob(args.content), c => c.charCodeAt(0))
@@ -148,6 +210,13 @@ export async function uploadFileCore(
       await c.queryObject(`DELETE FROM thoughts WHERE id = $1`, [oldThoughtId]);
     } catch { /* best-effort */ }
     finally { c.release(); }
+  }
+
+  // Phase 2: chunk the document at H2 boundaries for section-level retrieval
+  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && chunkContentFn) {
+    try {
+      await chunkContentFn(args.content, args.key);
+    } catch { /* best-effort — chunking failure does not fail the upload */ }
   }
 
   return { key: args.key, bytes: bytes.length };
@@ -264,11 +333,17 @@ export async function deleteApplicationCore(
 // FILE TOOLS
 // ===========================================================================
 
-export function registerUploadFileTool(server: unknown, pool: unknown, captureThoughtFn?: CaptureThoughtFn) {
+export function registerUploadFileTool(
+  server: unknown,
+  pool: unknown,
+  captureThoughtFn?: CaptureThoughtFn,
+  chunkContentFn?: ChunkContentFn,
+) {
   (server as any).tool(
     "upload_file",
     "Upload a file to the object store and record it in OB1. " +
-    "Text files (text/markdown, text/plain, application/json) are also captured as semantic thoughts.",
+    "Text files (text/markdown, text/plain, application/json) are also captured as semantic thoughts " +
+    "and chunked at H2 boundaries for section-level retrieval via search_chunks_semantic.",
     {
       key: z.string().describe("Object store key, e.g. 'applications/2026-05-15-co-role/notes.md'"),
       content: z.string().describe("File content (text) or base64-encoded bytes for binary files"),
@@ -276,7 +351,7 @@ export function registerUploadFileTool(server: unknown, pool: unknown, captureTh
       binary: z.boolean().default(false).describe("Set true and base64-encode content for PDFs/binaries"),
     },
     async (args: { key: string; content: string; content_type: string; binary: boolean }) => {
-      const result = await uploadFileCore(pool, captureThoughtFn, args);
+      const result = await uploadFileCore(pool, captureThoughtFn, args, chunkContentFn);
       return { content: [{ type: "text", text: `Uploaded: ${result.key} (${result.bytes} bytes)` }] };
     },
   );
@@ -730,21 +805,98 @@ export interface LogSearchRunArgs {
   summary_key?: string;
 }
 
-export async function logSearchRunCore(pool: unknown, args: LogSearchRunArgs): Promise<void> {
+export async function logSearchRunCore(pool: unknown, args: LogSearchRunArgs): Promise<string> {
   const client = await (pool as any).connect();
   try {
     const { rows: pRows } = await client.queryObject(
       "SELECT id FROM js_profiles WHERE slug = $1", [args.profile_slug],
     );
     const profileId = (pRows[0] as any)?.id ?? null;
-    await client.queryObject(
+    const { rows } = await client.queryObject(
       `INSERT INTO js_search_runs
          (profile_id, query, pages_fetched, total_results, new_after_dedup, screened, fit_count, summary_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING id`,
       [profileId, args.query, args.pages_fetched, args.total_results,
        args.new_after_dedup, args.screened, args.fit_count, args.summary_key ?? null],
     );
+    return (rows[0] as any).id as string;
   } finally { client.release(); }
+}
+
+export interface GetSearchRunsArgs {
+  profile_slug?: string | null;
+  since?: string | null;
+  limit: number;
+}
+
+export interface SearchRunRow {
+  id: string;
+  profile_slug: string | null;
+  query: string;
+  pages_fetched: number;
+  total_results: number;
+  new_after_dedup: number;
+  screened: number;
+  fit_count: number;
+  fetch_failed_count: number;
+  summary_key: string | null;
+  run_at: string;
+}
+
+export async function getSearchRunsCore(pool: unknown, args: GetSearchRunsArgs): Promise<SearchRunRow[]> {
+  const { profile_slug, since, limit } = args;
+  const client = await (pool as any).connect();
+  try {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    if (profile_slug) { where.push(`p.slug = $${p++}`); params.push(profile_slug); }
+    if (since) { where.push(`sr.run_at >= $${p++}::timestamptz`); params.push(since); }
+    params.push(limit);
+
+    const { rows } = await client.queryObject(
+      `SELECT sr.id,
+              p.slug        AS profile_slug,
+              sr.query,
+              sr.pages_fetched,
+              sr.total_results,
+              sr.new_after_dedup,
+              sr.screened,
+              sr.fit_count,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM js_ingested_positions ip
+                WHERE ip.search_run_id = sr.id AND ip.outcome = 'fetch-failed'
+              ), 0) AS fetch_failed_count,
+              sr.summary_key,
+              sr.run_at
+       FROM js_search_runs sr
+       LEFT JOIN js_profiles p ON sr.profile_id = p.id
+       ${where.length ? "WHERE " + where.join(" AND ") : ""}
+       ORDER BY sr.run_at DESC
+       LIMIT $${p}`,
+      params,
+    );
+    return rows as SearchRunRow[];
+  } finally { client.release(); }
+}
+
+export function registerGetSearchRunsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "get_search_runs",
+    "List search run summaries from js_search_runs with computed fetch_failed_count. " +
+    "Filters: profile_slug, since (ISO date), limit. Ordered run_at DESC.",
+    {
+      profile_slug: z.string().nullish().describe("Filter to a specific profile slug"),
+      since: z.string().nullish().describe("ISO date/timestamp — only runs at or after this time"),
+      limit: z.number().int().min(1).max(200).default(20),
+    },
+    async (args: GetSearchRunsArgs) => {
+      const rows = await getSearchRunsCore(pool, args);
+      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+    },
+  );
 }
 
 export async function searchApplicationsSemanticCore(
@@ -948,11 +1100,11 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
       summary_key: z.string().optional().describe("Object store key for the summary .md file"),
     },
     async (args: LogSearchRunArgs) => {
-      await logSearchRunCore(pool, args);
+      const id = await logSearchRunCore(pool, args);
       return {
         content: [{
           type: "text",
-          text: `Search run logged: ${args.profile_slug}, ${args.fit_count} fits from ${args.total_results} results`,
+          text: JSON.stringify({ id, profile_slug: args.profile_slug, fit_count: args.fit_count, total_results: args.total_results }),
         }],
       };
     },
@@ -1009,15 +1161,483 @@ export function registerCreateApplicationTool(server: unknown, pool: unknown) {
   );
 }
 
+// ===========================================================================
+// STRUCTURED METADATA TOOLS (Phase 3)
+// update_application_fields — store domain_connection, domain_tags, jd_requirements
+// find_similar_applications — cross-app semantic pattern matching via Phase-2 chunk embeddings
+// ===========================================================================
+
+export interface UpdateApplicationFieldsArgs {
+  id: string;
+  domain_connection?: string;
+  domain_tags?: string[];
+  jd_requirements?: { required: string[]; preferred: string[] };
+}
+
+export async function updateApplicationFieldsCore(
+  pool: unknown,
+  args: UpdateApplicationFieldsArgs,
+): Promise<{ id: string } | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [args.id];
+  let p = 2;
+  if (args.domain_connection !== undefined) { sets.push(`domain_connection = $${p++}`); params.push(args.domain_connection); }
+  if (args.domain_tags !== undefined)       { sets.push(`domain_tags = $${p++}::text[]`); params.push(args.domain_tags); }
+  if (args.jd_requirements !== undefined)  { sets.push(`jd_requirements = $${p++}::jsonb`); params.push(JSON.stringify(args.jd_requirements)); }
+  if (sets.length === 0) return null;
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `UPDATE js_applications SET ${sets.join(", ")}, updated_at = now()
+       WHERE id = $1::uuid RETURNING id::text AS id`,
+      params,
+    );
+    return (rows[0] as any) ?? null;
+  } finally { client.release(); }
+}
+
+export function registerUpdateApplicationFieldsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "update_application_fields",
+    "Store structured metadata on an application: domain_connection (one sentence connecting applicant experience " +
+    "to this company's domain), domain_tags (2-4 short tags), jd_requirements (required + preferred arrays). " +
+    "Called by process-jd (domain_tags, jd_requirements) and create-application (domain_connection).",
+    {
+      id: z.string().describe("Application UUID"),
+      domain_connection: z.string().optional().describe("One-sentence applicant-to-domain connection summary"),
+      domain_tags: z.array(z.string()).optional().describe("2-4 short domain tags, e.g. ['ai-governance','b2b-saas']"),
+      jd_requirements: z.object({
+        required: z.array(z.string()),
+        preferred: z.array(z.string()),
+      }).optional().describe("Structured requirements from the JD"),
+    },
+    async (args: UpdateApplicationFieldsArgs) => {
+      const result = await updateApplicationFieldsCore(pool, args);
+      if (!result) return { content: [{ type: "text", text: "No fields to update or application not found." }] };
+      return { content: [{ type: "text", text: `Application ${result.id} fields updated.` }] };
+    },
+  );
+}
+
+export interface SimilarApplicationResult {
+  id: string;
+  company_name: string;
+  role_title: string;
+  domain_connection: string | null;
+  domain_tags: string[] | null;
+  status: string;
+  similarity: number;
+}
+
+export async function findSimilarApplicationsCore(
+  pool: unknown,
+  embedQueryFn: EmbedQueryFn | undefined,
+  args: { query: string; exclude_id?: string; limit?: number },
+): Promise<SimilarApplicationResult[] | null> {
+  if (!embedQueryFn) return null;
+  const { query, exclude_id, limit = 5 } = args;
+  const embedding = await embedQueryFn(query);
+  const embeddingLiteral = `[${embedding.join(",")}]`;
+  const client = await (pool as any).connect();
+  try {
+    // DISTINCT ON picks the best-matching chunk per application, then the outer
+    // query re-sorts and limits — uses Phase 2 chunk embeddings for notes.md sections.
+    const { rows } = await client.queryObject(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (a.id)
+                a.id::text AS id,
+                COALESCE(a.company_name_raw, co.name) AS company_name,
+                a.role_title,
+                a.domain_connection,
+                a.domain_tags,
+                a.status,
+                (t.embedding <=> $1::vector) AS similarity
+         FROM js_chunks ch
+         JOIN thoughts t ON ch.thought_id = t.id
+         JOIN js_applications a ON ch.storage_key = (a.folder_prefix || 'notes.md')
+         LEFT JOIN js_companies co ON a.company_id = co.id
+         WHERE ch.storage_key LIKE 'applications/%/notes.md'
+           AND ($2::uuid IS NULL OR a.id != $2::uuid)
+           AND (t.embedding <=> $1::vector) < 0.5
+         ORDER BY a.id, (t.embedding <=> $1::vector) ASC
+       ) per_app
+       ORDER BY similarity ASC
+       LIMIT $3`,
+      [embeddingLiteral, exclude_id ?? null, limit],
+    );
+    return (rows as any[]).map((r: any) => ({
+      id: r.id,
+      company_name: r.company_name,
+      role_title: r.role_title,
+      domain_connection: r.domain_connection ?? null,
+      domain_tags: r.domain_tags ?? null,
+      status: r.status,
+      similarity: Number(r.similarity),
+    }));
+  } finally { client.release(); }
+}
+
+export function registerFindSimilarApplicationsTool(server: unknown, pool: unknown, embedQueryFn?: EmbedQueryFn) {
+  (server as any).tool(
+    "find_similar_applications",
+    "Semantic search across past applications by domain. Uses Phase-2 chunk embeddings from notes.md to find " +
+    "applications where the business domain context is similar to the query. " +
+    "Returns applications in OB1 mode only — no-op in local mode. " +
+    "Use exclude_id to omit the current application from results.",
+    {
+      query: z.string().describe("Domain/context query, e.g. 'AI governance compliance enterprise SaaS'"),
+      exclude_id: z.string().nullish().describe("Application UUID to exclude (the current application)"),
+      limit: z.number().int().min(1).max(10).default(5),
+    },
+    async (args: { query: string; exclude_id?: string; limit: number }) => {
+      const results = await findSimilarApplicationsCore(pool, embedQueryFn, args);
+      if (results === null) {
+        return { content: [{ type: "text", text: "find_similar_applications: embedQuery callback not configured" }] };
+      }
+      if (!results.length) {
+        return { content: [{ type: "text", text: "No similar past applications found." }] };
+      }
+      const formatted = results.map((r, i) => [
+        `--- ${i + 1} | ${r.company_name} — ${r.role_title} | ${r.status} (sim ${r.similarity.toFixed(3)}) ---`,
+        r.domain_connection ? `Domain connection: ${r.domain_connection}` : "",
+        r.domain_tags?.length ? `Tags: ${r.domain_tags.join(", ")}` : "",
+      ].filter(Boolean).join("\n")).join("\n\n");
+      return { content: [{ type: "text", text: formatted }] };
+    },
+  );
+}
+
+// ===========================================================================
+// CHUNK SEARCH CORE FUNCTION (Phase 2)
+// ===========================================================================
+
+export interface ChunkSearchResult {
+  storage_key: string;
+  section_title: string | null;
+  section_index: number;
+  content: string;
+  similarity: number;
+}
+
+export async function searchChunksSemanticCore(
+  pool: unknown,
+  embedQueryFn: EmbedQueryFn | undefined,
+  args: { query: string; storage_key_prefix?: string; limit?: number },
+): Promise<ChunkSearchResult[] | null> {
+  if (!embedQueryFn) return null;
+  const { query, storage_key_prefix, limit = 5 } = args;
+  const embedding = await embedQueryFn(query);
+  const embeddingLiteral = `[${embedding.join(",")}]`;
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `SELECT c.storage_key, c.section_title, c.section_index, c.content,
+              (t.embedding <=> $1::vector) AS similarity
+       FROM js_chunks c
+       JOIN thoughts t ON c.thought_id = t.id
+       WHERE ($2::text IS NULL OR c.storage_key LIKE $2 || '%')
+         AND (t.embedding <=> $1::vector) < 0.4
+       ORDER BY similarity ASC
+       LIMIT $3`,
+      [embeddingLiteral, storage_key_prefix ?? null, limit],
+    );
+    return (rows as any[]).map((r: any) => ({
+      storage_key: r.storage_key,
+      section_title: r.section_title ?? null,
+      section_index: Number(r.section_index),
+      content: r.content,
+      similarity: Number(r.similarity),
+    }));
+  } finally { client.release(); }
+}
+
+export function registerSearchChunksSemanticTool(server: unknown, pool: unknown, embedQueryFn?: EmbedQueryFn) {
+  (server as any).tool(
+    "search_chunks_semantic",
+    "Semantic search across document sections (H2 chunks). Returns scored sections rather than whole files. " +
+    "Use storage_key_prefix to scope to a folder (e.g. 'applications/2026-05-15-co-role/'). " +
+    "Results filtered to similarity < 0.4 (cosine distance; lower = more similar).",
+    {
+      query: z.string().describe("Natural language query, e.g. 'domain connection fintech compliance'"),
+      storage_key_prefix: z.string().nullish().describe(
+        "Limit results to keys under this prefix, e.g. 'applications/2026-05-15-co-role/' or 'profiles/presales-se/'",
+      ),
+      limit: z.number().int().min(1).max(20).default(5),
+    },
+    async (args: { query: string; storage_key_prefix?: string; limit: number }) => {
+      const results = await searchChunksSemanticCore(pool, embedQueryFn, args);
+      if (results === null) {
+        return { content: [{ type: "text", text: "search_chunks_semantic: embedQuery callback not configured" }] };
+      }
+      if (!results.length) {
+        return { content: [{ type: "text", text: `No chunks found matching "${args.query}" (similarity threshold 0.4).` }] };
+      }
+      const formatted = results.map((r, i) => [
+        `--- ${i + 1} | ${r.storage_key} § ${r.section_title ?? "(preamble)"} (sim ${r.similarity.toFixed(3)}) ---`,
+        r.content,
+      ].join("\n")).join("\n\n");
+      return { content: [{ type: "text", text: formatted }] };
+    },
+  );
+}
+
+// ===========================================================================
+// INGEST TRACKING CORE FUNCTIONS
+// Replaces seen-jobs.json / linkedin-seen-jobs.json with structured Postgres storage.
+// ===========================================================================
+
+export interface CheckPositionSeenArgs {
+  source_url?: string;
+  company_name?: string;
+  role_title?: string;
+}
+
+export interface CheckPositionSeenResult {
+  seen: boolean;
+  outcome?: string;
+  is_repost?: boolean;
+  last_seen_at?: string;
+  first_seen_at?: string;
+  source?: string; // 'ingest' | 'direct'
+}
+
+export async function checkPositionSeenCore(
+  pool: unknown,
+  args: CheckPositionSeenArgs,
+): Promise<CheckPositionSeenResult> {
+  const client = await (pool as any).connect();
+  const REPOST_DAYS = 60;
+  try {
+    // Tier 1: URL exact match in js_ingested_positions
+    if (args.source_url) {
+      const { rows } = await client.queryObject(
+        `SELECT outcome, is_repost, first_seen_at, created_at
+         FROM js_ingested_positions WHERE source_url = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [args.source_url],
+      );
+      if ((rows as any[]).length > 0) {
+        const r = rows[0] as any;
+        const firstSeen: Date = r.first_seen_at ?? r.created_at;
+        const daysSince = (Date.now() - new Date(firstSeen).getTime()) / 86400000;
+        return {
+          seen: true, outcome: r.outcome, source: "ingest",
+          is_repost: daysSince > REPOST_DAYS,
+          last_seen_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+          first_seen_at: firstSeen instanceof Date ? firstSeen.toISOString() : firstSeen,
+        };
+      }
+    }
+
+    if (args.company_name && args.role_title) {
+      // Tier 2: Exact company+role in js_ingested_positions
+      const { rows } = await client.queryObject(
+        `SELECT outcome, first_seen_at, created_at
+         FROM js_ingested_positions
+         WHERE lower(company_name) = lower($1) AND lower(role_title) = lower($2)
+         ORDER BY created_at DESC LIMIT 1`,
+        [args.company_name, args.role_title],
+      );
+      if ((rows as any[]).length > 0) {
+        const r = rows[0] as any;
+        const firstSeen: Date = r.first_seen_at ?? r.created_at;
+        const daysSince = (Date.now() - new Date(firstSeen).getTime()) / 86400000;
+        return {
+          seen: true, outcome: r.outcome, source: "ingest",
+          is_repost: daysSince > REPOST_DAYS,
+          last_seen_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+          first_seen_at: firstSeen instanceof Date ? firstSeen.toISOString() : firstSeen,
+        };
+      }
+
+      // Tier 3: Exact company+role in js_applications (catches direct/chat submissions)
+      const { rows: appRows } = await client.queryObject(
+        `SELECT status, created_at FROM js_applications
+         WHERE lower(COALESCE(company_name_raw, '')) = lower($1) AND lower(role_title) = lower($2)
+         ORDER BY created_at DESC LIMIT 1`,
+        [args.company_name, args.role_title],
+      );
+      if ((appRows as any[]).length > 0) {
+        const r = appRows[0] as any;
+        const ts = r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at;
+        return { seen: true, outcome: "fit", source: "direct", is_repost: false, last_seen_at: ts, first_seen_at: ts };
+      }
+
+      // Tier 4: Fuzzy prefix match (catches "Acme Corp" vs "Acme Corporation",
+      //         reposted roles with slightly different title capitalisation)
+      const coPrefix = args.company_name.substring(0, 12).toLowerCase();
+      const rolePrefix = args.role_title.substring(0, 10).toLowerCase();
+      if (coPrefix.length >= 4 && rolePrefix.length >= 4) {
+        const { rows: fuzzyRows } = await client.queryObject(
+          `SELECT outcome, first_seen_at, created_at FROM js_ingested_positions
+           WHERE lower(company_name) LIKE $1 AND lower(role_title) LIKE $2
+           ORDER BY created_at DESC LIMIT 1`,
+          [`${coPrefix}%`, `${rolePrefix}%`],
+        );
+        if ((fuzzyRows as any[]).length > 0) {
+          const r = fuzzyRows[0] as any;
+          const firstSeen: Date = r.first_seen_at ?? r.created_at;
+          const daysSince = (Date.now() - new Date(firstSeen).getTime()) / 86400000;
+          return {
+            seen: true, outcome: r.outcome, source: "ingest",
+            is_repost: daysSince > REPOST_DAYS,
+            last_seen_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+            first_seen_at: firstSeen instanceof Date ? firstSeen.toISOString() : firstSeen,
+          };
+        }
+      }
+    }
+
+    return { seen: false };
+  } finally { client.release(); }
+}
+
+export interface LogIngestedPositionArgs {
+  source_url?: string;
+  company_name: string;
+  role_title: string;
+  profile_slug?: string;
+  search_run_id?: string;
+  application_id?: string;
+  outcome: "fit" | "no-fit" | "duplicate" | "fetch-failed";
+  no_fit_reason?: string;
+  is_repost?: boolean;
+  first_seen_at?: string;
+}
+
+export async function logIngestedPositionCore(
+  pool: unknown,
+  args: LogIngestedPositionArgs,
+): Promise<{ id: string }> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `INSERT INTO js_ingested_positions
+         (source_url, company_name, role_title, profile_slug, search_run_id,
+          application_id, outcome, no_fit_reason, is_repost, first_seen_at)
+       VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        args.source_url ?? null,
+        args.company_name,
+        args.role_title,
+        args.profile_slug ?? null,
+        args.search_run_id ?? null,
+        args.application_id ?? null,
+        args.outcome,
+        args.no_fit_reason ?? null,
+        args.is_repost ?? false,
+        args.first_seen_at ? new Date(args.first_seen_at) : null,
+      ],
+    );
+    return { id: (rows[0] as any).id };
+  } finally { client.release(); }
+}
+
+export async function getIngestionHistoryCore(
+  pool: unknown,
+  args: { profile_slug?: string; outcome?: string; limit?: number },
+): Promise<unknown[]> {
+  const { profile_slug, outcome, limit = 50 } = args;
+  const client = await (pool as any).connect();
+  try {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    if (profile_slug) { where.push(`profile_slug = $${p++}`); params.push(profile_slug); }
+    if (outcome) { where.push(`outcome = $${p++}`); params.push(outcome); }
+    params.push(limit);
+
+    const { rows } = await client.queryObject(
+      `SELECT id, company_name, role_title, profile_slug, outcome, no_fit_reason,
+              is_repost, first_seen_at, created_at
+       FROM js_ingested_positions
+       ${where.length ? "WHERE " + where.join(" AND ") : ""}
+       ORDER BY created_at DESC
+       LIMIT $${p}`,
+      params,
+    );
+    return rows as unknown[];
+  } finally { client.release(); }
+}
+
+// ===========================================================================
+// INGEST TRACKING TOOLS
+// ===========================================================================
+
+export function registerCheckPositionSeenTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "check_position_seen",
+    "Check if a job position has been seen before (4-tier: URL exact → company+role exact in ingest history " +
+    "→ company+role in active pipeline [catches direct/chat submissions] → fuzzy prefix match). " +
+    "Returns is_repost=true when the position was first seen >60 days ago.",
+    {
+      source_url: z.string().nullish().describe("Source URL of the job posting"),
+      company_name: z.string().nullish().describe("Company name to check"),
+      role_title: z.string().nullish().describe("Role title to check"),
+    },
+    async (args: CheckPositionSeenArgs) => {
+      const result = await checkPositionSeenCore(pool, args);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+}
+
+export function registerLogIngestedPositionTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "log_ingested_position",
+    "Record a job position encountered during /ingest or submitted via chat. " +
+    "Creates an audit trail entry. Replaces seen-jobs.json writes.",
+    {
+      source_url: z.string().nullish(),
+      company_name: z.string(),
+      role_title: z.string(),
+      profile_slug: z.string().nullish(),
+      search_run_id: z.string().nullish().describe("UUID of the js_search_runs row for this batch run"),
+      application_id: z.string().nullish().describe("UUID of js_applications row (for fit outcomes)"),
+      outcome: z.enum(["fit", "no-fit", "duplicate", "fetch-failed"]),
+      no_fit_reason: z.string().nullish(),
+      is_repost: z.boolean().optional().default(false),
+      first_seen_at: z.string().nullish().describe("ISO timestamp of original sighting (for repost tracking)"),
+    },
+    async (args: LogIngestedPositionArgs) => {
+      const result = await logIngestedPositionCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Logged: ${args.company_name} / ${args.role_title} → ${args.outcome} (${result.id})`,
+        }],
+      };
+    },
+  );
+}
+
+export function registerGetIngestionHistoryTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "get_ingestion_history",
+    "List recent ingested positions with outcome breakdown. Canonical record of all positions " +
+    "encountered during job search — replaces seen-jobs.json as the dedup source.",
+    {
+      profile_slug: z.string().nullish().describe("Filter to a specific profile"),
+      outcome: z.enum(["fit", "no-fit", "duplicate", "fetch-failed"]).nullish(),
+      limit: z.number().int().min(1).max(500).default(50),
+    },
+    async (args: { profile_slug?: string; outcome?: string; limit: number }) => {
+      const rows = await getIngestionHistoryCore(pool, args);
+      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Registration helper — call from job-search-server.ts main()
 // ---------------------------------------------------------------------------
 
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
-  const { captureThought, searchThoughts } = callbacks;
+  const { captureThought, searchThoughts, embedQuery, chunkContent } = callbacks;
 
   // File tools
-  registerUploadFileTool(server, pool, captureThought);
+  registerUploadFileTool(server, pool, captureThought, chunkContent);
   registerGetFileTool(server);
   registerGetFileUrlTool(server);
   registerListFilesTool(server, pool);
@@ -1036,5 +1656,18 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerGetContactsTool(server, pool);
   registerUpsertCompanyTool(server, pool);
   registerLogSearchRunTool(server, pool);
+  registerGetSearchRunsTool(server, pool);
   registerSearchApplicationsSemanticTool(server, pool, searchThoughts);
+
+  // Phase 2: section-level chunk search
+  registerSearchChunksSemanticTool(server, pool, embedQuery);
+
+  // Phase 3: structured metadata + cross-app pattern matching
+  registerUpdateApplicationFieldsTool(server, pool);
+  registerFindSimilarApplicationsTool(server, pool, embedQuery);
+
+  // Ingest tracking tools (Phase 1 — replaces seen-jobs.json)
+  registerCheckPositionSeenTool(server, pool);
+  registerLogIngestedPositionTool(server, pool);
+  registerGetIngestionHistoryTool(server, pool);
 }

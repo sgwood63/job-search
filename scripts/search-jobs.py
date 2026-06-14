@@ -6,6 +6,7 @@ USAGE
     python3 scripts/search-jobs.py <profile-name>
     python3 scripts/search-jobs.py <profile-name> --page-token <token>
     python3 scripts/search-jobs.py <profile-name> --dry-run
+    python3 scripts/search-jobs.py <profile-name> --no-dedup
 
     Reads the OR-query for <profile-name> from $APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md
     Deduplicates against $APPLICANT_DIR/profiles/<profile-name>/search-results/seen-jobs.json
@@ -171,6 +172,7 @@ def main():
     parser.add_argument("--batch-size", default=None, type=int, metavar="N", help="Max new jobs to return (overrides SEARCH_BATCH_SIZE env var)")
     parser.add_argument("--seen-jobs-path", default=None, metavar="FILE", help="Override path to seen-jobs.json (OB1 mode: pre-populated from object store)")
     parser.add_argument("--no-raw-save", action="store_true", help="Skip saving raw API response to disk (OB1 mode)")
+    parser.add_argument("--no-dedup", action="store_true", help="Return all fetched jobs regardless of seen status (still updates seen list)")
     args = parser.parse_args()
 
     api_key = get_env("SEARCHAPI_KEY")
@@ -211,6 +213,7 @@ def main():
             "query": query,
             "query_source": "flag" if args.query else "table",
             "page_token": args.page_token,
+            "no_dedup": args.no_dedup,
             "params": {
                 "engine": "google_jobs",
                 "q": query,
@@ -240,7 +243,7 @@ def main():
     for job in raw_jobs:
         normalized = normalize_job(job)
         jid = normalized["job_id"]
-        if jid and jid not in seen:
+        if args.no_dedup or (jid and jid not in seen):
             new_jobs.append(normalized)
         if jid:
             seen.add(jid)

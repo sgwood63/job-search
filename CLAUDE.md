@@ -102,8 +102,8 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/apply "Co" "Role" "date" [url?]` | Record submission atomically in tracker + notes.md |
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
-| `/ingest [profile]` | Run workflow `search-jobs` (Google Jobs via SearchAPI); per-job processing via `process-jd`; saves fit jobs as stubs + summary |
-| `/linkedin-ingest [--max-pages N]` | Run workflow `search-jobs-linkedin` (LinkedIn recommendations); per-job processing via `process-jd`; saves fit jobs as stubs + summary |
+| `/ingest [profile]` | Run workflow `search-jobs` (Google Jobs via SearchAPI); per-job processing via `process-jd`; saves fit jobs as stubs; generates per-run summary `.md` (OB1: uploaded + logged to `js_search_runs`; local: written to `search/` + `search-log.csv`) |
+| `/linkedin-ingest [--max-pages N]` | Run workflow `search-jobs-linkedin` (LinkedIn recommendations); per-job processing via `process-jd`; saves fit jobs as stubs; generates per-run summary `.md` (OB1: uploaded + logged to `js_search_runs`; local: written to `search/` + `search-log.csv`) |
 
 ## OB1 Integration
 
