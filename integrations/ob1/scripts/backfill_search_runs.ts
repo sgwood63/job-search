@@ -48,16 +48,15 @@ async function readFile(key: string): Promise<string> {
   return r.text();
 }
 
-async function getSearchRuns(profileSlug: string | null, since: string): Promise<Array<{ id: string; run_at: string }>> {
-  const params = new URLSearchParams({ limit: "10", since });
-  if (profileSlug) params.set("profile_slug", profileSlug);
-  const r = await fetch(`${BASE_URL}/api/v2/search-runs?${params}`, { headers: HEADERS });
-  if (!r.ok) throw new Error(`getSearchRuns failed: ${r.status}`);
-  return r.json();
+async function getAllSearchRuns(): Promise<Set<string>> {
+  const r = await fetch(`${BASE_URL}/api/v2/search-runs?limit=500`, { headers: HEADERS });
+  if (!r.ok) throw new Error(`getAllSearchRuns failed: ${r.status}`);
+  const rows: Array<{ summary_key: string | null }> = await r.json();
+  return new Set(rows.map(r => r.summary_key).filter(Boolean) as string[]);
 }
 
 async function postSearchRun(args: {
-  profile_slug: string;
+  profile_slug: string | null;
   query: string;
   pages_fetched: number;
   total_results: number;
@@ -99,7 +98,7 @@ async function postIngestedPosition(args: {
 // ---------------------------------------------------------------------------
 
 interface RunHeader {
-  profile_slug: string;
+  profile_slug: string | null;
   query: string;
   run_at: string; // ISO timestamp
   pages_fetched: number;
@@ -154,7 +153,7 @@ function parseSummaryMd(
 
   // Profile from filename: search/YYYY-MM-DD-HHMMSS-<profile>-summary.md
   const match = fileKey.match(/search\/\d{4}-\d{2}-\d{2}-\d{6}-(.+)-summary\.md$/);
-  const profile_slug = match ? match[1] : parseField(lines, "Profile") || "unknown";
+  const profile_slug = match ? match[1] : parseField(lines, "Profile") || null;
 
   const dateStr = parseField(lines, "Date");
   if (!dateStr) return null;
@@ -232,6 +231,9 @@ async function main() {
 
   console.log(`Found ${summaryFiles.length} summary file(s) to process.\n`);
 
+  // Idempotency: fetch all existing summary_keys up front once
+  const existingKeys = await getAllSearchRuns();
+
   let created = 0, skipped = 0, positions = 0, errors = 0;
 
   for (const file of summaryFiles) {
@@ -247,15 +249,7 @@ async function main() {
 
       const { header, positions: posRows } = parsed;
 
-      // Idempotency: look for an existing run within 60 seconds of the parsed timestamp
-      const runAtDate = new Date(header.run_at);
-      const sinceIso = new Date(runAtDate.getTime() - 90_000).toISOString(); // 90s before
-      const existing = await getSearchRuns(header.profile_slug, sinceIso);
-      const already = existing.some(r => {
-        return Math.abs(new Date(r.run_at).getTime() - runAtDate.getTime()) < 60_000;
-      });
-
-      if (already) {
+      if (existingKeys.has(file.key)) {
         console.log(`  [SKIP] ${file.key} — run already exists`);
         skipped++;
         continue;
