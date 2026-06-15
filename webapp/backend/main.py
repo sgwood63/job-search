@@ -159,12 +159,14 @@ class ObRestClient:
         r.raise_for_status()
         return r.json()
 
-    async def get_ingestion_history(self, profile_slug: str | None = None, outcome: str | None = None, limit: int = 50) -> list[dict]:
+    async def get_ingestion_history(self, profile_slug: str | None = None, outcome: str | None = None, limit: int = 50, direct_only: bool = False) -> list[dict]:
         params: dict = {'limit': limit}
         if profile_slug:
             params['profile_slug'] = profile_slug
         if outcome:
             params['outcome'] = outcome
+        if direct_only:
+            params['direct_only'] = 'true'
         r = await self._http.get('/api/v2/ingestion/history', params=params)
         r.raise_for_status()
         return r.json()
@@ -774,11 +776,12 @@ async def ingestion_history(
     profile_slug: Optional[str] = Query(None),
     outcome: Optional[str] = Query(None),
     limit: int = Query(50),
+    direct_only: bool = Query(False),
 ):
     if not _ob_rest:
         return {'records': []}
     records = await _ob_rest.get_ingestion_history(
-        profile_slug=profile_slug, outcome=outcome, limit=min(limit, 200)
+        profile_slug=profile_slug, outcome=outcome, limit=min(limit, 200), direct_only=direct_only
     )
     return {'records': records}
 

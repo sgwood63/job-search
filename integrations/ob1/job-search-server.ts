@@ -25,12 +25,13 @@ import {
   registerJobSearchTools,
   chunkMarkdown,
   uploadFileCore, getFileCore, getFileUrlCore, listFilesCore, deleteFileCore, deleteApplicationCore,
-  getPipelineCore, getApplicationCore, getProfilesCore, getOverdueFollowupsCore,
+  getPipelineCore, getApplicationCore, getProfilesCore, deleteProfileCore, upsertProfileCore, getOverdueFollowupsCore,
   createApplicationCore, updateApplicationStatusCore, logInterviewCore, completeInterviewCore,
   addContactCore, upsertCompanyCore, searchApplicationsSemanticCore, searchChunksSemanticCore,
   updateApplicationFieldsCore, findSimilarApplicationsCore, getIngestionHistoryCore,
   logSearchRunCore, logIngestedPositionCore, getSearchRunsCore,
   type ChunkContentFn, type EmbedQueryFn, type LogSearchRunArgs, type LogIngestedPositionArgs,
+  type UpsertProfileArgs,
 } from "./job-search-tools.ts";
 
 // --- Configuration ---
@@ -494,6 +495,22 @@ app.get("/api/v2/profiles", async (c) => {
   return c.json(rows, 200, corsHeaders);
 });
 
+app.post("/api/v2/profiles", async (c) => {
+  const body = await c.req.json() as UpsertProfileArgs;
+  if (!body.slug || !body.display_name) {
+    return c.json({ error: "slug and display_name are required" }, 400, corsHeaders);
+  }
+  const result = await upsertProfileCore(pool, body);
+  return c.json(result, 200, corsHeaders);
+});
+
+app.delete("/api/v2/profiles/:id", async (c) => {
+  const id = c.req.param("id");
+  const deleted = await deleteProfileCore(pool, id);
+  if (!deleted) return c.json({ error: "Not found" }, 404, corsHeaders);
+  return c.json({ deleted: true }, 200, corsHeaders);
+});
+
 app.get("/api/v2/overdue", async (c) => {
   const rows = await getOverdueFollowupsCore(pool);
   return c.json(rows, 200, corsHeaders);
@@ -543,7 +560,8 @@ app.get("/api/v2/ingestion/history", async (c) => {
   const profile_slug = c.req.query("profile_slug") || undefined;
   const outcome = c.req.query("outcome") || undefined;
   const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10), 200);
-  const rows = await getIngestionHistoryCore(pool, { profile_slug, outcome, limit });
+  const direct_only = c.req.query("direct_only") === "true";
+  const rows = await getIngestionHistoryCore(pool, { profile_slug, outcome, limit, direct_only });
   return c.json(rows, 200, corsHeaders);
 });
 

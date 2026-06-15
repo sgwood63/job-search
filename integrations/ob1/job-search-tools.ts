@@ -576,6 +576,49 @@ export async function getProfilesCore(pool: unknown): Promise<unknown[]> {
   } finally { client.release(); }
 }
 
+export async function deleteProfileCore(pool: unknown, id: string): Promise<boolean> {
+  const client = await (pool as any).connect();
+  try {
+    const { rowCount } = await client.queryObject(
+      `DELETE FROM js_profiles WHERE id = $1`, [id],
+    );
+    return (rowCount ?? 0) > 0;
+  } finally { client.release(); }
+}
+
+export interface UpsertProfileArgs {
+  slug: string;
+  display_name: string;
+  jd_signal_keywords?: string[];
+  avoid_when?: string;
+  search_query?: string;
+  active?: boolean;
+}
+
+export async function upsertProfileCore(
+  pool: unknown,
+  args: UpsertProfileArgs,
+): Promise<{ id: string; slug: string }> {
+  const client = await (pool as any).connect();
+  try {
+    const { rows } = await client.queryObject(
+      `INSERT INTO js_profiles (slug, display_name, jd_signal_keywords, avoid_when, search_query, active)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, true))
+       ON CONFLICT (slug) DO UPDATE SET
+         display_name = EXCLUDED.display_name,
+         jd_signal_keywords = COALESCE(EXCLUDED.jd_signal_keywords, js_profiles.jd_signal_keywords),
+         avoid_when = COALESCE(EXCLUDED.avoid_when, js_profiles.avoid_when),
+         search_query = COALESCE(EXCLUDED.search_query, js_profiles.search_query),
+         active = EXCLUDED.active,
+         updated_at = now()
+       RETURNING id, slug`,
+      [args.slug, args.display_name, args.jd_signal_keywords ?? null,
+       args.avoid_when ?? null, args.search_query ?? null, args.active ?? null],
+    );
+    return { id: (rows[0] as any).id, slug: (rows[0] as any).slug };
+  } finally { client.release(); }
+}
+
 export async function getOverdueFollowupsCore(pool: unknown): Promise<unknown[]> {
   const client = await (pool as any).connect();
   try {
@@ -1085,6 +1128,25 @@ export function registerUpsertCompanyTool(server: unknown, pool: unknown) {
   );
 }
 
+export function registerUpsertProfileTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "upsert_profile",
+    "Create or update a profile record in js_profiles. Use when adding a new search profile or updating an existing one.",
+    {
+      slug: z.string().describe("URL-safe identifier, e.g. 'vendor-gtm'"),
+      display_name: z.string().describe("Human-readable profile name"),
+      jd_signal_keywords: z.array(z.string()).optional().describe("Keywords that signal a JD matches this profile"),
+      avoid_when: z.string().optional().describe("Conditions where this profile should not be used"),
+      search_query: z.string().optional().describe("OR-query used by /ingest for Google Jobs search"),
+      active: z.boolean().optional().describe("Whether this profile is active (default true)"),
+    },
+    async (args: UpsertProfileArgs) => {
+      const result = await upsertProfileCore(pool, args);
+      return { content: [{ type: "text", text: `Profile: ${result.slug} (${result.id})` }] };
+    },
+  );
+}
+
 export function registerLogSearchRunTool(server: unknown, pool: unknown) {
   (server as any).tool(
     "log_search_run",
@@ -1536,9 +1598,9 @@ export async function logIngestedPositionCore(
 
 export async function getIngestionHistoryCore(
   pool: unknown,
-  args: { profile_slug?: string; outcome?: string; limit?: number },
+  args: { profile_slug?: string; outcome?: string; limit?: number; direct_only?: boolean },
 ): Promise<unknown[]> {
-  const { profile_slug, outcome, limit = 50 } = args;
+  const { profile_slug, outcome, limit = 50, direct_only } = args;
   const client = await (pool as any).connect();
   try {
     const where: string[] = [];
@@ -1546,6 +1608,7 @@ export async function getIngestionHistoryCore(
     let p = 1;
     if (profile_slug) { where.push(`profile_slug = $${p++}`); params.push(profile_slug); }
     if (outcome) { where.push(`outcome = $${p++}`); params.push(outcome); }
+    if (direct_only) { where.push(`search_run_id IS NULL`); }
     params.push(limit);
 
     const { rows } = await client.queryObject(
@@ -1655,6 +1718,7 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerAddContactTool(server, pool);
   registerGetContactsTool(server, pool);
   registerUpsertCompanyTool(server, pool);
+  registerUpsertProfileTool(server, pool);
   registerLogSearchRunTool(server, pool);
   registerGetSearchRunsTool(server, pool);
   registerSearchApplicationsSemanticTool(server, pool, searchThoughts);

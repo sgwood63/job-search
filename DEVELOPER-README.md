@@ -172,7 +172,7 @@ For a user-facing comparison of all deployment modes and end-to-end setup instru
 OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path. Instead of flat files synced via Google Drive/OneDrive/etc., all applicant content lives in a local Kubernetes cluster:
 
 - **MinIO** — object store for all files (notes, JDs, PDFs, profiles)
-- **PostgreSQL** (`js_*` tables) — structured state (pipeline, contacts, interviews, search runs)
+- **PostgreSQL** (`js_*` tables) — structured state (pipeline, contacts, interviews, search runs, ingested positions)
 - **pgvector** — semantic search over all content via OB1's `thoughts` table
 
 **Prerequisite:** A local clone of the OB1 repo is required (`$OB1_REPO_PATH` in `.env`) to build the `openbrain-mcp-server:latest` Docker image used by the OB1 StatefulSet. The `job-search-mcp` image is built from this repo and has no external dependency.
@@ -182,7 +182,7 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 | Component | What it is | URL |
 |---|---|---|
 | `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server — 17 MCP tools + REST API (`/api/v2/*`) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
+| `job-search-mcp` | Deployment: Deno/Hono server — 21 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
 | `minio` | Deployment: S3-compatible object store | `http://localhost/minio` (console) / `localhost:30900` (S3) |
 | nginx Ingress | Routes `/ob1`, `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
 
@@ -214,9 +214,12 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `scripts/start-ob1.sh` | Start OB1 docker-compose services (sources both `.env` and `.env.services`) |
 | `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
+| `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
 | `integrations/ob1/tests/test-deployment.sh` | 19-assertion deployment verification suite |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
+
+See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy checklist, backfill procedure) and [`docs/ob1-intelligent-access/`](docs/ob1-intelligent-access/) (context-optimization roadmap — Phase 1 complete, Phases 2–3 planned).
 
 ---
 

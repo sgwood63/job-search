@@ -239,6 +239,18 @@ bash scripts/start-ob1.sh exec postgres \
   < integrations/ob1/job-search-schema.sql
 ```
 
+The schema is cumulative and idempotent. It includes the `js_search_runs` and `js_ingested_positions` tables (ingestion audit trail) added in the hermes release. For existing deployments upgrading from a prior schema version, re-run this command — it is safe to apply multiple times.
+
+**Step 6 — Backfill ingestion history (upgrade only)**
+
+*Skip on first install.* For existing deployments with prior search runs stored as summary `.md` files in OB1, run the backfill script once to populate `js_search_runs` and `js_ingested_positions`:
+
+```bash
+python3 integrations/ob1/scripts/backfill_search_runs.py
+```
+
+Requires `OB1_BASE_URL` and `OB1_API_KEY` in the environment. Safe to re-run — existing records are skipped (409 dedup). See [`docs/ob1-search-runs/backfill-procedure.md`](docs/ob1-search-runs/backfill-procedure.md) for details.
+
 **Services (compose mode):**
 
 | Service | URL / address |
@@ -307,6 +319,18 @@ Follow [integrations/ob1/README.md](integrations/ob1/README.md) steps 2–11:
 8. Create MinIO bucket
 9. Deploy ob1-rest-pg REST API (`docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/`, apply `k8s/ob1-rest-pg.yml`) — PostgreSQL-backed REST layer required by the dashboard
 10. Deploy OB1 Dashboard (build `ob1-dashboard:latest` with `DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002`, apply `k8s/dashboard.yml`, `k8s/dashboard-nodeport.yml`) — access at `http://localhost:30303`
+
+> **Schema note (step 5 above):** The schema is cumulative and idempotent — it includes `js_search_runs` and `js_ingested_positions` (ingestion audit trail). For existing deployments upgrading, re-apply the schema via `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` then `psql -h localhost -U postgres -d openbrain < integrations/ob1/job-search-schema.sql`. Safe to run multiple times.
+
+**Step 3b — Backfill ingestion history (upgrade only)**
+
+*Skip on first install.* For existing deployments with prior search runs stored as summary `.md` files in OB1, run the backfill script once:
+
+```bash
+python3 integrations/ob1/scripts/backfill_search_runs.py
+```
+
+Requires `OB1_BASE_URL` and `OB1_API_KEY` in the environment. Safe to re-run — existing records are skipped (409 dedup). See [`docs/ob1-search-runs/backfill-procedure.md`](docs/ob1-search-runs/backfill-procedure.md) for details.
 
 **Step 4 — Deploy the webapp**
 
@@ -395,6 +419,18 @@ Apply the job-search schema to OB1's PostgreSQL:
 ```bash
 psql -h $DB_HOST -U $DB_USER -d $DB_NAME < integrations/ob1/job-search-schema.sql
 ```
+
+The schema is cumulative and idempotent — includes `js_search_runs` and `js_ingested_positions`. Safe to re-apply when upgrading.
+
+**Backfill ingestion history (upgrade only)**
+
+*Skip on first install.* For existing deployments with prior search runs, run the backfill script once to populate the new tables:
+
+```bash
+python3 integrations/ob1/scripts/backfill_search_runs.py
+```
+
+Requires `OB1_BASE_URL` and `OB1_API_KEY` in the environment. Safe to re-run — existing records are skipped. See [`docs/ob1-search-runs/backfill-procedure.md`](docs/ob1-search-runs/backfill-procedure.md) for details.
 
 ---
 

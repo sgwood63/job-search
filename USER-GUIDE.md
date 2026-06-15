@@ -11,6 +11,7 @@
   - [Setup Guide](#setup-guide)
   - [Command Launcher and Terminal](#command-launcher-and-terminal)
   - [Documentation View](#documentation-view)
+  - [Search View](#search-view)
 - [Getting Set Up](#getting-set-up)
   - [Prerequisites](#prerequisites)
   - [Step 1 — Run the setup script](#step-1--run-the-setup-script)
@@ -131,6 +132,16 @@ Drag the top border of the panel to resize it. Click the **▾/▴** button to c
 ### Documentation View
 
 The Docs view (`/docs`) renders the system documentation in the browser — the same files in this repo (README, Quick Start, User Guide, Developer Guide, Workflow, Setup Guide). Use it as a quick reference while working in the app without switching to a file editor.
+
+### Search View
+
+The Search view gives you a history of every job ingestion run and every position encountered — fit or not. Two tabs:
+
+**Run History:** A table of past `/ingest` and `/linkedin-ingest` runs showing the date, profile, number of pages fetched, total results, screened count, fit count, and any positions that failed to fetch. Use this to audit what the system found and when.
+
+**Ingestion History:** A position-level audit trail showing every job title and company the system evaluated, the outcome (fit, no-fit, duplicate, or fetch-failed), and the reason for no-fit decisions. Filter by outcome to see, for example, all jobs marked as duplicates or all fetch failures.
+
+Both tabs support filtering by profile slug.
 
 ---
 

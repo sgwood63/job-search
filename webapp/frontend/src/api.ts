@@ -86,7 +86,7 @@ export type IngestionRecord = {
 export type SearchRun = {
   id: string
   profile_slug: string | null
-  query: string
+  query: string | null
   pages_fetched: number
   total_results: number
   new_after_dedup: number
@@ -124,9 +124,6 @@ export const api = {
 
   baseDocuments: (): Promise<FileNode[]> =>
     apiFetch(`${BASE}/base-documents`).then(r => r.json()),
-
-  search: (): Promise<FileNode[]> =>
-    apiFetch(`${BASE}/search`).then(r => r.json()),
 
   fileUrl: (path: string) => `${BASE}/file?path=${encodeURIComponent(path)}`,
 
@@ -178,11 +175,12 @@ export const api = {
       body: JSON.stringify({ query, exclude_id: excludeId, limit }),
     }).then(r => r.json()),
 
-  ingestionHistory: (params?: { profile_slug?: string; outcome?: string; limit?: number }): Promise<{ records: IngestionRecord[] }> => {
+  ingestionHistory: (params?: { profile_slug?: string; outcome?: string; limit?: number; direct_only?: boolean }): Promise<{ records: IngestionRecord[] }> => {
     const qs = new URLSearchParams()
     if (params?.profile_slug) qs.set('profile_slug', params.profile_slug)
     if (params?.outcome) qs.set('outcome', params.outcome)
     if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.direct_only) qs.set('direct_only', 'true')
     const q = qs.toString()
     return apiFetch(`${BASE}/ingestion-history${q ? '?' + q : ''}`).then(r => r.json())
   },
