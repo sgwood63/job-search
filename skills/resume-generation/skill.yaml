@@ -2,8 +2,8 @@ name: resume-generation
 kind: skill
 description: Generate a tailored, factual resume from profile content for a screened JD, with verification gate and evaluation report
 status: active
-pinned: v2
-latest: v2
+pinned: v3
+latest: v3
 policies:
   - factuality
   - evidence-grounding
@@ -16,6 +16,9 @@ outputs:
   - resume_md            # the resume markdown artifact
   - evaluation_report    # JD-coverage scoring + Recruiter & ATS Appeal Analysis (written to notes.md)
 changelog:
+  - version: v3
+    date: 2026-06-15
+    summary: Added Phase 0.5 per-requirement semantic retrieval (search_chunks_semantic) and structural anchor fall-back (OB1 mode); added Phase 0.75 cross-app domain patterns via find_similar_applications; local mode falls back to full file reads
   - version: v2
     date: 2026-06-13
     summary: Added one-idea-per-bullet/semicolon rule, expanded Capabilities section format (## heading required, trailing <br> spaces), and Pandoc blank-line-before-bullets rule

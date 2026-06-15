@@ -2,8 +2,8 @@ name: interview-prep
 kind: skill
 description: Generate an interview prep brief for a specific application and stage — required reading, output structure, stage inference, warm connections
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 policies:
   - factuality
   - storage-routing
@@ -13,6 +13,9 @@ inputs:
 outputs:
   - prep_brief
 changelog:
+  - version: v2
+    date: 2026-06-15
+    summary: Added OB1 semantic retrieval (search_chunks_semantic) for notes.md and job-description.md sections with required-section fall-back; local mode falls back to full file reads; no output structure changes
   - version: v1
     date: 2026-06-12
     summary: Migrated from memory/feedback_interview_preparation.md and the output structure of .claude/commands/interview.md
