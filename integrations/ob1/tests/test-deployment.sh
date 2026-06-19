@@ -207,6 +207,35 @@ test_knowledge_graph_indexes() {
   else
     fail "idx_edges_relation_to missing — re-run schema step: kubectl cp + psql -f job-search-schema.sql"
   fi
+
+  local tc_col
+  tc_col=$(psql_exec "SELECT column_name FROM information_schema.columns WHERE table_name='js_files' AND column_name='thought_category'" 2>/dev/null | tr -d ' ')
+  if [[ "$tc_col" == "thought_category" ]]; then
+    pass "thought_category column present on js_files"
+  else
+    fail "thought_category column missing on js_files — re-run job-search-schema.sql"
+  fi
+}
+
+test_knowledge_graph_mcp_tools() {
+  header "Knowledge Graph MCP Tools (Phase 3)"
+  if ! require_env JOB_SEARCH_MCP_KEY; then return; fi
+
+  local response
+  response=$(mcp_list_tools "$K8S_BASE_URL/job-search/mcp" "$JOB_SEARCH_MCP_KEY")
+
+  for tool in create_knowledge_edge get_entity_neighbors traverse_knowledge_graph; do
+    if echo "$response" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+names = [t['name'] for t in d.get('result', {}).get('tools', [])]
+sys.exit(0 if '$tool' in names else 1)
+" 2>/dev/null; then
+      pass "$tool registered in job-search MCP tool list"
+    else
+      fail "$tool missing from job-search MCP tool list"
+    fi
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -512,6 +541,7 @@ ALL_TESTS=(
   test_postgres_connect
   test_js_tables
   test_knowledge_graph_indexes
+  test_knowledge_graph_mcp_tools
   test_minio_bucket
   test_ingress
   test_ob1_mcp

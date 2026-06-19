@@ -108,7 +108,7 @@ async function extractAndCleanText(
       contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       || contentType === "application/msword"
     ) {
-      const result = await mammoth.extractRawText({ buffer: bytes.buffer as ArrayBuffer });
+      const result = await mammoth.extractRawText({ buffer: bytes.buffer as unknown as any });
       return result.value?.trim() || null;
     }
     return null;
@@ -809,22 +809,22 @@ export async function createApplicationCore(
 ): Promise<{ id: string; company: string; role: string }> {
   const client = await (pool as any).connect();
   try {
-    const { rows: co } = await client.queryObject<{ id: string }>(
+    const { rows: co } = await client.queryObject(
       "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) OR slug = LOWER($1) LIMIT 1",
       [args.company_name],
-    );
+    ) as { rows: { id: string }[] };
     const companyId = co[0]?.id ?? null;
 
     let profileId: string | null = null;
     if (args.profile_slug) {
-      const { rows: pr } = await client.queryObject<{ id: string }>(
+      const { rows: pr } = await client.queryObject(
         "SELECT id FROM js_profiles WHERE slug = $1 LIMIT 1",
         [args.profile_slug],
-      );
+      ) as { rows: { id: string }[] };
       profileId = pr[0]?.id ?? null;
     }
 
-    const { rows } = await client.queryObject<{ id: string }>(
+    const { rows } = await client.queryObject(
       `INSERT INTO js_applications
          (company_id, company_name_raw, role_title, profile_id, folder_prefix,
           source_url, status, status_detail, priority)
@@ -832,7 +832,7 @@ export async function createApplicationCore(
        RETURNING id::text AS id`,
       [companyId, args.company_name, args.role_title, profileId, args.folder_prefix,
        args.source_url ?? null, args.status, args.status_detail ?? null, args.priority],
-    );
+    ) as { rows: { id: string }[] };
     return { id: rows[0].id, company: args.company_name, role: args.role_title };
   } finally { client.release(); }
 }

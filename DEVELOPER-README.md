@@ -128,7 +128,8 @@ $APP_DIR/
         ├── docker-compose.yml       # OB1 data services (postgres + minio)
         ├── k8s/                     # Kubernetes manifests
         └── tests/
-            └── test-deployment.sh  # 19-assertion deployment verification suite
+            ├── test-deployment.sh       # 30-assertion deployment verification suite (bash)
+            └── test-knowledge-graph.ts  # 11 unit tests for Phase 3 knowledge graph core functions (Deno)
 ```
 
 ### `$APPLICANT_DIR` file tree
@@ -220,7 +221,8 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
 | `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
-| `integrations/ob1/tests/test-deployment.sh` | 19-assertion deployment verification suite |
+| `integrations/ob1/tests/test-deployment.sh` | 30-assertion deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, MCP servers (OB1 + job-search), webapp health, migration data, functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
+| `integrations/ob1/tests/test-knowledge-graph.ts` | 11 Deno unit tests for Phase 3 knowledge graph core functions (`createKnowledgeEdgeCore`, `getEntityNeighborsCore`, `traverseKnowledgeGraphCore`) — all DB I/O mocked, no live services needed. **Requires Deno** (`curl -fsSL https://deno.land/install.sh \| sh`). Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-knowledge-graph.ts` |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
 

@@ -1,4 +1,7 @@
 {
+  "compilerOptions": {
+    "lib": ["deno.window", "dom"]
+  },
   "imports": {
     "@hono/mcp": "npm:@hono/mcp@0.1.1",
     "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@1.24.3",

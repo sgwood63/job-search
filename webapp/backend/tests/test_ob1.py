@@ -72,6 +72,34 @@ async def test_put_file_bytes_base64_encoded():
 
 
 @pytest.mark.asyncio
+async def test_put_file_ob1_sends_thought_category_as_query_param():
+    """thought_category is appended as a query param, not a body field."""
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.put = AsyncMock(return_value=FakeResponse(201, {"key": "a.md", "bytes": 5}))
+    client._client = http_mock
+
+    await client.put_file("a.md", "# Hello", "text/markdown", thought_category="email")
+
+    url_called = http_mock.put.call_args[0][0]
+    assert "thought_category=email" in url_called
+
+
+@pytest.mark.asyncio
+async def test_put_file_ob1_omits_thought_category_when_none():
+    """No thought_category arg → URL has no query string."""
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.put = AsyncMock(return_value=FakeResponse(201, {"key": "a.md", "bytes": 5}))
+    client._client = http_mock
+
+    await client.put_file("a.md", "# Hello", "text/markdown")
+
+    url_called = http_mock.put.call_args[0][0]
+    assert "?" not in url_called
+
+
+@pytest.mark.asyncio
 async def test_ping_returns_true_on_200():
     client = make_client()
     http_mock = MagicMock()
@@ -298,6 +326,54 @@ def test_upload_ob1_blocked_outside_allowed_prefix(ob1_client):
     )
     assert resp.status_code == 403
     mock.put_file.assert_not_called()
+
+
+def test_upload_ob1_forwards_thought_category_kwarg(ob1_client):
+    """thought_category query param is passed through to put_file as a keyword arg."""
+    client, mock = ob1_client
+    resp = client.post(
+        "/api/upload",
+        params={"dir": "applications/2026-01-01-co", "thought_category": "email"},
+        files={"file": ("email.txt", b"From: hiring@acme.com", "text/plain")},
+    )
+    assert resp.status_code == 200
+    kwargs = mock.put_file.call_args.kwargs
+    assert kwargs.get("thought_category") == "email"
+
+
+def test_upload_ob1_response_includes_thought_id_and_category(ob1_client):
+    """When OB1 returns thought_id and thought_category they appear in the response body."""
+    client, mock = ob1_client
+    mock.put_file = AsyncMock(return_value={
+        "key": "applications/2026-01-01-co/email.txt",
+        "bytes": 22,
+        "thought_id": "abc123",
+        "thought_category": "email",
+    })
+    resp = client.post(
+        "/api/upload",
+        params={"dir": "applications/2026-01-01-co"},
+        files={"file": ("email.txt", b"From: hiring@acme.com", "text/plain")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["thought_id"] == "abc123"
+    assert data["thought_category"] == "email"
+
+
+def test_upload_ob1_response_omits_thought_fields_when_absent(ob1_client):
+    """When OB1 does not return thought fields they are absent from the response."""
+    client, mock = ob1_client
+    # Default mock returns {"key": "test.md", "bytes": 10} — no thought fields
+    resp = client.post(
+        "/api/upload",
+        params={"dir": "applications/2026-01-01-co"},
+        files={"file": ("resume.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "thought_id" not in data
+    assert "thought_category" not in data
 
 
 # ===========================================================================
@@ -932,7 +1008,7 @@ def test_ingestion_history_ob1_passes_profile_slug(ob1_client):
     client, mock = ob1_client
     client.get("/api/ingestion-history", params={"profile_slug": "presales-se"})
     mock.get_ingestion_history.assert_called_once_with(
-        profile_slug="presales-se", outcome=None, limit=50
+        profile_slug="presales-se", outcome=None, limit=50, direct_only=False
     )
 
 
@@ -940,7 +1016,7 @@ def test_ingestion_history_ob1_passes_outcome_filter(ob1_client):
     client, mock = ob1_client
     client.get("/api/ingestion-history", params={"outcome": "no-fit", "limit": 20})
     mock.get_ingestion_history.assert_called_once_with(
-        profile_slug=None, outcome="no-fit", limit=20
+        profile_slug=None, outcome="no-fit", limit=20, direct_only=False
     )
 
 

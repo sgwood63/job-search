@@ -282,10 +282,11 @@ What's covered:
 | File | Tests | Covers |
 |------|-------|--------|
 | `test_api.py` | 30+ | Path validation helpers, all REST endpoints (health, tracker, file CRUD, applications, setup-status, docs allowlist) |
+| `test_ob1.py` | 85 | `ObRestClient` unit tests (all HTTP methods, binary/text upload, thought_category, Phase 2+3 methods) + FastAPI endpoint tests in OB1 mode (file CRUD, tracker domain fields, contacts, search, chunk-search, similar-applications, ingestion history, search runs) |
 | `test_storage.py` | 12 | LocalStore async CRUD, list, delete, presigned URLs, factory singleton |
 | `test_tracker.py` | 20+ | `slugify()`, `parse_table()`, `match_folder()`, `parse_tracker()` (full markdown pipeline) |
 
-Tests use a temporary directory for `APPLICANT_DIR` — no real applicant data is touched. `DATA_BACKEND=local` is set automatically by test fixtures; no OB1 services are needed.
+Tests use a temporary directory for `APPLICANT_DIR` — no real applicant data is touched. `DATA_BACKEND=local` is set automatically by test fixtures; no OB1 services are needed. `test_ob1.py` mocks all HTTP calls — OB1 services are not required.
 
 ### Frontend (Vitest)
 
