@@ -221,6 +221,21 @@ Auto-generates `$APPLICANT_DIR/memory/applicant-setup-status.md` from the curren
 
 ---
 
+## langfuse_cc_hook.py
+
+Stop hook registered in `.claude/settings.json`. Called after every assistant response. Reads Langfuse credentials from the environment (then `.env.services` as fallback) and posts session turn telemetry — tool use blocks, token counts, and auto-detected phase tags — as a Langfuse trace. Silent no-op when keys are absent; always exits 0. Not intended to be run manually.
+
+Optional env (all in `.env.services`):
+- `LANGFUSE_PUBLIC_KEY` — project public key (`pk-lf-...`)
+- `LANGFUSE_SECRET_KEY` — project secret key (`sk-lf-...`)
+- `LANGFUSE_HOST` — Langfuse base URL (default `https://cloud.langfuse.com`)
+- `CC_LANGFUSE_TAGS` — comma-separated extra tags (e.g. `profile:presales-se`)
+- `CC_LANGFUSE_DEBUG` — set to `"1"` to write a debug log to `~/.claude/state/langfuse_cc_hook.log`
+
+See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the trace schema and dashboard setup.
+
+---
+
 ## status-line.sh
 
 Generates the dynamic status bar displayed in the Claude Code VS Code extension. Reads the application tracker live and outputs active application count, pending-review count, and nearest follow-up date. Configured in `.claude/settings.json` under `statusLine`. Runs on every render of the status bar — not intended to be run manually.
@@ -248,3 +263,8 @@ Generates the dynamic status bar displayed in the Claude Code VS Code extension.
 | `MINIO_SECRET_KEY` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | — | MinIO secret key |
 | `MINIO_BUCKET` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | `job-search` | MinIO bucket name |
 | `DB_PASSWORD` | migrate-to-ob1.py, k8s-apply-env.sh | Yes (OB1 k8s) | — | PostgreSQL password (OB1 shared database) |
+| `LANGFUSE_PUBLIC_KEY` | langfuse_cc_hook.py | No | — | Langfuse project public key (`pk-lf-...`); enables CC session tracing |
+| `LANGFUSE_SECRET_KEY` | langfuse_cc_hook.py | No | — | Langfuse project secret key (`sk-lf-...`); enables CC session tracing |
+| `LANGFUSE_HOST` | langfuse_cc_hook.py | No | `https://cloud.langfuse.com` | Langfuse instance URL |
+| `CC_LANGFUSE_TAGS` | langfuse_cc_hook.py | No | — | Comma-separated extra tags appended to every trace (e.g. `profile:presales-se`) |
+| `CC_LANGFUSE_DEBUG` | langfuse_cc_hook.py | No | — | Set to `"1"` to write a debug log to `~/.claude/state/langfuse_cc_hook.log` |
