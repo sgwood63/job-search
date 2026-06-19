@@ -335,6 +335,8 @@ Many portals ask open-ended questions before you submit. Paste the question:
 
 Answers draw from EXPERIENCE-REFERENCE.md — factually grounded, not invented. Edit or tighten just as you would a resume bullet.
 
+In OB1 mode, the question and your answer are automatically captured as a searchable thought linked to the application — no extra step needed. You can retrieve them later with "Show me what I answered at Acme Corp."
+
 ### Practical exercises
 
 Some roles include a written exercise, case study, or take-home before an interview:
@@ -373,6 +375,10 @@ You'll get: talking points tailored to this specific role and company, questions
 
 If you don't specify the stage, the assistant uses the next upcoming stage from your application notes.
 
+**Scheduling an interview:**
+
+When you paste a recruiter email or tell the assistant about an upcoming interview, it automatically logs the event in OB1 (interviewer name, date, stage) and links the interviewer to the company in the knowledge graph — so the history carries forward without any extra command. In OB1 mode only.
+
 **Bringing in new context:**
 
 > "I have my CloudMapper panel tomorrow. The recruiter mentioned they're dealing with a 200-system legacy integration problem — factor that in."
@@ -410,7 +416,7 @@ Whenever something about you changes, just say it — no command needed:
 Updates happen immediately and carry forward to every future application. They work in three directions:
 
 - **Corrections** — when you correct something ("that bullet is wrong — I was in a governance role, not sales"), the correction saves to your profile and doesn't recur in future applications for similar roles.
-- **Additions** — new experience or refined descriptions go into EXPERIENCE-REFERENCE.md and the relevant content libraries immediately, available to every future resume.
+- **Additions** — new experience or refined descriptions go into EXPERIENCE-REFERENCE.md and the relevant content libraries immediately, available to every future resume. In OB1 mode, each new achievement also creates knowledge graph edges to the skills and tools it demonstrates, so resume generation can prioritize it for roles that signal those same skills.
 - **Preferences** — changes to what you want ("I'm open to hybrid in SF now") update `applicant.md` and apply to all future JD screening automatically.
 
 The initial setup process also gives career direction advice and generates your target role profiles — you can revisit and update that positioning at any time as you learn what the market responds to.

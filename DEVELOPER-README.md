@@ -122,7 +122,7 @@ $APP_DIR/
     └── ob1/
         ├── README.md                # Full K8s deployment guide
         ├── job-search-schema.sql    # 9 js_* Postgres tables
-        ├── job-search-tools.ts      # 17 MCP tool implementations (Deno)
+        ├── job-search-tools.ts      # 29 MCP tool implementations (26 base + 3 Phase 3 knowledge graph tools)
         ├── job-search-server.ts     # MCP HTTP server entry point (Deno/Hono)
         ├── Dockerfile               # Builds job-search-mcp image
         ├── docker-compose.yml       # OB1 data services (postgres + minio)
@@ -224,7 +224,7 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
 
-See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy checklist, backfill procedure) and [`docs/ob1-intelligent-access/`](docs/ob1-intelligent-access/) (context-optimization roadmap — Phase 1 complete, Phases 2–3 planned).
+See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy checklist, backfill procedure) and [`docs/ob1-intelligent-access/`](docs/ob1-intelligent-access/) (context-optimization roadmap — Phases 1–3 complete; Phase 4 (OB1 audit events + learning loop) deferred).
 
 ---
 
