@@ -6,6 +6,7 @@ FROM denoland/deno:2.3.3
 WORKDIR /app
 
 COPY deno.json ./
+COPY langfuse_ts.ts ./
 COPY job-search-tools.ts ./
 COPY job-search-server.ts ./
 

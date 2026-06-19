@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "langfuse": "npm:langfuse@3"
+  }
+}

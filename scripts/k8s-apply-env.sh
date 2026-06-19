@@ -48,6 +48,10 @@ source "$ENV_FILE"
 # shellcheck source=../.env.services
 source "$SERVICES_ENV_FILE"
 
+# K8S_LANGFUSE_HOST defaults to host.docker.internal when running under Docker Desktop.
+# LANGFUSE_HOST stays as-is for the local webapp (host-side process, can use localhost).
+K8S_LANGFUSE_HOST="${K8S_LANGFUSE_HOST:-http://host.docker.internal:3000}"
+
 REQUIRED=(DB_PASSWORD OB1_MCP_KEY JOB_SEARCH_MCP_KEY MINIO_ACCESS_KEY MINIO_SECRET_KEY LLM_API_KEY DASHBOARD_SESSION_SECRET)
 missing=()
 for var in "${REQUIRED[@]}"; do
@@ -82,6 +86,9 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic job-searc
   --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
   --from-literal=EMBEDDING_API_KEY="$LLM_API_KEY" \
   --from-literal=CHAT_API_KEY="$LLM_API_KEY" \
+  --from-literal=LANGFUSE_HOST="$K8S_LANGFUSE_HOST" \
+  --from-literal=LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}" \
+  --from-literal=LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}" \
   --dry-run=client -o yaml \
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
@@ -104,21 +111,28 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic openbrain
   --from-literal=mcp-access-key="$OB1_MCP_KEY" \
   --from-literal=embedding-api-key="$LLM_API_KEY" \
   --from-literal=chat-api-key="$LLM_API_KEY" \
+  --from-literal=langfuse-public-key="${LANGFUSE_PUBLIC_KEY:-}" \
+  --from-literal=langfuse-secret-key="${LANGFUSE_SECRET_KEY:-}" \
   --dry-run=client -o yaml \
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
 echo "openbrain-secret updated in openbrain namespace."
 
+# EMBEDDING_API_BASE and CHAT_API_BASE point to the langfuse-proxy sidecar
+# (localhost:8080), which forwards to the real upstream defined by UPSTREAM_*_API_BASE.
 kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create configmap openbrain-configmap \
   --namespace openbrain \
   --from-literal=DB_HOST="${DB_HOST:-localhost}" \
   --from-literal=DB_PORT="${DB_PORT:-5432}" \
   --from-literal=DB_NAME="${DB_NAME:-openbrain}" \
   --from-literal=DB_USER="${DB_USER:-postgres}" \
-  --from-literal=EMBEDDING_API_BASE="${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}" \
+  --from-literal=EMBEDDING_API_BASE="http://localhost:8080" \
   --from-literal=EMBEDDING_MODEL="${EMBEDDING_MODEL:-openai/text-embedding-3-small}" \
-  --from-literal=CHAT_API_BASE="${CHAT_API_BASE:-https://openrouter.ai/api/v1}" \
+  --from-literal=CHAT_API_BASE="http://localhost:8080" \
   --from-literal=CHAT_MODEL="${CHAT_MODEL:-openai/gpt-4o-mini}" \
+  --from-literal=UPSTREAM_EMBEDDING_API_BASE="${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}" \
+  --from-literal=UPSTREAM_CHAT_API_BASE="${CHAT_API_BASE:-https://openrouter.ai/api/v1}" \
+  --from-literal=LANGFUSE_HOST="$K8S_LANGFUSE_HOST" \
   --dry-run=client -o yaml \
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 
@@ -129,6 +143,9 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create secret generic webapp-se
   --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_DEPLOYMENT_KEY:-}" \
   --from-literal=OB1_MCP_KEY="$OB1_MCP_KEY" \
   --from-literal=JOB_SEARCH_MCP_KEY="$JOB_SEARCH_MCP_KEY" \
+  --from-literal=LANGFUSE_HOST="$K8S_LANGFUSE_HOST" \
+  --from-literal=LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}" \
+  --from-literal=LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}" \
   --dry-run=client -o yaml \
   | kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} apply -f -
 

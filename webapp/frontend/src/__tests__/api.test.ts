@@ -80,3 +80,158 @@ describe('api.setupStatus', () => {
     expect(result.phases['A']).toBe(true)
   })
 })
+
+describe('api.updateApplicationFields', () => {
+  it('sends PATCH with JSON body to the correct path', async () => {
+    vi.stubGlobal('fetch', mockFetch({ id: '1', domain_connection: 'AI tools' }))
+
+    await api.updateApplicationFields('2026-05-01-acme', { domain_connection: 'AI tools' })
+
+    expect(fetch).toHaveBeenCalledOnce()
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/applications/2026-05-01-acme/fields')
+    expect(init.method).toBe('PATCH')
+    const body = JSON.parse(init.body)
+    expect(body.domain_connection).toBe('AI tools')
+  })
+
+  it('encodes folder name in the URL', async () => {
+    vi.stubGlobal('fetch', mockFetch({}))
+
+    await api.updateApplicationFields('2026-05-01-acme corp', { domain_tags: ['ai'] })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain(encodeURIComponent('2026-05-01-acme corp'))
+  })
+})
+
+describe('api.chunkSearch', () => {
+  it('sends POST with query body', async () => {
+    const payload = { results: [{ storage_key: 'a/b.md', section_title: 'Summary', section_index: 0, content: 'text', similarity: 0.9 }] }
+    vi.stubGlobal('fetch', mockFetch(payload))
+
+    const result = await api.chunkSearch('customer success')
+
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/chunk-search')
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body)
+    expect(body.query).toBe('customer success')
+    expect(result.results[0].similarity).toBe(0.9)
+  })
+
+  it('passes optional prefix and limit', async () => {
+    vi.stubGlobal('fetch', mockFetch({ results: [] }))
+
+    await api.chunkSearch('q', { storage_key_prefix: 'applications/foo/', limit: 3 })
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.storage_key_prefix).toBe('applications/foo/')
+    expect(body.limit).toBe(3)
+  })
+})
+
+describe('api.similarApplications', () => {
+  it('sends POST with query', async () => {
+    vi.stubGlobal('fetch', mockFetch({ results: [] }))
+
+    await api.similarApplications('enterprise SaaS presales')
+
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/similar-applications')
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body)
+    expect(body.query).toBe('enterprise SaaS presales')
+    expect(body.exclude_id).toBeUndefined()
+  })
+
+  it('includes exclude_id when provided', async () => {
+    vi.stubGlobal('fetch', mockFetch({ results: [] }))
+
+    await api.similarApplications('q', 'uuid-current-app')
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.exclude_id).toBe('uuid-current-app')
+  })
+})
+
+describe('api.ingestionHistory', () => {
+  it('calls GET /api/ingestion-history with no params', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.ingestionHistory()
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/ingestion-history')
+  })
+
+  it('appends profile_slug and outcome to query string', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.ingestionHistory({ profile_slug: 'presales-se', outcome: 'fit', limit: 25 })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('profile_slug=presales-se')
+    expect(url).toContain('outcome=fit')
+    expect(url).toContain('limit=25')
+  })
+
+  it('omits params that are undefined', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.ingestionHistory({ outcome: 'no-fit' })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('outcome=no-fit')
+    expect(url).not.toContain('profile_slug')
+  })
+})
+
+describe('api.searchRuns', () => {
+  it('calls GET /api/search-runs with no params', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.searchRuns()
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/search-runs')
+  })
+
+  it('appends profile_slug and since to query string', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.searchRuns({ profile_slug: 'presales-se', since: '2026-01-01', limit: 10 })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('profile_slug=presales-se')
+    expect(url).toContain('since=2026-01-01')
+    expect(url).toContain('limit=10')
+  })
+
+  it('omits params that are undefined', async () => {
+    vi.stubGlobal('fetch', mockFetch({ records: [] }))
+
+    await api.searchRuns({ since: '2026-05-01' })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('since=2026-05-01')
+    expect(url).not.toContain('profile_slug')
+  })
+
+  it('returns the records array', async () => {
+    const record = {
+      id: 'run-1', profile_slug: 'presales-se', query: 'SE | AE',
+      pages_fetched: 3, total_results: 60, new_after_dedup: 45,
+      screened: 44, fit_count: 7, fetch_failed_count: 1,
+      summary_key: 'search/2026-05-01-summary.md', run_at: '2026-05-01T12:00:00',
+    }
+    vi.stubGlobal('fetch', mockFetch({ records: [record] }))
+
+    const result = await api.searchRuns()
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0].fit_count).toBe(7)
+    expect(result.records[0].fetch_failed_count).toBe(1)
+  })
+})

@@ -63,6 +63,11 @@ def mock_ob_rest():
     m.get_application = AsyncMock(return_value=None)
     m.get_contacts = AsyncMock(return_value=[])
     m.search = AsyncMock(return_value=[])
+    m.update_application_fields = AsyncMock(return_value={"id": "1", "domain_connection": "AI productivity"})
+    m.search_chunks = AsyncMock(return_value=[])
+    m.find_similar_applications = AsyncMock(return_value=[])
+    m.get_ingestion_history = AsyncMock(return_value=[])
+    m.get_search_runs = AsyncMock(return_value=[])
     m.ping = AsyncMock(return_value=True)
     m.close = AsyncMock(return_value=None)
     return m

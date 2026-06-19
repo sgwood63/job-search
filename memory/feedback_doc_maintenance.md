@@ -18,10 +18,12 @@ Apply this rule after editing any of the following:
 - `$APP_DIR/workflow.md`
 - `$APP_DIR/applicant-setup.md`
 - `$APP_DIR/.claude/commands/*.md`
+- `$APP_DIR/skills/`, `$APP_DIR/policies/`, `$APP_DIR/workflows/` (adding or renaming an entry)
 - `$APP_DIR/scripts/*.sh` or `$APP_DIR/scripts/*.py`
 - `$APP_DIR/.claude/settings.json`
 - `$APP_DIR/templates/` (any file)
 - `$APP_DIR/memory/MEMORY.md` (structural changes only — new sections, removed entries)
+- `$APP_DIR/docs/` (adding or removing a subdirectory — content edits within existing files do not trigger)
 
 Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, USER-GUIDE.md, DEVELOPER-README.md, scripts/README.md) or to `$APPLICANT_DIR` files.
 
@@ -45,6 +47,9 @@ Do NOT trigger on edits to the doc files themselves (QUICK-START.md, README.md, 
 | templates/ (CSS files) | DEVELOPER-README.md (PDF Generation) |
 | templates/scaffold/ (stub files) | DEVELOPER-README.md (Applicant Repo file tree) |
 | memory/MEMORY.md (new or removed index entry) | No human-facing doc references memory file names — no doc update needed |
+| workflows/ (new or renamed workflow) | DEVELOPER-README.md (file tree — `workflows/` comment listing names) |
+| docs/ (new or renamed subdirectory) | DEVELOPER-README.md (file tree — `docs/` entry listing subdirs) |
+| skills/ or policies/ (new or renamed entry) | DEVELOPER-README.md only if the entry name is explicitly listed in the tree comment (currently none are — the generic `<name>/` pattern covers all) |
 | DEVELOPER-README.md (structural changes) | README.md (Getting Started section), CLAUDE.md (Available Commands section) |
 
 ## Document character — audience and content rules

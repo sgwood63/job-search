@@ -3,6 +3,7 @@
   "imports": {
     "hono": "npm:hono@4",
     "postgres": "npm:postgres@3",
-    "zod": "npm:zod@3"
+    "zod": "npm:zod@3",
+    "langfuse": "npm:langfuse@3"
   }
 }

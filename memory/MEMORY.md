@@ -15,98 +15,15 @@ Index: `$APPLICANT_DIR/memory/APPLICANT-MEMORY.md`
 
 ## Automated Workflow (DO NOT ASK, JUST DO)
 
-### Use Haiku for Initial Screening (Cost Optimization)
-1. User provides JD URL/document
-2. **Use Haiku agent** to fetch JD and perform initial evaluation:
-   - Extract JD content (company, role, location, travel, requirements, compensation)
-   - Check location/travel fit per applicant's criteria (`$APPLICANT_DIR/applicant.md`)
-   - Match to best profile using `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`
-   - Determine fit/no-fit with reasoning
-
-### For EVERY JD (fit or no-fit)
-3. Create application folder in `$APPLICANT_DIR/applications/`
-4. Save job-description.md with full JD content and key info
-5. Save original JD content to a separate file named `jd-<company>-<role-title>.[ext]` (lowercase, hyphens):
-   - URL source → `jd-<company>-<role-title>.md` (full page text via `fetch-jd.py --md-out`)
-   - PDF source → `jd-<company>-<role-title>.pdf` (copy of original file)
-   - Pasted text → `jd-<company>-<role-title>.md` (verbatim)
-   - Auth files for login-walled sites live in `$APPLICANT_DIR/.auth/` — set up once per domain with `fetch-jd.py --setup <url>` (opens default browser, scans Firefox, falls back to manual DevTools entry); re-run `--setup` or `--import <domain>` when exit code 2 is returned
-6. In notes.md JD Analysis section: record the full source URL and the original filename saved
-
-### If NO FIT (stay in Haiku)
-7. Create brief notes.md with reasoning
-8. Update tracker (Rejected/Closed section)
-9. Stop
-
-### If FIT (switch to Sonnet for quality)
-7. Read profile-specific content library from `$APPLICANT_DIR/profiles/[profile]/`
-8. Read full matched profile for strategy/positioning
-9. Generate tailored resume using content library (ALL factual, pre-verified)
-10. Create detailed notes.md (JD analysis, interview prep)
-11. Update tracker (Active Applications)
-12. Present for user review
+When a JD is provided, execute the workflow `$APP_DIR/workflows/create-application/` (pinned version per its `skill.yaml`). It covers: fetch fallback chain → delegate to `workflows/process-jd/` (screen via `jd-evaluation` Haiku, create folder + JD files + initial notes, register in tracker) → no-fit stop → fit: expand notes to full structure + resume via `resume-generation` (Sonnet) + tracker update.
 
 ## Resume Generation Workflow
-- See `feedback_resume_generation.md` — always assess resume vs JD before PDF; role ordering; Education/Certs; no unverified percentage metrics; PDF via Playwright; file naming; cover letters
+- See `$APP_DIR/skills/resume-generation/` (pinned version) plus the policies in its `skill.yaml` — two-phase flow, role ordering, Education/Certs, no unverified percentages, PDF via Playwright, file naming, signal density, evaluation report. Cover letters: `$APP_DIR/skills/cover-letter/`.
 
 ## Critical Rules: Document Generation
-
-**NEVER fabricate or hallucinate**:
-- Do NOT invent companies, titles, achievements, metrics, projects, skills, certifications
-- ONLY use information from `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` and `$APPLICANT_DIR/profiles/EXPERIENCE-REFERENCE.md`
-- If uncertain about a fact, ASK — never guess
-- All claims must be supportable with real evidence
-
-**Resume role generation — two specific failure modes to avoid**:
-- Content library section headers (e.g. "AI Solution Architect - Presales Experience") are source material labels, NOT job titles. Never render them as job entries.
-- Always verify role order against the verified role list in applicant's EXPERIENCE-REFERENCE.md before generating
-
-**If PDF unreadable**: Ask user for information or alternate format
-
-**Resume optimization (beyond factual accuracy)**:
-- Tailor language, emphasis, and framing to the specific role and target company
-- Surface the most relevant experience for THIS role — not generic ordering
-- Use terminology that mirrors the JD where it truthfully matches experience
-- Elevate differentiating content (e.g. domain overlap, startup fit, specific tools mentioned in JD)
-- After generating, produce a **detailed evaluation report**: score each JD requirement vs. resume coverage, flag gaps, assess overall effectiveness and competitive positioning
-
-**Resume construction standards**:
-
-*Length*:
-- **2 pages default** for enterprise/consulting/governance/direct applications
-- **1 page** for: networking, warm referrals, recruiter outreach, pre-sales SE roles, role pivoting
-
-*Detail per role*:
-- Recent roles (last 10–12 years): **5–7 bullets**
-- Mid-career (12–20 years ago): **2–4 bullets**
-- Early career (20+ years): **1 bullet or title only**
-
-*Section labels*:
-- Experience section must be labeled **`## Experience`** — CSS renders it as "EXPERIENCE" in the PDF; never use `RELEVANT EXPERIENCE` (ATS non-standard) or "Professional Experience"
-- Roles that ended more than 12 years ago must be compressed into a single **"Earlier Career"** section, not individual role sections
-
-*No duplication*:
-- Capabilities section items must not overlap — merge any that cover the same domain
-- Each achievement must appear in the role period where it actually occurred — never attribute work from one era to another role's section
-
-*Signal density*:
-- Every bullet answers a recruiter question: "Can they talk to customers? Design architectures? Make AI/analytics work?"
-- Bullet formula: **Action → Technical Domain → Context → Outcome**
-- Use hands-on IC verbs: designed, implemented, architected, built, delivered
-- Avoid management language (led large teams, departmental strategy, oversaw transformation)
-- Use **technology categories** in capabilities section, not exhaustive tool lists — specific tools go inside role bullets for context
-- Write natural sentences with embedded keywords — not ATS keyword stuffing
-
-*Common mistakes to avoid*:
-- Opening with career history ("25 years of experience...") — lead with current positioning instead
-- Equal detail on old and recent roles — compress everything 12+ years old
-- Hiding customer-facing experience — explicitly mention discovery, demos, POCs, architecture discussions
-- Management framing when targeting IC roles — signal technical leadership, not org leadership
-
-*The 3 questions the resume must answer quickly*:
-1. Does this person fit the role?
-2. Do they have credible experience?
-3. Can they succeed in our environment?
+- `$APP_DIR/policies/factuality/` — never fabricate; no unverified percentage metrics
+- `$APP_DIR/policies/evidence-grounding/` — source only from `[profile]-CONTENT.md` + `EXPERIENCE-REFERENCE.md`; content-library headers are not job titles; verify role order; if a source is unreadable, ask
+- `$APP_DIR/policies/company-descriptors/` — domain connection (four sources) + company descriptions in role entries
 
 ## Session Start (DO WITHOUT BEING ASKED)
 At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, then in parallel load `applicant.md` + `APPLICANT-MEMORY.md` (via OB1 MCP if configured, else direct reads). Output a briefing confirming identity, OB1/local mode, and DEV_MODE. End with "Context loaded. Ready." **Do not load pipeline or application-tracker.md at session start** — those are deferred to `/status`. Skip if the user's first message makes clear context is already loaded.
@@ -128,32 +45,41 @@ When the user states a clear preference, fact, constraint, or rule about themsel
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice
 - When target roles or JD signal keywords change: update the `## Search Queries` table row in `PROFILES-QUICK-REFERENCE.md`; include adjacent titles (names other companies use for the same function); aim for 8–14 terms per query; when a profile is removed, delete its row
 
-## Job Ingestion (/ingest command)
-- Run `/ingest <profile>` to search Google Jobs via SearchAPI for a given profile
-- Uses one OR-query per profile from `## Search Queries` table in `PROFILES-QUICK-REFERENCE.md`
-- Deduplicates against `$APPLICANT_DIR/profiles/<profile>/search-results/seen-jobs.json`
-- Saves fit jobs as application stubs (folder + JD files + notes stub) — does NOT auto-generate resumes
-- Saves per-run summary (all screened jobs — fit + no-fit with scores and reasons) to `$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`
-- Logs per-run metadata to `$APPLICANT_DIR/search/search-log.csv`; CSV columns: `date,time,profile,pages_fetched,total_results,new_after_dedup,screened,fit_count,query,summary_file`
-- Target fits per run: `$SEARCH_TARGET_FITS` (default 10); batch size: `$SEARCH_BATCH_SIZE` (default 10)
-- Requires `SEARCHAPI_KEY` in `.env`
+## Job Ingestion (/ingest, /linkedin-ingest commands)
+- `/ingest <profile>` → runs workflow `search-jobs` (Google Jobs via SearchAPI); `/linkedin-ingest` → runs workflow `search-jobs-linkedin` (LinkedIn recommendations)
+- Both delegate per-job processing to workflow `process-jd` (canonical: screen via `jd-evaluation` Haiku, folder creation, JD files, notes stub, tracker registration)
+- Fetch-failed stubs (when JD URL unreachable) are handled inline in each ingest workflow — not delegated to `process-jd`
+- Saves fit jobs as application stubs — does NOT auto-generate resumes
+- Per-run summary `.md` is always generated (`$APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md`); in OB1 mode it is also uploaded to OB1 and the storage key saved in `js_search_runs.summary_key`
+- Run stats: OB1 mode → `log_search_run(...)` (returns `search_run_id` UUID); local mode → append to `search-log.csv`
+- Position audit trail: OB1 mode → `log_ingested_position(...)` (links to `search_run_id`); local mode → append to `search/ingested-positions.csv`
+- Requires `SEARCHAPI_KEY` (`/ingest`) or `PLAYWRIGHT_PYTHON` (`/linkedin-ingest`) in `.env`
 
 ## OB1 Integration
-- See [feedback_ob1_integration.md](feedback_ob1_integration.md) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback)
+- See `$APP_DIR/policies/storage-routing/` (pinned version) — when OB1 configured, ALL APPLICANT reads/writes must use OB1 MCP tools; MCP not connected = hard stop (not fallback); upload routing MCP vs REST
 
-## Workflow Rules
-- See `feedback_application_tracking.md` — check tracker before acting on any company mention; update both tracker AND notes.md when application is submitted
-- See `feedback_unknown_company_research.md` — for any JD where the end company is not explicitly named, research to identify likely company before or during document generation
-- See `feedback_domain_connection.md` — always identify and surface the applicant's connection to the target company's *business domain* (not just the role) in each resume; domain connections often live in Earlier Career and need explicit callout in bullets
-- See `feedback_jd_file_saving.md` — verbatim raw text in `jd-*.md`, structured summary in `job-description.md`; both required for every application before resume generation
-- See `feedback_resume_generation.md` — all resume generation rules: review before PDF, role ordering, Education/Certs, no unverified percentages, PDF command, cover letters, file naming
+## Architecture Roadmap
+- See [project_hermes_architecture_phases.md](project_hermes_architecture_phases.md) — phases 1+2 (versioned skills + runtime) landed on branch `hermes` 2026-06-12; phase 3 (Temporal self-hosted on openbrain k8s, Python SDK) and phase 4 (OB1 audit events + learning loop) decided but deferred
+
+## Versioned Skills (source of truth for migrated rules)
+Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workflows/` (index: `skills/registry.yaml`; the old `feedback_*` files are pointer stubs). Interactive sessions prefer `draft.md` when present, else the pinned version. Changes go through the draft → promote flow: tell Claude "draft skill <name>" or "promote skill <name>".
+- Application tracking + status updates (two-file rule) → `workflows/create-application/`
+- JD screening, folder creation, file composition, OB1/local routing, tracker registration → `workflows/process-jd/` (canonical shared module — used by create-application, search-jobs, search-jobs-linkedin)
+- Unknown-company research → `skills/jd-evaluation/`
+- Domain connection → `policies/company-descriptors/`
+- JD file saving (verbatim `jd-*.md` + structured `job-description.md`) → `workflows/process-jd/`
+- Google Jobs ingestion → `workflows/search-jobs/`; LinkedIn ingestion → `workflows/search-jobs-linkedin/`
+- Resume generation → `skills/resume-generation/`; cover letters → `skills/cover-letter/`
+- Interview prep → `skills/interview-prep/` + `workflows/prepare-interview/`
+- OB1 routing → `policies/storage-routing/`
+
+## Workflow Rules (not migrated — session/tooling mechanics)
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 - See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
 - See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
 - See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
 - See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
 - See `feedback_model_selection.md` — when to use Opus vs Sonnet; no auto-routing in Claude Code; opusplan alias for planning sessions
-- See `feedback_interview_preparation.md` — required reading before interview prep output; output structure; no-fabrication rule; warm connection protocol
 
 ## Memory Sync Rule
 `$APP_DIR/memory/` is the source of truth. After every Claude response, `scripts/sync-memory.sh` runs automatically via a Stop hook: commits any uncommitted changes in `memory/` and copies them to `~/.claude/projects/.../memory/`. No manual step needed during sessions.
@@ -164,13 +90,19 @@ bash "$APP_DIR/scripts/sync-memory.sh"
 ```
 Applicant-specific memory lives in `$APPLICANT_DIR/memory/` and is updated in real-time during sessions — no sync step needed.
 
+## Application Disambiguation
+- See [feedback_application_disambiguation.md](feedback_application_disambiguation.md) — when a search returns 2+ applications matching a company/query, always pause and ask which one; show numbered list with: Company — Role Title | Created | Profile | Status
+
+## Resume Generation Reporting
+- See [feedback_resume_reporting.md](feedback_resume_reporting.md) — after uploading a resume .md, report only the OB1 key; never surface the /tmp/ local copy path in user-facing output
+
 ## Cost Optimization Notes
 - Use Haiku for JD screening (12x cheaper than Sonnet)
 - Use quick-reference profiles for initial matching
 - Switch to Sonnet only for document generation
 - Content is pre-compiled in `$APPLICANT_DIR/profiles/[profile]/[profile]-CONTENT.md` — no per-session extraction needed
 
-**Last Updated**: 2026-05-15
+**Last Updated**: 2026-06-14
 
 ---
 

@@ -86,7 +86,8 @@ test_namespace() {
 
 test_secrets() {
   header "Secrets & ConfigMaps"
-  local expected=("openbrain-secret" "job-search-secret" "minio-secret" "openbrain-configmap" "job-search-llm-config")
+  local expected=("openbrain-secret" "job-search-secret" "minio-secret" "webapp-secret"
+                  "dashboard-secret" "openbrain-configmap" "job-search-llm-config")
   local missing=()
   local existing
   existing=$(kubectl get secret,configmap -n "$NAMESPACE" --no-headers 2>/dev/null || true)
@@ -96,7 +97,7 @@ test_secrets() {
     fi
   done
   if [[ ${#missing[@]} -eq 0 ]]; then
-    pass "All 5 secrets/configmaps present"
+    pass "All 7 secrets/configmaps present"
   else
     fail "Missing: ${missing[*]}"
   fi
@@ -107,25 +108,54 @@ test_pods() {
   local pods
   pods=$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null)
 
-  local all_running=true
-  for expected in "openbrain-0" "job-search-mcp" "minio"; do
-    local pod_line
+  # Plain pods: just check Running
+  for expected in "minio" "ob1-rest-pg" "ob1-dashboard" "job-search-mcp"; do
+    local pod_line status restarts
     pod_line=$(echo "$pods" | grep "$expected" | head -1)
     if [[ -z "$pod_line" ]]; then
       fail "$expected pod not found"
-      all_running=false
       continue
     fi
-    local status restarts
     status=$(echo "$pod_line" | awk '{print $3}')
     restarts=$(echo "$pod_line" | awk '{print $4}')
     if [[ "$status" == "Running" ]]; then
       pass "$expected: Running (restarts: $restarts)"
     else
       fail "$expected: $status (restarts: $restarts)"
-      all_running=false
     fi
   done
+
+  # openbrain-0: must be 3/3 (db + mcp-server + langfuse-proxy)
+  local ob_line ob_ready ob_status ob_restarts
+  ob_line=$(echo "$pods" | grep "^openbrain-0" | head -1)
+  if [[ -z "$ob_line" ]]; then
+    fail "openbrain-0 pod not found"
+  else
+    ob_ready=$(echo "$ob_line" | awk '{print $2}')
+    ob_status=$(echo "$ob_line" | awk '{print $3}')
+    ob_restarts=$(echo "$ob_line" | awk '{print $4}')
+    if [[ "$ob_status" == "Running" && "$ob_ready" == "3/3" ]]; then
+      pass "openbrain-0: Running 3/3 (restarts: $ob_restarts)"
+    else
+      fail "openbrain-0: $ob_status $ob_ready (expected Running 3/3, restarts: $ob_restarts)"
+    fi
+  fi
+
+  # job-search-webapp: must be 2/2 (webapp + claude-runner)
+  local wa_line wa_ready wa_status wa_restarts
+  wa_line=$(echo "$pods" | grep "job-search-webapp" | head -1)
+  if [[ -z "$wa_line" ]]; then
+    fail "job-search-webapp pod not found"
+  else
+    wa_ready=$(echo "$wa_line" | awk '{print $2}')
+    wa_status=$(echo "$wa_line" | awk '{print $3}')
+    wa_restarts=$(echo "$wa_line" | awk '{print $4}')
+    if [[ "$wa_status" == "Running" && "$wa_ready" == "2/2" ]]; then
+      pass "job-search-webapp: Running 2/2 (restarts: $wa_restarts)"
+    else
+      fail "job-search-webapp: $wa_status $wa_ready (expected Running 2/2, restarts: $wa_restarts)"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -143,8 +173,9 @@ test_postgres_connect() {
 
 test_js_tables() {
   header "job-search Schema (js_* tables)"
-  local expected=("js_applicant" "js_applications" "js_companies" "js_contacts"
-                  "js_experience" "js_files" "js_interviews" "js_profiles" "js_search_runs")
+  local expected=("js_applicant" "js_applications" "js_chunks" "js_companies" "js_contacts"
+                  "js_experience" "js_files" "js_ingested_positions" "js_interviews"
+                  "js_profiles" "js_search_runs")
   local missing=()
   local found
   # psql -tA outputs pipe-delimited: schema|tablename|type|owner
@@ -155,7 +186,7 @@ test_js_tables() {
     fi
   done
   if [[ ${#missing[@]} -eq 0 ]]; then
-    pass "All 9 js_* tables present"
+    pass "All 11 js_* tables present"
   else
     fail "Missing tables: ${missing[*]}"
   fi
@@ -242,10 +273,10 @@ test_job_search_mcp() {
   local tool_count
   tool_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null || echo "0")
 
-  if [[ "$tool_count" -eq 18 ]]; then
-    pass "job-search MCP responds — 18 tools"
+  if [[ "$tool_count" -eq 26 ]]; then
+    pass "job-search MCP responds — 26 tools"
   elif [[ "$tool_count" -gt 0 ]]; then
-    fail "job-search MCP responded with $tool_count tools (expected 18)"
+    fail "job-search MCP responded with $tool_count tools (expected 26)"
   else
     fail "job-search MCP failed or returned 0 tools (response: ${response:0:100})"
   fi
@@ -401,6 +432,59 @@ test_mcp_create_application() {
 }
 
 # ---------------------------------------------------------------------------
+# Langfuse tests
+# ---------------------------------------------------------------------------
+
+test_langfuse_keys() {
+  header "Langfuse Keys in Secrets"
+  local pub_key
+  pub_key=$(kubectl get secret openbrain-secret -n "$NAMESPACE" \
+    -o jsonpath='{.data.langfuse-public-key}' 2>/dev/null | base64 -d 2>/dev/null)
+  if [[ -n "$pub_key" && "$pub_key" != "FILL_IN" ]]; then
+    pass "openbrain-secret: langfuse-public-key present"
+  else
+    fail "openbrain-secret: langfuse-public-key missing or placeholder"
+  fi
+
+  local wa_pub
+  wa_pub=$(kubectl get secret webapp-secret -n "$NAMESPACE" \
+    -o jsonpath='{.data.LANGFUSE_PUBLIC_KEY}' 2>/dev/null | base64 -d 2>/dev/null)
+  if [[ -n "$wa_pub" && "$wa_pub" != "FILL_IN" ]]; then
+    pass "webapp-secret: LANGFUSE_PUBLIC_KEY present"
+  else
+    fail "webapp-secret: LANGFUSE_PUBLIC_KEY missing or placeholder"
+  fi
+}
+
+test_langfuse_proxy() {
+  header "Langfuse Proxy Sidecar"
+  local health
+  health=$(kubectl exec -n "$NAMESPACE" openbrain-0 -c langfuse-proxy -- \
+    deno eval "const r = await fetch('http://localhost:8080/health'); console.log(r.status, await r.text())" \
+    2>/dev/null || echo "")
+  if echo "$health" | grep -q "^200"; then
+    pass "langfuse-proxy /health: 200 ok"
+  else
+    fail "langfuse-proxy /health failed (got: '${health:0:80}')"
+  fi
+}
+
+test_webapp_health() {
+  header "Webapp Health"
+  local response backend rest_status
+  response=$(curl -s "$K8S_BASE_URL:30800/api/health" 2>/dev/null)
+  backend=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('backend',''))" 2>/dev/null)
+  rest_status=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('rest',''))" 2>/dev/null)
+  if [[ "$backend" == "ob1" && "$rest_status" == "ok" ]]; then
+    pass "webapp /api/health: backend=ob1 rest=ok"
+  elif [[ "$backend" == "ob1" ]]; then
+    fail "webapp /api/health: backend=ob1 but rest=$rest_status"
+  else
+    fail "webapp /api/health failed (response: '${response:0:100}')"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Test runner
 # ---------------------------------------------------------------------------
 
@@ -415,6 +499,9 @@ ALL_TESTS=(
   test_ob1_mcp
   test_job_search_mcp
   test_mcp_json
+  test_langfuse_keys
+  test_langfuse_proxy
+  test_webapp_health
   test_migration_data
   test_mcp_get_pipeline
   test_mcp_upload_get_file

@@ -19,6 +19,8 @@ export type TrackerRow = {
   follow_up_date: string
   priority: string
   folder: string | null
+  domain_connection?: string
+  domain_tags?: string[]
 }
 
 export type TrackerData = {
@@ -46,6 +48,53 @@ export type Application = {
   name: string
   path: string
   files: FileNode[]
+  domain_connection?: string
+  domain_tags?: string[]
+  jd_requirements?: { required: string[]; preferred: string[] }
+}
+
+export type ChunkSearchResult = {
+  storage_key: string
+  section_title: string | null
+  section_index: number
+  content: string
+  similarity: number
+}
+
+export type SimilarApplicationResult = {
+  id: string
+  company_name: string
+  role_title: string
+  domain_connection: string | null
+  domain_tags: string[] | null
+  status: string
+  similarity: number
+}
+
+export type IngestionRecord = {
+  id: string
+  company_name: string
+  role_title: string
+  profile_slug: string | null
+  outcome: 'fit' | 'no-fit' | 'duplicate' | 'fetch-failed'
+  no_fit_reason: string | null
+  is_repost: boolean
+  first_seen_at: string | null
+  created_at: string
+}
+
+export type SearchRun = {
+  id: string
+  profile_slug: string | null
+  query: string | null
+  pages_fetched: number
+  total_results: number
+  new_after_dedup: number
+  screened: number
+  fit_count: number
+  fetch_failed_count: number
+  summary_key: string | null
+  run_at: string
 }
 
 function ok(r: Response) {
@@ -76,9 +125,6 @@ export const api = {
   baseDocuments: (): Promise<FileNode[]> =>
     apiFetch(`${BASE}/base-documents`).then(r => r.json()),
 
-  search: (): Promise<FileNode[]> =>
-    apiFetch(`${BASE}/search`).then(r => r.json()),
-
   fileUrl: (path: string) => `${BASE}/file?path=${encodeURIComponent(path)}`,
 
   downloadUrl: (path: string) => `${BASE}/download?path=${encodeURIComponent(path)}`,
@@ -103,6 +149,49 @@ export const api = {
       method: 'POST',
       body: form,
     }).then(r => r.json())
+  },
+
+  updateApplicationFields: (
+    folder: string,
+    fields: Partial<{ domain_connection: string; domain_tags: string[]; jd_requirements: { required: string[]; preferred: string[] } }>,
+  ): Promise<unknown> =>
+    apiFetch(`${BASE}/applications/${encodeURIComponent(folder)}/fields`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    }).then(r => r.json()),
+
+  chunkSearch: (query: string, options?: { storage_key_prefix?: string; limit?: number }): Promise<{ results: ChunkSearchResult[] }> =>
+    apiFetch(`${BASE}/chunk-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, ...options }),
+    }).then(r => r.json()),
+
+  similarApplications: (query: string, excludeId?: string, limit?: number): Promise<{ results: SimilarApplicationResult[] }> =>
+    apiFetch(`${BASE}/similar-applications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, exclude_id: excludeId, limit }),
+    }).then(r => r.json()),
+
+  ingestionHistory: (params?: { profile_slug?: string; outcome?: string; limit?: number; direct_only?: boolean }): Promise<{ records: IngestionRecord[] }> => {
+    const qs = new URLSearchParams()
+    if (params?.profile_slug) qs.set('profile_slug', params.profile_slug)
+    if (params?.outcome) qs.set('outcome', params.outcome)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.direct_only) qs.set('direct_only', 'true')
+    const q = qs.toString()
+    return apiFetch(`${BASE}/ingestion-history${q ? '?' + q : ''}`).then(r => r.json())
+  },
+
+  searchRuns: (params?: { profile_slug?: string; since?: string; limit?: number }): Promise<{ records: SearchRun[] }> => {
+    const qs = new URLSearchParams()
+    if (params?.profile_slug) qs.set('profile_slug', params.profile_slug)
+    if (params?.since) qs.set('since', params.since)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const q = qs.toString()
+    return apiFetch(`${BASE}/search-runs${q ? '?' + q : ''}`).then(r => r.json())
   },
 
   docs: (): Promise<Array<{ name: string; size: number }>> =>

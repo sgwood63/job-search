@@ -77,12 +77,32 @@ services:
       - "9001:9001"   # MinIO console
     restart: unless-stopped
 
+  langfuse-proxy:
+    # Transparent OpenAI-compatible proxy that forwards openbrain-mcp's LLM calls
+    # to the real upstream and logs telemetry to Langfuse.
+    # In Compose, openbrain reaches it as http://langfuse-proxy:8080.
+    # In K8s, the same container runs as a sidecar at localhost:8080.
+    build:
+      context: .          # integrations/ob1/ — provides langfuse_ts.ts
+      dockerfile: langfuse-proxy/Dockerfile
+    image: langfuse-proxy:latest
+    environment:
+      UPSTREAM_EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}
+      UPSTREAM_CHAT_API_BASE: ${CHAT_API_BASE:-https://openrouter.ai/api/v1}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      PORT: "8080"
+    restart: unless-stopped
+
   openbrain:
     image: openbrain-mcp-server:latest
     # Pre-built from $OB1_REPO_PATH — see Prerequisites above.
     depends_on:
       postgres:
         condition: service_healthy
+      langfuse-proxy:
+        condition: service_started
     environment:
       # Postgres — compose service name (not localhost; postgres is a sidecar in K8s but a separate service here)
       DB_HOST: postgres
@@ -92,12 +112,12 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       # Auth
       MCP_ACCESS_KEY: ${OB1_MCP_KEY:?OB1_MCP_KEY must be set in .env}
-      # LLM API
+      # LLM API — routed through langfuse-proxy for observability
       EMBEDDING_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set in .env}
       CHAT_API_KEY: ${LLM_API_KEY}
-      EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}
+      EMBEDDING_API_BASE: http://langfuse-proxy:8080
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
-      CHAT_API_BASE: ${CHAT_API_BASE:-https://openrouter.ai/api/v1}
+      CHAT_API_BASE: http://langfuse-proxy:8080
       CHAT_MODEL: ${CHAT_MODEL:-openai/gpt-4o-mini}
       PORT: "8000"
     ports:
@@ -138,14 +158,18 @@ services:
       # Auth
       MCP_ACCESS_KEY: ${JOB_SEARCH_MCP_KEY:?JOB_SEARCH_MCP_KEY must be set in .env}
       PORT: "8001"
+      # Langfuse observability (optional — tracing enabled when both keys are present)
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
     ports:
       - "8081:8001"   # job-search MCP — localhost:8081
     restart: unless-stopped
 
   ob1-rest-pg:
     build:
-      context: ob1-rest-pg    # relative to this compose file's directory (integrations/ob1/)
-      dockerfile: Dockerfile
+      context: .              # integrations/ob1/ — provides langfuse_ts.ts
+      dockerfile: ob1-rest-pg/Dockerfile
     image: ob1-rest-pg:latest
     depends_on:
       postgres:
@@ -161,6 +185,10 @@ services:
       EMBEDDING_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set in .env}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
       PORT: "8002"
+      # Langfuse observability (optional)
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
     ports:
       - "8002:8002"   # OB1 REST (PG) — http://localhost:8002
     restart: unless-stopped

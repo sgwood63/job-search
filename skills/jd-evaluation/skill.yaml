@@ -1,0 +1,19 @@
+name: jd-evaluation
+kind: skill
+description: Screen a job description for fit — extract key facts, check against applicant criteria, match to the best profile, return fit/no-fit with reasoning
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+inputs:
+  - jd_content          # full JD text (or URL already fetched)
+  - source_url          # optional
+outputs:
+  - verdict             # fit | no-fit with reasoning
+  - extracted_facts     # company, role, location, travel, comp, requirements
+  - matched_profile     # best profile name
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from workflow.md Step 2 (Haiku screen), memory/MEMORY.md screening section, and memory/feedback_unknown_company_research.md

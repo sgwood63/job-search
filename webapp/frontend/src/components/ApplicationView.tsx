@@ -6,6 +6,101 @@ import FileViewer from './FileViewer'
 import UploadButton from './UploadButton'
 import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus'
 
+function DomainMetaPanel({ app, folder }: { app: Application; folder: string }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(app.domain_connection ?? '')
+  const [saving, setSaving] = useState(false)
+  const [jdOpen, setJdOpen] = useState(false)
+
+  const hasDomain = app.domain_connection || (app.domain_tags && app.domain_tags.length > 0)
+  const hasJd = app.jd_requirements && (
+    (app.jd_requirements.required?.length ?? 0) > 0 ||
+    (app.jd_requirements.preferred?.length ?? 0) > 0
+  )
+  if (!hasDomain && !hasJd) return null
+
+  async function saveDomainConnection() {
+    if (draft === app.domain_connection) { setEditing(false); return }
+    setSaving(true)
+    try {
+      await api.updateApplicationFields(folder, { domain_connection: draft })
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  return (
+    <div className="border-b bg-gray-50 px-4 py-2 text-xs flex flex-col gap-1.5">
+      {(app.domain_tags && app.domain_tags.length > 0) && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {app.domain_tags.map(tag => (
+            <span key={tag} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-xs">{tag}</span>
+          ))}
+        </div>
+      )}
+      {hasDomain && (
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0 mt-0.5">Domain:</span>
+          {editing ? (
+            <div className="flex items-center gap-1.5 flex-1">
+              <input
+                autoFocus
+                className="flex-1 text-xs border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveDomainConnection(); if (e.key === 'Escape') setEditing(false) }}
+              />
+              <button onClick={saveDomainConnection} disabled={saving} className="text-blue-600 hover:text-blue-800 disabled:opacity-50">
+                {saving ? '…' : 'Save'}
+              </button>
+              <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setDraft(app.domain_connection ?? ''); setEditing(true) }}
+              className="text-gray-600 hover:text-blue-600 text-left"
+              title="Click to edit"
+            >
+              {app.domain_connection || <span className="text-gray-300 italic">none</span>}
+            </button>
+          )}
+        </div>
+      )}
+      {hasJd && (
+        <div>
+          <button
+            onClick={() => setJdOpen(o => !o)}
+            className="text-gray-400 hover:text-gray-600 flex items-center gap-1"
+          >
+            {jdOpen ? '▾' : '▸'} JD Requirements
+          </button>
+          {jdOpen && (
+            <div className="mt-1 ml-2 space-y-1">
+              {(app.jd_requirements!.required?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-gray-500 font-medium mb-0.5">Required</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-gray-600">
+                    {app.jd_requirements!.required.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {(app.jd_requirements!.preferred?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-gray-500 font-medium mb-0.5">Preferred</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-gray-600">
+                    {app.jd_requirements!.preferred.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function parseFolder(folder: string) {
   const m = folder.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/)
   if (!m) return { date: '', label: folder }
@@ -173,6 +268,7 @@ export default function ApplicationView() {
         )}
       </div>
       {trackerRow && <TrackerHeader row={trackerRow} />}
+      {app && <DomainMetaPanel app={app} folder={folder} />}
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-56 flex-shrink-0 border-r bg-white flex flex-col overflow-hidden">

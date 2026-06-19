@@ -233,6 +233,10 @@ def test_get_application_found(client, tmp_applicant, local_store):
     data = resp.json()
     assert data["name"] == "2026-05-01-acme-se"
     assert "files" in data
+    # Domain fields are always present (empty in local mode)
+    assert data["domain_connection"] == ""
+    assert data["domain_tags"] == []
+    assert data["jd_requirements"] == {}
 
 
 def test_get_application_missing(client):

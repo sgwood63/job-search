@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import glob
 import json
 import mimetypes
 import os
@@ -23,6 +22,12 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+import runtime as runtime_pkg
+from runtime import claude_exec as runtime_claude_exec
+from runtime import langfuse_client as lf
+from runtime.claude_adapter import ClaudeRunnerAdapter
 
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
@@ -45,7 +50,61 @@ DOCS_ALLOWLIST = {
 
 ALLOWED_UPLOAD_PREFIXES = ('applications/', 'base-documents/')
 
+class LangfuseMetricsMiddleware:
+    """ASGI middleware that emits a Langfuse span for every /api/ request.
+
+    Uses the raw ASGI interface instead of BaseHTTPMiddleware to avoid buffering
+    streaming responses. WebSocket connections (scope type != 'http') pass through.
+    """
+    _SKIP = frozenset({"/api/health", "/api/sessions"})
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        path: str = scope.get("path", "")
+        if not path.startswith("/api/") or path in self._SKIP:
+            await self._app(scope, receive, send)
+            return
+
+        method: str = scope.get("method", "")
+        start = time.monotonic()
+        status_code = 500
+
+        async def _send(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self._app(scope, receive, _send)
+        finally:
+            if lf.is_enabled():
+                duration_ms = int((time.monotonic() - start) * 1000)
+                lf.record_span(
+                    f"http:{method} {path}",
+                    trace_name="api-request",
+                    tags=[f"method:{method}", f"status:{status_code}", "service:webapp"],
+                    metadata={"method": method, "path": path, "status": status_code, "duration_ms": duration_ms},
+                    level="ERROR" if status_code >= 400 else "DEFAULT",
+                    status_message=str(status_code) if status_code >= 400 else None,
+                    duration_ms=duration_ms,
+                    input_data={"method": method, "path": path},
+                    output_data={"status": status_code},
+                )
+
+
 app = FastAPI()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    lf.flush()
+
 
 # ---------------------------------------------------------------------------
 # OB1 REST client — replaces direct MinIO + Postgres access in ob1 mode
@@ -135,6 +194,49 @@ class ObRestClient:
         r.raise_for_status()
         return r.json()
 
+    async def update_application_fields(self, app_id: str, **fields) -> dict:
+        r = await self._http.patch(f'/api/v2/applications/{app_id}/fields', json=fields)
+        r.raise_for_status()
+        return r.json()
+
+    async def search_chunks(self, query: str, storage_key_prefix: str | None = None, limit: int = 10) -> list[dict]:
+        body: dict = {'query': query, 'limit': limit}
+        if storage_key_prefix:
+            body['storage_key_prefix'] = storage_key_prefix
+        r = await self._http.post('/api/v2/search/chunks', json=body)
+        r.raise_for_status()
+        return r.json()
+
+    async def find_similar_applications(self, query: str, exclude_id: str | None = None, limit: int = 5) -> list[dict]:
+        body: dict = {'query': query, 'limit': limit}
+        if exclude_id:
+            body['exclude_id'] = exclude_id
+        r = await self._http.post('/api/v2/search/similar-applications', json=body)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_ingestion_history(self, profile_slug: str | None = None, outcome: str | None = None, limit: int = 50, direct_only: bool = False) -> list[dict]:
+        params: dict = {'limit': limit}
+        if profile_slug:
+            params['profile_slug'] = profile_slug
+        if outcome:
+            params['outcome'] = outcome
+        if direct_only:
+            params['direct_only'] = 'true'
+        r = await self._http.get('/api/v2/ingestion/history', params=params)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_search_runs(self, profile_slug: str | None = None, since: str | None = None, limit: int = 20) -> list[dict]:
+        params: dict = {'limit': limit}
+        if profile_slug:
+            params['profile_slug'] = profile_slug
+        if since:
+            params['since'] = since
+        r = await self._http.get('/api/v2/search-runs', params=params)
+        r.raise_for_status()
+        return r.json()
+
     async def ping(self) -> bool:
         try:
             r = await self._http.get('/api/v2/profiles', timeout=5.0)
@@ -167,6 +269,7 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(NoCacheMiddleware)
+app.add_middleware(LangfuseMetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -338,6 +441,8 @@ async def get_tracker():
             'follow_up_date': fup[:10] if fup else '',
             'priority': {3: '⭐⭐⭐', 2: '⭐⭐', 1: ''}.get(pri, ''),
             'folder': (r.get('folder_prefix') or '').removeprefix('applications/').rstrip('/'),
+            'domain_connection': r.get('domain_connection') or '',
+            'domain_tags': r.get('domain_tags') or [],
         })
     return {'rows': result_rows}
 
@@ -436,15 +541,24 @@ async def get_application(folder: str):
         rows = await asyncio.to_thread(lambda: _local_scan(f'applications/{folder}'))
         if not rows:
             raise HTTPException(status_code=404, detail='Application folder not found')
-        return {'name': folder, 'path': f'applications/{folder}', 'files': _rows_to_tree(rows)}
+        return {
+            'name': folder, 'path': f'applications/{folder}', 'files': _rows_to_tree(rows),
+            'domain_connection': '', 'domain_tags': [], 'jd_requirements': {},
+        }
 
-    files = await _ob_rest.list_files(prefix=prefix)
+    files, app_record = await asyncio.gather(
+        _ob_rest.list_files(prefix=prefix),
+        _ob_rest.get_application(folder),
+    )
     if not files:
         raise HTTPException(status_code=404, detail='Application folder not found')
     return {
         'name': folder,
         'path': f'applications/{folder}',
         'files': _rows_to_tree(files),
+        'domain_connection': (app_record or {}).get('domain_connection') or '',
+        'domain_tags': (app_record or {}).get('domain_tags') or [],
+        'jd_requirements': (app_record or {}).get('jd_requirements') or {},
     }
 
 
@@ -476,11 +590,18 @@ async def get_search_results():
 async def get_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
+        _t0 = time.monotonic()
         if DATA_BACKEND == 'ob1':
             content = await _ob_rest.get_file(key)
         else:
             content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
+        _dur = int((time.monotonic() - _t0) * 1000)
+        lf.record_span('file-get', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                       metadata={'key': key, 'bytes': len(content), 'duration_ms': _dur},
+                       duration_ms=_dur,
+                       input_data={'key': key},
+                       output_data={'bytes': len(content)})
         return Response(content, media_type=mime)
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
@@ -490,12 +611,19 @@ async def get_file(path: str = Query(...)):
 async def download_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
+        _t0 = time.monotonic()
         if DATA_BACKEND == 'ob1':
             content = await _ob_rest.get_file(key)
         else:
             content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
         filename = key.split('/')[-1]
+        _dur = int((time.monotonic() - _t0) * 1000)
+        lf.record_span('file-download', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                       metadata={'key': key, 'bytes': len(content), 'duration_ms': _dur},
+                       duration_ms=_dur,
+                       input_data={'key': key},
+                       output_data={'bytes': len(content)})
         return Response(
             content,
             media_type=mime,
@@ -514,10 +642,17 @@ async def put_file(path: str = Query(...), body: FileBody = None):
     if not path.endswith('.md'):
         raise HTTPException(status_code=400, detail='Only markdown files can be edited')
     key = _validate_key(path)
+    _t0 = time.monotonic()
     if DATA_BACKEND == 'ob1':
         await _ob_rest.put_file(key, body.content, 'text/markdown')
     else:
         await _get_local_store().put(key, body.content.encode('utf-8'), 'text/markdown')
+    _dur = int((time.monotonic() - _t0) * 1000)
+    lf.record_span('file-put', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                   metadata={'key': key, 'bytes': len(body.content), 'duration_ms': _dur},
+                   duration_ms=_dur,
+                   input_data={'key': key, 'bytes': len(body.content)},
+                   output_data={'ok': True})
     return {'ok': True}
 
 
@@ -528,10 +663,17 @@ async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail='File too large (max 50 MB)')
     mime = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+    _t0 = time.monotonic()
     if DATA_BACKEND == 'ob1':
         await _ob_rest.put_file(key, data, mime)
     else:
         await _get_local_store().put(key, data, mime)
+    _dur = int((time.monotonic() - _t0) * 1000)
+    lf.record_span('file-upload', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                   metadata={'key': key, 'bytes': len(data), 'content_type': mime, 'duration_ms': _dur},
+                   duration_ms=_dur,
+                   input_data={'key': key, 'bytes': len(data), 'content_type': mime},
+                   output_data={'ok': True})
     return {'ok': True, 'path': key, 'name': file.filename}
 
 
@@ -668,6 +810,81 @@ async def semantic_search(body: dict):
     return results
 
 
+# ── Application fields (Phase 3 metadata) ─────────────────────────────────────
+
+@app.patch('/api/applications/{folder}/fields')
+async def patch_application_fields(folder: str, body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    app_record = await _ob_rest.get_application(folder)
+    if not app_record:
+        raise HTTPException(status_code=404, detail='Application not found')
+    allowed = {k: v for k, v in body.items() if k in ('domain_connection', 'domain_tags', 'jd_requirements')}
+    if not allowed:
+        raise HTTPException(status_code=422, detail='No valid fields provided')
+    result = await _ob_rest.update_application_fields(str(app_record['id']), **allowed)
+    return result
+
+
+# ── Chunk-level semantic search (Phase 2) ─────────────────────────────────────
+
+@app.post('/api/chunk-search')
+async def chunk_search(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    results = await _ob_rest.search_chunks(
+        body.get('query', ''),
+        storage_key_prefix=body.get('storage_key_prefix'),
+        limit=int(body.get('limit', 10)),
+    )
+    return {'results': results}
+
+
+# ── Similar applications (Phase 3) ────────────────────────────────────────────
+
+@app.post('/api/similar-applications')
+async def similar_applications(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=404, detail='OB1 not configured')
+    results = await _ob_rest.find_similar_applications(
+        body.get('query', ''),
+        exclude_id=body.get('exclude_id'),
+        limit=int(body.get('limit', 5)),
+    )
+    return {'results': results}
+
+
+# ── Ingestion history ─────────────────────────────────────────────────────────
+
+@app.get('/api/ingestion-history')
+async def ingestion_history(
+    profile_slug: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    limit: int = Query(50),
+    direct_only: bool = Query(False),
+):
+    if not _ob_rest:
+        return {'records': []}
+    records = await _ob_rest.get_ingestion_history(
+        profile_slug=profile_slug, outcome=outcome, limit=min(limit, 200), direct_only=direct_only
+    )
+    return {'records': records}
+
+
+@app.get('/api/search-runs')
+async def search_runs(
+    profile_slug: Optional[str] = Query(None),
+    since: Optional[str] = Query(None),
+    limit: int = Query(20),
+):
+    if not _ob_rest:
+        return {'records': []}
+    records = await _ob_rest.get_search_runs(
+        profile_slug=profile_slug, since=since, limit=min(limit, 200)
+    )
+    return {'records': records}
+
+
 # ── Delete file ───────────────────────────────────────────────────────────────
 
 @app.delete('/api/file')
@@ -681,6 +898,148 @@ async def delete_file(path: str = Query(...)):
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
     return {'ok': True}
+
+
+# ── Skill runtime ─────────────────────────────────────────────────────────────
+
+RUNTIME_ADAPTER = os.environ.get('RUNTIME_ADAPTER', 'claude-runner')
+RUNTIME_ALLOW_DRAFT = os.environ.get('RUNTIME_ALLOW_DRAFT', '').lower() == 'true'
+
+_registry = None
+_adapter = None
+
+
+def _get_registry(reload: bool = False):
+    global _registry
+    if _registry is None or reload:
+        _registry = runtime_pkg.load_registry(APP_DIR)
+    return _registry
+
+
+def _get_adapter():
+    global _adapter
+    if _adapter is None:
+        if RUNTIME_ADAPTER == 'hermes':
+            from runtime.hermes_adapter import HermesAdapter
+            _adapter = HermesAdapter(app_dir=APP_DIR)
+        else:
+            _adapter = ClaudeRunnerAdapter(
+                app_dir=APP_DIR, env_path=env_path, runner_url=CLAUDE_RUNNER_URL)
+    return _adapter
+
+
+def _skill_summary(entry) -> dict:
+    return {
+        'name': entry.name,
+        'kind': entry.kind,
+        'status': entry.status,
+        'description': entry.manifest.get('description', ''),
+        'pinned': entry.pinned,
+        'latest': entry.latest,
+        'versions': entry.versions(),
+        'has_draft': entry.has_draft(),
+        'policies': entry.policies,
+    }
+
+
+@app.get('/api/skills')
+async def list_skills(reload: bool = Query(False)):
+    try:
+        reg = _get_registry(reload=reload)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return [_skill_summary(e) for e in reg.entries.values()]
+
+
+@app.get('/api/skills/{name}')
+async def get_skill(name: str):
+    try:
+        entry = _get_registry().get(name)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {**_skill_summary(entry), 'manifest': entry.manifest}
+
+
+@app.post('/api/skills/{name}/run')
+async def run_skill(name: str, body: dict, stream: bool = Query(False)):
+    """Execute a skill in webapp mode (pinned versions only).
+
+    draft is allowed only with RUNTIME_ALLOW_DRAFT=true — a dev escape hatch.
+    """
+    reg = _get_registry()
+    version = body.get('version')
+    try:
+        if version == 'draft':
+            if not RUNTIME_ALLOW_DRAFT:
+                raise HTTPException(status_code=403,
+                                    detail='draft execution requires RUNTIME_ALLOW_DRAFT=true')
+            resolved = runtime_pkg.resolve(reg, name, version='draft', mode='interactive')
+        else:
+            resolved = runtime_pkg.resolve(reg, name, version=version, mode='webapp')
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    prompt = runtime_pkg.compose_prompt(resolved, reg, 'webapp')
+    req = runtime_pkg.SkillRunRequest(
+        skill=name, version=resolved.version, mode='webapp',
+        task=body.get('task') or {}, timeout_s=int(body.get('timeout_s') or 600),
+    )
+    adapter = _get_adapter()
+
+    if stream:
+        iter_events = getattr(adapter, 'iter_events', None)
+        if iter_events is None:
+            raise HTTPException(status_code=501,
+                                detail=f'adapter {adapter.name} does not support streaming')
+
+        def _gen():
+            for event in iter_events(req, prompt):
+                yield json.dumps(event) + '\n'
+        return StreamingResponse(_gen(), media_type='application/x-ndjson')
+
+    try:
+        with lf.span(
+            'skill-run',
+            trace_name=f'skill/{name}',
+            tags=[f'skill:{name}:{resolved.version}', f'adapter:{adapter.name}',
+                  f'data_backend:{DATA_BACKEND}'],
+        ) as _lf_gen:
+            result = await adapter.run_skill(req, prompt)
+            u = result.usage or {}
+            _lf_gen.set_usage(
+                input=u.get('input_tokens', 0),
+                output=u.get('output_tokens', 0),
+            )
+            # Extract model from transcript system event when available
+            for ev in (result.transcript or []):
+                if ev.get('type') == 'system' and ev.get('model'):
+                    _lf_gen.set_model(ev['model'])
+                    break
+            _lf_gen.set_output((result.output_text or '')[:500])
+    except runtime_pkg.AdapterUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    runtime_pkg.record_event('skill_run', {
+        'run_id': result.run_id, 'skill': name, 'version': result.version,
+        'mode': 'webapp', 'status': result.status, 'adapter': result.adapter,
+    }, app_dir=APP_DIR)
+    return result.model_dump()
+
+
+@app.post('/api/skills/{name}/corrections')
+async def record_correction(name: str, body: dict):
+    """Log a user correction against a skill run — phase-4 learning-loop seam."""
+    run_id, correction = body.get('run_id'), body.get('correction')
+    if not run_id or not correction:
+        raise HTTPException(status_code=422, detail='run_id and correction are required')
+    try:
+        _get_registry().get(name)
+    except runtime_pkg.RegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    record = runtime_pkg.record_event('correction', {
+        'skill': name, 'run_id': run_id, 'correction': correction,
+        'context': body.get('context'),
+    }, app_dir=APP_DIR)
+    return {'ok': True, 'recorded': record}
 
 
 # ── Session management (subprocess --print mode) ──────────────────────────────
@@ -738,53 +1097,12 @@ def _broadcast(session: ChatSession, msg: dict) -> None:
 
 def _stream_via_runner(cmd: list, message: str):
     """Call the claude-runner sidecar and yield NDJSON lines from its streaming response."""
-    import http.client
-    import urllib.parse
-    parsed = urllib.parse.urlparse(CLAUDE_RUNNER_URL)
-    body = json.dumps({'args': cmd, 'cwd': str(APP_DIR), 'message': message}).encode()
-    conn = http.client.HTTPConnection(parsed.netloc, timeout=300)
-    try:
-        conn.request('POST', (parsed.path or '') + '/run', body,
-                     {'Content-Type': 'application/json'})
-        resp = conn.getresponse()
-        for raw in resp:
-            yield raw.decode('utf-8')
-    finally:
-        conn.close()
+    yield from runtime_claude_exec.stream_via_runner(cmd, message, CLAUDE_RUNNER_URL, str(APP_DIR))
 
 
 def _resolve_claude_binary() -> str:
-    """Return the best available Claude binary path.
-
-    When CLAUDE_RUNNER_URL is set (container/runner mode), the cmd is forwarded
-    to the runner sidecar which executes it inside its own container — never
-    send a local VS Code extension path there.
-
-    Local mode priority:
-      1. CLAUDE_BINARY env var if set and the file exists (explicit pin / fallback)
-      2. Latest VS Code extension binary, auto-discovered by semver
-      3. System PATH 'claude'
-    """
-    load_dotenv(env_path, override=True)
-    explicit = os.environ.get('CLAUDE_BINARY', '')
-
-    if CLAUDE_RUNNER_URL:
-        return explicit or 'claude'
-
-    if explicit and os.path.isfile(explicit):
-        return explicit
-
-    candidates = glob.glob(os.path.expanduser(
-        '~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude'
-    ))
-    if candidates:
-        def _ver(path: str):
-            m = re.search(r'claude-code-(\d+)\.(\d+)\.(\d+)', path)
-            return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (0, 0, 0)
-        candidates.sort(key=_ver, reverse=True)
-        return candidates[0]
-
-    return shutil.which('claude') or 'claude'
+    """Return the best available Claude binary path (see runtime.claude_exec)."""
+    return runtime_claude_exec.resolve_claude_binary(env_path=env_path, runner_url=CLAUDE_RUNNER_URL)
 
 
 def _run_message_thread(session: ChatSession, message: str) -> None:
@@ -827,125 +1145,148 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
     session.status = 'executing'
     _broadcast(session, {'type': 'status', 'status': 'executing'})
 
+    prev_text = ''
+    last_saved_text = None
     proc = None
-    try:
-        if CLAUDE_RUNNER_URL:
-            lines = _stream_via_runner(cmd, message)
-        else:
-            proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                cwd=str(APP_DIR),
-                env={**os.environ},
-            )
-            session.current_proc = proc
-            proc.stdin.write(message)
-            proc.stdin.close()
-            lines = proc.stdout
-
-        prev_text = ''
-        last_saved_text = None
-
-        def _iter_lines():
-            """Yield lines from stdout; exits promptly when proc is done.
-
-            Grandchildren spawned by Claude Code (e.g. Stop hook subprocesses) can
-            inherit the write end of the pipe and keep it open after Claude exits.
-            Using select with a short timeout lets us break out once proc.poll()
-            returns non-None and no new data arrives, instead of hanging forever.
-            """
-            if proc is None:
-                yield from lines
-                return
-            DRAIN_TIMEOUT = 3.0
-            POLL_INTERVAL = 1.0
-            while True:
-                exited = proc.poll() is not None
-                timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
-                try:
-                    ready, _, _ = select.select([proc.stdout], [], [], timeout)
-                except Exception:
-                    break
-                if ready:
-                    line = proc.stdout.readline()
-                    if line:
-                        yield line
-                    else:
-                        break
-                elif exited:
-                    break
-
-        for raw_line in _iter_lines():
-            raw_line = raw_line.strip()
-            if not raw_line:
-                continue
-            try:
-                obj = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-
-            if 'session_id' in obj and not session.claude_session_id:
-                session.claude_session_id = obj['session_id']
-
-            if obj.get('type') == 'user':
-                for block in obj.get('message', {}).get('content', []):
-                    if block.get('type') == 'tool_result':
-                        if not block.get('is_error'):
-                            session.mcp_error_count = 0
-                        else:
-                            err_text = str(block.get('content', ''))
-                            # Hard failures: server is definitively unreachable — kill immediately.
-                            # Soft failures (generic MCP/connect errors): may be transient (SSE
-                            # timeout, brief nginx hiccup). Kill only after 3 consecutive failures
-                            # so a single dropped connection doesn't close a working session.
-                            hard = any(tok in err_text for tok in ('ECONNREFUSED', 'ENOTFOUND'))
-                            soft = not hard and any(tok in err_text for tok in ('MCP', 'connect'))
-                            if hard:
-                                session.mcp_error_count = 3
-                            elif soft:
-                                session.mcp_error_count += 1
-                            if session.mcp_error_count >= 3:
-                                session.mcp_error_count = 0
-                                session.status = 'closed'
-                                _broadcast(session, {
-                                    'type': 'session_error',
-                                    'content': (
-                                        'MCP server connection was lost mid-session. '
-                                        'This session has been closed — start a new session to continue.'
-                                    ),
-                                })
-                                if proc is not None:
-                                    proc.terminate()
-                                session.current_proc = None
-                                return
-            elif obj.get('type') == 'assistant':
-                content_blocks = obj.get('message', {}).get('content', [])
-                current_text = ''.join(
-                    b.get('text', '') for b in content_blocks if b.get('type') == 'text'
+    with lf.span(
+        'claude-chat',
+        trace_name=session.label,
+        session_id=session.id,
+        tags=[f'data_backend:{DATA_BACKEND}', f'mode:{session.mode}'],
+        input_text=message[:500],
+    ) as _lf_gen:
+        try:
+            if CLAUDE_RUNNER_URL:
+                lines = _stream_via_runner(cmd, message)
+            else:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    cwd=str(APP_DIR),
+                    env={**os.environ},
                 )
-                if not current_text:
-                    continue
-                if current_text.startswith(prev_text):
-                    delta = current_text[len(prev_text):]
-                    if delta:
-                        _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
-                    prev_text = current_text
-                else:
-                    if prev_text and prev_text != last_saved_text:
-                        seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
-                        session.messages_structured.append(seg)
-                        _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
-                        last_saved_text = prev_text
-                    prev_text = current_text
-                    _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
+                session.current_proc = proc
+                proc.stdin.write(message)
+                proc.stdin.close()
+                lines = proc.stdout
 
-        if proc is not None:
-            proc.wait()
-    except Exception:
-        pass
+            def _iter_lines():
+                """Yield lines from stdout; exits promptly when proc is done.
+
+                Grandchildren spawned by Claude Code (e.g. Stop hook subprocesses) can
+                inherit the write end of the pipe and keep it open after Claude exits.
+                Using select with a short timeout lets us break out once proc.poll()
+                returns non-None and no new data arrives, instead of hanging forever.
+                """
+                if proc is None:
+                    yield from lines
+                    return
+                DRAIN_TIMEOUT = 3.0
+                POLL_INTERVAL = 1.0
+                while True:
+                    exited = proc.poll() is not None
+                    timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
+                    try:
+                        ready, _, _ = select.select([proc.stdout], [], [], timeout)
+                    except Exception:
+                        break
+                    if ready:
+                        line = proc.stdout.readline()
+                        if line:
+                            yield line
+                        else:
+                            break
+                    elif exited:
+                        break
+
+            for raw_line in _iter_lines():
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    obj = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+
+                if 'session_id' in obj and not session.claude_session_id:
+                    session.claude_session_id = obj['session_id']
+                if obj.get('type') == 'system' and obj.get('model'):
+                    _lf_gen.set_model(obj['model'])
+                if obj.get('type') == 'result':
+                    u = obj.get('usage') or {}
+                    _lf_gen.set_usage(
+                        input=u.get('input_tokens', 0),
+                        output=u.get('output_tokens', 0),
+                    )
+
+                if obj.get('type') == 'user':
+                    for block in obj.get('message', {}).get('content', []):
+                        if block.get('type') == 'tool_result':
+                            if not block.get('is_error'):
+                                session.mcp_error_count = 0
+                            else:
+                                err_text = str(block.get('content', ''))
+                                # Hard failures: server is definitively unreachable — kill immediately.
+                                # Soft failures (generic MCP/connect errors): may be transient (SSE
+                                # timeout, brief nginx hiccup). Kill only after 3 consecutive failures
+                                # so a single dropped connection doesn't close a working session.
+                                hard = any(tok in err_text for tok in ('ECONNREFUSED', 'ENOTFOUND'))
+                                soft = not hard and any(tok in err_text for tok in ('MCP', 'connect'))
+                                if hard:
+                                    session.mcp_error_count = 3
+                                elif soft:
+                                    session.mcp_error_count += 1
+                                if session.mcp_error_count >= 3:
+                                    session.mcp_error_count = 0
+                                    session.status = 'closed'
+                                    lf.record_span(
+                                        'mcp-connection-failure',
+                                        tags=['service:webapp', f'mode:{session.mode}'],
+                                        metadata={'session_id': session.id, 'error': err_text[:200], 'hard': hard},
+                                        level='ERROR',
+                                        status_message='MCP server lost after 3 consecutive errors',
+                                    )
+                                    _broadcast(session, {
+                                        'type': 'session_error',
+                                        'content': (
+                                            'MCP server connection was lost mid-session. '
+                                            'This session has been closed — start a new session to continue.'
+                                        ),
+                                    })
+                                    if proc is not None:
+                                        proc.terminate()
+                                    session.current_proc = None
+                                    return
+                elif obj.get('type') == 'assistant':
+                    content_blocks = obj.get('message', {}).get('content', [])
+                    current_text = ''.join(
+                        b.get('text', '') for b in content_blocks if b.get('type') == 'text'
+                    )
+                    if not current_text:
+                        continue
+                    if current_text.startswith(prev_text):
+                        delta = current_text[len(prev_text):]
+                        if delta:
+                            _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
+                        prev_text = current_text
+                    else:
+                        if prev_text and prev_text != last_saved_text:
+                            seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
+                            session.messages_structured.append(seg)
+                            _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
+                            last_saved_text = prev_text
+                        prev_text = current_text
+                        _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
+
+            if proc is not None:
+                proc.wait()
+        except Exception:
+            pass
+
+        _lf_gen.set_output(prev_text)
 
     if prev_text and prev_text != last_saved_text:
         seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
@@ -1056,6 +1397,8 @@ async def session_ws(websocket: WebSocket, session_id: str):
         return
     await websocket.accept()
     session.clients.append(websocket)
+    _ws_start = time.monotonic()
+    _ws_msg_count = 0
 
     if session.messages_structured:
         await websocket.send_text(json.dumps({'type': 'replay', 'messages': session.messages_structured}))
@@ -1085,6 +1428,7 @@ async def session_ws(websocket: WebSocket, session_id: str):
                             'content': 'Still processing the previous message — please wait.',
                         }))
                     else:
+                        _ws_msg_count += 1
                         clean_text = text.strip()
                         user_msg = {'role': 'user', 'content': clean_text, 'ts': time.time()}
                         session.messages_structured.append(user_msg)
@@ -1100,6 +1444,19 @@ async def session_ws(websocket: WebSocket, session_id: str):
     finally:
         if websocket in session.clients:
             session.clients.remove(websocket)
+        _dur = int((time.monotonic() - _ws_start) * 1000)
+        lf.record_span(
+            'ws-session',
+            trace_name=session.label,
+            tags=['service:webapp', f'mode:{session.mode}'],
+            metadata={
+                'session_id': session_id,
+                'mode': session.mode,
+                'message_count': _ws_msg_count,
+                'duration_ms': _dur,
+            },
+            duration_ms=_dur,
+        )
 
 
 # ── Static frontend (production) ──────────────────────────────────────────────

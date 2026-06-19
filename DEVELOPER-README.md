@@ -55,8 +55,24 @@ $APP_DIR/
 ├── QUICK-START.md               # Setup guide for new users
 ├── USER-GUIDE.md                # End-user workflow and command reference
 ├── DEVELOPER-README.md          # This file
-├── workflow.md                  # Full pipeline documentation (JD → resume → submit)
+├── workflow.md                  # Pointer to the versioned workflow/skill entries (kept for references)
 ├── applicant-setup.md           # Onboarding phases A–E + Phase F (profile maintenance)
+│
+├── docs/
+│   ├── architecture/            # Design PDF, approved plan, implementation record, phase 3/4 roadmap
+│   ├── ob1-search-runs/         # Search runs API spec, deploy checklist, backfill procedure
+│   ├── ob1-intelligent-access/  # Context-optimization roadmap (chunking design, schema changes)
+│   └── observability/           # Langfuse integration guide (trace schema, dashboard, OB1 proxy)
+│
+├── skills/                      # Versioned generative procedures (source of truth)
+│   ├── registry.yaml            # Index of all skills/policies/workflows
+│   ├── README.md                # Format spec, version resolution, draft → promote flow
+│   └── <name>/                  # skill.yaml manifest + immutable v1.md, v2.md… (+ draft.md while revising)
+├── policies/                    # Versioned cross-cutting rules (factuality, evidence-grounding,
+│                                #   company-descriptors, storage-routing) — same layout as skills/
+├── workflows/                   # Versioned multi-step orchestrations (create-application,
+│                                #   prepare-interview, process-jd, search-jobs,
+│                                #   search-jobs-linkedin) — invoke skills by name
 │
 ├── .claude/
 │   ├── settings.json            # Hooks, permissions, statusLine
@@ -71,7 +87,7 @@ $APP_DIR/
 │
 ├── memory/                      # Process memory (git-tracked, auto-synced)
 │   ├── MEMORY.md                # Index — loaded at session start
-│   └── feedback_*.md            # Accumulated process rules
+│   └── feedback_*.md            # Session/tooling rules; migrated entries are pointer stubs into skills/
 │
 ├── templates/
 │   ├── resume.css               # Default PDF stylesheet (2-page)
@@ -98,6 +114,7 @@ $APP_DIR/
 │   ├── sync-memory.sh           # Commits memory/ and copies to ~/.claude/
 │   ├── status-line.sh           # Dynamic status bar for Claude Code VS Code extension
 │   ├── generate-setup-status.sh # Auto-generates applicant-setup-status.md (Stop hook)
+│   ├── langfuse_cc_hook.py      # Stop hook: posts session turn telemetry to Langfuse (silent no-op if keys absent)
 │   ├── README.md                # Script documentation
 │   └── README-linkedin-extractors.md
 │
@@ -159,7 +176,7 @@ For a user-facing comparison of all deployment modes and end-to-end setup instru
 OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path. Instead of flat files synced via Google Drive/OneDrive/etc., all applicant content lives in a local Kubernetes cluster:
 
 - **MinIO** — object store for all files (notes, JDs, PDFs, profiles)
-- **PostgreSQL** (`js_*` tables) — structured state (pipeline, contacts, interviews, search runs)
+- **PostgreSQL** (`js_*` tables) — structured state (pipeline, contacts, interviews, search runs, ingested positions)
 - **pgvector** — semantic search over all content via OB1's `thoughts` table
 
 **Prerequisite:** A local clone of the OB1 repo is required (`$OB1_REPO_PATH` in `.env`) to build the `openbrain-mcp-server:latest` Docker image used by the OB1 StatefulSet. The `job-search-mcp` image is built from this repo and has no external dependency.
@@ -169,7 +186,7 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 | Component | What it is | URL |
 |---|---|---|
 | `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server — 17 MCP tools + REST API (`/api/v2/*`) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
+| `job-search-mcp` | Deployment: Deno/Hono server — 21 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
 | `minio` | Deployment: S3-compatible object store | `http://localhost/minio` (console) / `localhost:30900` (S3) |
 | nginx Ingress | Routes `/ob1`, `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
 
@@ -188,7 +205,7 @@ Both servers use the **Streamable HTTP** transport. Claude Code requires:
 
 ### Session-start protocol
 
-When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `memory/feedback_ob1_integration.md`.
+When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `policies/storage-routing/` (pinned version).
 
 ### Data persistence (Docker Desktop)
 
@@ -201,9 +218,12 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `scripts/start-ob1.sh` | Start OB1 docker-compose services (sources both `.env` and `.env.services`) |
 | `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
+| `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
 | `integrations/ob1/tests/test-deployment.sh` | 19-assertion deployment verification suite |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
+
+See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy checklist, backfill procedure) and [`docs/ob1-intelligent-access/`](docs/ob1-intelligent-access/) (context-optimization roadmap — Phase 1 complete, Phases 2–3 planned).
 
 ---
 
@@ -256,7 +276,7 @@ Two files, both gitignored, serve different audiences:
 | `.env` | Claude CLI config: paths, MCP keys, search API, `DEV_MODE` | Claude Code shell session |
 | `.env.services` | Storage credentials: MinIO, Postgres, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY` | `scripts/start-ob1.sh`, `scripts/k8s-apply-env.sh` |
 
-**Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [memory/feedback_ob1_integration.md](memory/feedback_ob1_integration.md).
+**Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [policies/storage-routing/](policies/storage-routing/) (pinned version).
 
 Copy both example files to get started:
 ```bash
@@ -347,6 +367,16 @@ Runs `scripts/sync-memory.sh` after every Claude response. The script:
 2. If any exist, commits them with an auto-generated message
 3. Copies all `memory/*.md` files to `~/.claude/projects/.../memory/` so the live session picks them up on the next message
 
+### Stop — setup status
+
+Runs `scripts/generate-setup-status.sh` after every Claude response. Auto-generates `$APPLICANT_DIR/memory/applicant-setup-status.md` from the current state of `$APPLICANT_DIR` so the setup status shown in the webapp sidebar stays current without a manual step.
+
+### Stop — Langfuse telemetry
+
+Runs `scripts/langfuse_cc_hook.py` after every Claude response. Posts per-turn telemetry to Langfuse: tool use blocks, input/output token counts, and auto-detected phase tags (operations vs. development). Requires `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in the environment or `.env.services`; silent no-op when absent. Always exits 0 so it never blocks a response.
+
+See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the trace schema, dashboard setup, and the Langfuse proxy for OB1 MCP call tracing.
+
 ### PostToolUse — write summary
 
 Runs `scripts/summarize-write.sh` after every `Write` tool call. Outputs a one-line impact summary for significant file writes (e.g., resume written, notes updated). Suppresses output for routine or system files.
@@ -390,15 +420,18 @@ Use this after editing memory files outside a Claude session (e.g., directly in 
 
 ## Customizing Workflow Rules
 
-Process rules live in three locations with different scopes:
+Process rules live in four locations with different scopes:
 
 | Location | Scope | When to use |
 |---|---|---|
+| `skills/`, `policies/`, `workflows/` | Versioned procedures; resolved per mode (interactive: draft-first; webapp: pinned-only) | **Preferred for procedural rules** — JD screening, resume generation, interview prep, storage routing, domain connection. Change via the draft → promote flow (tell Claude "draft skill <name>" / "promote skill <name>") |
 | `CLAUDE.md` | Always-loaded; applies every session | Critical rules and workflow triggers that must be visible at session start |
-| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Detailed rules, feedback, and preferences — preferred for most rule changes (keeps `CLAUDE.md` lean) |
+| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Session/tooling mechanics (DEV_MODE, commits, model selection, doc maintenance). Migrated procedural entries are pointer stubs — do not add rules to them |
 | `$APPLICANT_DIR/memory/` | Applicant-specific; local only | Role preferences, deal-breakers, search state |
 
-**To add or update a rule:**
+**To add or update a procedural rule:** tell Claude "draft skill <name>", edit `draft.md`, exercise it on real work, then tell Claude "promote skill <name> [--pin]" (test-gated; `--pin` moves the version the webapp executes). Requires `DEV_MODE=true`.
+
+**To add or update a session/tooling rule:**
 1. Edit the relevant `memory/feedback_*.md` file (or `CLAUDE.md` for session-critical rules). Requires `DEV_MODE=true`.
 2. If you edited `CLAUDE.md` or a `memory/` file, run the sync script so the live session picks up the change:
    ```bash
@@ -532,11 +565,21 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `MINIO_BUCKET` | Manual | MinIO bucket name (e.g. `job-search`) |
 | `DB_PASSWORD` | Manual | PostgreSQL password for OB1 shared database |
 
+**`.env.services`** (Langfuse — optional):
+
+| Variable | Purpose |
+|---|---|
+| `LANGFUSE_HOST` | Langfuse instance URL (default `https://cloud.langfuse.com`) |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse project public key (`pk-lf-...`) |
+| `LANGFUSE_SECRET_KEY` | Langfuse project secret key (`sk-lf-...`) |
+
+Tracing activates automatically when both keys are present. See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the full trace schema, dashboard usage, and how to trace OB1 core MCP calls via the Langfuse proxy.
+
 **`.claude/settings.json`**:
 
 | Field | Purpose |
 |---|---|
 | `hooks.PreToolUse` | Runs `check-dev-mode.sh` before Write/Edit tool calls |
-| `hooks.Stop` | Runs `sync-memory.sh` after every Claude response |
+| `hooks.Stop` | Three Stop hooks run after every Claude response: `sync-memory.sh` (memory commit + session sync), `generate-setup-status.sh` (setup status file), and `langfuse_cc_hook.py` (Langfuse telemetry — no-op when keys absent) |
 | `permissions` | Tool allowlist — Bash commands and MCP tools that run without prompting |
 | `statusLine` | Dynamic status bar generated by `scripts/status-line.sh` — shows live active count, pending-review count, and nearest follow-up date |

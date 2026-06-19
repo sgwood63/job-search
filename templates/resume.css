@@ -36,17 +36,6 @@ hr {
     margin: 4px 0 8px 0;
 }
 
-/* Headline / title */
-h2:first-of-type {
-    font-size: 11pt;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #222;
-    margin: 0 0 6px 0;
-    border-bottom: none;
-}
-
 /* Section headers */
 h2 {
     font-size: 9.5pt;

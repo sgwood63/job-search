@@ -1,0 +1,10 @@
+name: factuality
+kind: policy
+description: No fabrication of any kind; no unverified percentage metrics; all claims must be supportable with real evidence
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-12
+    summary: Migrated from CLAUDE.md No-fabrication + No-unverified-percentage-metrics rules and memory/MEMORY.md Critical Rules

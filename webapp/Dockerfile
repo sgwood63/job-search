@@ -68,6 +68,9 @@ COPY .claude/commands/ .claude/commands/
 COPY .mcp.json.example .mcp.json.example
 COPY scripts/ scripts/
 COPY templates/ templates/
+COPY skills/ skills/
+COPY policies/ policies/
+COPY workflows/ workflows/
 
 # Entrypoint generates /app/.mcp.json from env vars before starting uvicorn.
 COPY webapp/entrypoint.sh /app/entrypoint.sh
