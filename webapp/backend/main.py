@@ -22,9 +22,11 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import runtime as runtime_pkg
 from runtime import claude_exec as runtime_claude_exec
+from runtime import langfuse_client as lf
 from runtime.claude_adapter import ClaudeRunnerAdapter
 
 env_path = Path(__file__).parent.parent.parent / '.env'
@@ -48,7 +50,61 @@ DOCS_ALLOWLIST = {
 
 ALLOWED_UPLOAD_PREFIXES = ('applications/', 'base-documents/')
 
+class LangfuseMetricsMiddleware:
+    """ASGI middleware that emits a Langfuse span for every /api/ request.
+
+    Uses the raw ASGI interface instead of BaseHTTPMiddleware to avoid buffering
+    streaming responses. WebSocket connections (scope type != 'http') pass through.
+    """
+    _SKIP = frozenset({"/api/health", "/api/sessions"})
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        path: str = scope.get("path", "")
+        if not path.startswith("/api/") or path in self._SKIP:
+            await self._app(scope, receive, send)
+            return
+
+        method: str = scope.get("method", "")
+        start = time.monotonic()
+        status_code = 500
+
+        async def _send(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self._app(scope, receive, _send)
+        finally:
+            if lf.is_enabled():
+                duration_ms = int((time.monotonic() - start) * 1000)
+                lf.record_span(
+                    f"http:{method} {path}",
+                    trace_name="api-request",
+                    tags=[f"method:{method}", f"status:{status_code}", "service:webapp"],
+                    metadata={"method": method, "path": path, "status": status_code, "duration_ms": duration_ms},
+                    level="ERROR" if status_code >= 400 else "DEFAULT",
+                    status_message=str(status_code) if status_code >= 400 else None,
+                    duration_ms=duration_ms,
+                    input_data={"method": method, "path": path},
+                    output_data={"status": status_code},
+                )
+
+
 app = FastAPI()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    lf.flush()
+
 
 # ---------------------------------------------------------------------------
 # OB1 REST client — replaces direct MinIO + Postgres access in ob1 mode
@@ -213,6 +269,7 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(NoCacheMiddleware)
+app.add_middleware(LangfuseMetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -533,11 +590,18 @@ async def get_search_results():
 async def get_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
+        _t0 = time.monotonic()
         if DATA_BACKEND == 'ob1':
             content = await _ob_rest.get_file(key)
         else:
             content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
+        _dur = int((time.monotonic() - _t0) * 1000)
+        lf.record_span('file-get', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                       metadata={'key': key, 'bytes': len(content), 'duration_ms': _dur},
+                       duration_ms=_dur,
+                       input_data={'key': key},
+                       output_data={'bytes': len(content)})
         return Response(content, media_type=mime)
     except Exception:
         raise HTTPException(status_code=404, detail='File not found')
@@ -547,12 +611,19 @@ async def get_file(path: str = Query(...)):
 async def download_file(path: str = Query(...)):
     key = _validate_key(path)
     try:
+        _t0 = time.monotonic()
         if DATA_BACKEND == 'ob1':
             content = await _ob_rest.get_file(key)
         else:
             content = await _get_local_store().get(key)
         mime = mimetypes.guess_type(key)[0] or 'application/octet-stream'
         filename = key.split('/')[-1]
+        _dur = int((time.monotonic() - _t0) * 1000)
+        lf.record_span('file-download', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                       metadata={'key': key, 'bytes': len(content), 'duration_ms': _dur},
+                       duration_ms=_dur,
+                       input_data={'key': key},
+                       output_data={'bytes': len(content)})
         return Response(
             content,
             media_type=mime,
@@ -571,10 +642,17 @@ async def put_file(path: str = Query(...), body: FileBody = None):
     if not path.endswith('.md'):
         raise HTTPException(status_code=400, detail='Only markdown files can be edited')
     key = _validate_key(path)
+    _t0 = time.monotonic()
     if DATA_BACKEND == 'ob1':
         await _ob_rest.put_file(key, body.content, 'text/markdown')
     else:
         await _get_local_store().put(key, body.content.encode('utf-8'), 'text/markdown')
+    _dur = int((time.monotonic() - _t0) * 1000)
+    lf.record_span('file-put', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                   metadata={'key': key, 'bytes': len(body.content), 'duration_ms': _dur},
+                   duration_ms=_dur,
+                   input_data={'key': key, 'bytes': len(body.content)},
+                   output_data={'ok': True})
     return {'ok': True}
 
 
@@ -585,10 +663,17 @@ async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail='File too large (max 50 MB)')
     mime = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+    _t0 = time.monotonic()
     if DATA_BACKEND == 'ob1':
         await _ob_rest.put_file(key, data, mime)
     else:
         await _get_local_store().put(key, data, mime)
+    _dur = int((time.monotonic() - _t0) * 1000)
+    lf.record_span('file-upload', tags=['service:webapp', f'backend:{DATA_BACKEND}'],
+                   metadata={'key': key, 'bytes': len(data), 'content_type': mime, 'duration_ms': _dur},
+                   duration_ms=_dur,
+                   input_data={'key': key, 'bytes': len(data), 'content_type': mime},
+                   output_data={'ok': True})
     return {'ok': True, 'path': key, 'name': file.filename}
 
 
@@ -913,7 +998,24 @@ async def run_skill(name: str, body: dict, stream: bool = Query(False)):
         return StreamingResponse(_gen(), media_type='application/x-ndjson')
 
     try:
-        result = await adapter.run_skill(req, prompt)
+        with lf.span(
+            'skill-run',
+            trace_name=f'skill/{name}',
+            tags=[f'skill:{name}:{resolved.version}', f'adapter:{adapter.name}',
+                  f'data_backend:{DATA_BACKEND}'],
+        ) as _lf_gen:
+            result = await adapter.run_skill(req, prompt)
+            u = result.usage or {}
+            _lf_gen.set_usage(
+                input=u.get('input_tokens', 0),
+                output=u.get('output_tokens', 0),
+            )
+            # Extract model from transcript system event when available
+            for ev in (result.transcript or []):
+                if ev.get('type') == 'system' and ev.get('model'):
+                    _lf_gen.set_model(ev['model'])
+                    break
+            _lf_gen.set_output((result.output_text or '')[:500])
     except runtime_pkg.AdapterUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     runtime_pkg.record_event('skill_run', {
@@ -1043,125 +1145,148 @@ def _run_message_thread(session: ChatSession, message: str) -> None:
     session.status = 'executing'
     _broadcast(session, {'type': 'status', 'status': 'executing'})
 
+    prev_text = ''
+    last_saved_text = None
     proc = None
-    try:
-        if CLAUDE_RUNNER_URL:
-            lines = _stream_via_runner(cmd, message)
-        else:
-            proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                cwd=str(APP_DIR),
-                env={**os.environ},
-            )
-            session.current_proc = proc
-            proc.stdin.write(message)
-            proc.stdin.close()
-            lines = proc.stdout
-
-        prev_text = ''
-        last_saved_text = None
-
-        def _iter_lines():
-            """Yield lines from stdout; exits promptly when proc is done.
-
-            Grandchildren spawned by Claude Code (e.g. Stop hook subprocesses) can
-            inherit the write end of the pipe and keep it open after Claude exits.
-            Using select with a short timeout lets us break out once proc.poll()
-            returns non-None and no new data arrives, instead of hanging forever.
-            """
-            if proc is None:
-                yield from lines
-                return
-            DRAIN_TIMEOUT = 3.0
-            POLL_INTERVAL = 1.0
-            while True:
-                exited = proc.poll() is not None
-                timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
-                try:
-                    ready, _, _ = select.select([proc.stdout], [], [], timeout)
-                except Exception:
-                    break
-                if ready:
-                    line = proc.stdout.readline()
-                    if line:
-                        yield line
-                    else:
-                        break
-                elif exited:
-                    break
-
-        for raw_line in _iter_lines():
-            raw_line = raw_line.strip()
-            if not raw_line:
-                continue
-            try:
-                obj = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-
-            if 'session_id' in obj and not session.claude_session_id:
-                session.claude_session_id = obj['session_id']
-
-            if obj.get('type') == 'user':
-                for block in obj.get('message', {}).get('content', []):
-                    if block.get('type') == 'tool_result':
-                        if not block.get('is_error'):
-                            session.mcp_error_count = 0
-                        else:
-                            err_text = str(block.get('content', ''))
-                            # Hard failures: server is definitively unreachable — kill immediately.
-                            # Soft failures (generic MCP/connect errors): may be transient (SSE
-                            # timeout, brief nginx hiccup). Kill only after 3 consecutive failures
-                            # so a single dropped connection doesn't close a working session.
-                            hard = any(tok in err_text for tok in ('ECONNREFUSED', 'ENOTFOUND'))
-                            soft = not hard and any(tok in err_text for tok in ('MCP', 'connect'))
-                            if hard:
-                                session.mcp_error_count = 3
-                            elif soft:
-                                session.mcp_error_count += 1
-                            if session.mcp_error_count >= 3:
-                                session.mcp_error_count = 0
-                                session.status = 'closed'
-                                _broadcast(session, {
-                                    'type': 'session_error',
-                                    'content': (
-                                        'MCP server connection was lost mid-session. '
-                                        'This session has been closed — start a new session to continue.'
-                                    ),
-                                })
-                                if proc is not None:
-                                    proc.terminate()
-                                session.current_proc = None
-                                return
-            elif obj.get('type') == 'assistant':
-                content_blocks = obj.get('message', {}).get('content', [])
-                current_text = ''.join(
-                    b.get('text', '') for b in content_blocks if b.get('type') == 'text'
+    with lf.span(
+        'claude-chat',
+        trace_name=session.label,
+        session_id=session.id,
+        tags=[f'data_backend:{DATA_BACKEND}', f'mode:{session.mode}'],
+        input_text=message[:500],
+    ) as _lf_gen:
+        try:
+            if CLAUDE_RUNNER_URL:
+                lines = _stream_via_runner(cmd, message)
+            else:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    cwd=str(APP_DIR),
+                    env={**os.environ},
                 )
-                if not current_text:
-                    continue
-                if current_text.startswith(prev_text):
-                    delta = current_text[len(prev_text):]
-                    if delta:
-                        _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
-                    prev_text = current_text
-                else:
-                    if prev_text and prev_text != last_saved_text:
-                        seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
-                        session.messages_structured.append(seg)
-                        _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
-                        last_saved_text = prev_text
-                    prev_text = current_text
-                    _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
+                session.current_proc = proc
+                proc.stdin.write(message)
+                proc.stdin.close()
+                lines = proc.stdout
 
-        if proc is not None:
-            proc.wait()
-    except Exception:
-        pass
+            def _iter_lines():
+                """Yield lines from stdout; exits promptly when proc is done.
+
+                Grandchildren spawned by Claude Code (e.g. Stop hook subprocesses) can
+                inherit the write end of the pipe and keep it open after Claude exits.
+                Using select with a short timeout lets us break out once proc.poll()
+                returns non-None and no new data arrives, instead of hanging forever.
+                """
+                if proc is None:
+                    yield from lines
+                    return
+                DRAIN_TIMEOUT = 3.0
+                POLL_INTERVAL = 1.0
+                while True:
+                    exited = proc.poll() is not None
+                    timeout = DRAIN_TIMEOUT if exited else POLL_INTERVAL
+                    try:
+                        ready, _, _ = select.select([proc.stdout], [], [], timeout)
+                    except Exception:
+                        break
+                    if ready:
+                        line = proc.stdout.readline()
+                        if line:
+                            yield line
+                        else:
+                            break
+                    elif exited:
+                        break
+
+            for raw_line in _iter_lines():
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    obj = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+
+                if 'session_id' in obj and not session.claude_session_id:
+                    session.claude_session_id = obj['session_id']
+                if obj.get('type') == 'system' and obj.get('model'):
+                    _lf_gen.set_model(obj['model'])
+                if obj.get('type') == 'result':
+                    u = obj.get('usage') or {}
+                    _lf_gen.set_usage(
+                        input=u.get('input_tokens', 0),
+                        output=u.get('output_tokens', 0),
+                    )
+
+                if obj.get('type') == 'user':
+                    for block in obj.get('message', {}).get('content', []):
+                        if block.get('type') == 'tool_result':
+                            if not block.get('is_error'):
+                                session.mcp_error_count = 0
+                            else:
+                                err_text = str(block.get('content', ''))
+                                # Hard failures: server is definitively unreachable — kill immediately.
+                                # Soft failures (generic MCP/connect errors): may be transient (SSE
+                                # timeout, brief nginx hiccup). Kill only after 3 consecutive failures
+                                # so a single dropped connection doesn't close a working session.
+                                hard = any(tok in err_text for tok in ('ECONNREFUSED', 'ENOTFOUND'))
+                                soft = not hard and any(tok in err_text for tok in ('MCP', 'connect'))
+                                if hard:
+                                    session.mcp_error_count = 3
+                                elif soft:
+                                    session.mcp_error_count += 1
+                                if session.mcp_error_count >= 3:
+                                    session.mcp_error_count = 0
+                                    session.status = 'closed'
+                                    lf.record_span(
+                                        'mcp-connection-failure',
+                                        tags=['service:webapp', f'mode:{session.mode}'],
+                                        metadata={'session_id': session.id, 'error': err_text[:200], 'hard': hard},
+                                        level='ERROR',
+                                        status_message='MCP server lost after 3 consecutive errors',
+                                    )
+                                    _broadcast(session, {
+                                        'type': 'session_error',
+                                        'content': (
+                                            'MCP server connection was lost mid-session. '
+                                            'This session has been closed — start a new session to continue.'
+                                        ),
+                                    })
+                                    if proc is not None:
+                                        proc.terminate()
+                                    session.current_proc = None
+                                    return
+                elif obj.get('type') == 'assistant':
+                    content_blocks = obj.get('message', {}).get('content', [])
+                    current_text = ''.join(
+                        b.get('text', '') for b in content_blocks if b.get('type') == 'text'
+                    )
+                    if not current_text:
+                        continue
+                    if current_text.startswith(prev_text):
+                        delta = current_text[len(prev_text):]
+                        if delta:
+                            _broadcast(session, {'type': 'assistant_chunk', 'content': delta})
+                        prev_text = current_text
+                    else:
+                        if prev_text and prev_text != last_saved_text:
+                            seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
+                            session.messages_structured.append(seg)
+                            _broadcast(session, {'type': 'assistant_message', 'content': prev_text, 'ts': seg['ts']})
+                            last_saved_text = prev_text
+                        prev_text = current_text
+                        _broadcast(session, {'type': 'assistant_chunk', 'content': current_text})
+
+            if proc is not None:
+                proc.wait()
+        except Exception:
+            pass
+
+        _lf_gen.set_output(prev_text)
 
     if prev_text and prev_text != last_saved_text:
         seg = {'role': 'assistant', 'content': prev_text, 'ts': time.time()}
@@ -1272,6 +1397,8 @@ async def session_ws(websocket: WebSocket, session_id: str):
         return
     await websocket.accept()
     session.clients.append(websocket)
+    _ws_start = time.monotonic()
+    _ws_msg_count = 0
 
     if session.messages_structured:
         await websocket.send_text(json.dumps({'type': 'replay', 'messages': session.messages_structured}))
@@ -1301,6 +1428,7 @@ async def session_ws(websocket: WebSocket, session_id: str):
                             'content': 'Still processing the previous message — please wait.',
                         }))
                     else:
+                        _ws_msg_count += 1
                         clean_text = text.strip()
                         user_msg = {'role': 'user', 'content': clean_text, 'ts': time.time()}
                         session.messages_structured.append(user_msg)
@@ -1316,6 +1444,19 @@ async def session_ws(websocket: WebSocket, session_id: str):
     finally:
         if websocket in session.clients:
             session.clients.remove(websocket)
+        _dur = int((time.monotonic() - _ws_start) * 1000)
+        lf.record_span(
+            'ws-session',
+            trace_name=session.label,
+            tags=['service:webapp', f'mode:{session.mode}'],
+            metadata={
+                'session_id': session_id,
+                'mode': session.mode,
+                'message_count': _ws_msg_count,
+                'duration_ms': _dur,
+            },
+            duration_ms=_dur,
+        )
 
 
 # ── Static frontend (production) ──────────────────────────────────────────────

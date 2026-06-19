@@ -551,6 +551,16 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `MINIO_BUCKET` | Manual | MinIO bucket name (e.g. `job-search`) |
 | `DB_PASSWORD` | Manual | PostgreSQL password for OB1 shared database |
 
+**`.env.services`** (Langfuse — optional):
+
+| Variable | Purpose |
+|---|---|
+| `LANGFUSE_HOST` | Langfuse instance URL (default `https://cloud.langfuse.com`) |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse project public key (`pk-lf-...`) |
+| `LANGFUSE_SECRET_KEY` | Langfuse project secret key (`sk-lf-...`) |
+
+Tracing activates automatically when both keys are present. See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the full trace schema, dashboard usage, and how to trace OB1 core MCP calls via the Langfuse proxy.
+
 **`.claude/settings.json`**:
 
 | Field | Purpose |

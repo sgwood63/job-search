@@ -434,6 +434,20 @@ Requires `OB1_BASE_URL` and `OB1_API_KEY` in the environment. Safe to re-run —
 
 ---
 
+## Observability (Langfuse)
+
+Langfuse tracing is optional and works across all deployment modes. Add three vars to `.env.services`:
+
+```bash
+export LANGFUSE_HOST="https://cloud.langfuse.com"   # or self-hosted URL
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+```
+
+Traces are emitted from the FastAPI backend (Claude subprocess calls), `job-search-mcp` (embeddings + chat), and `ob1-rest-pg` (embeddings). Core OB1 MCP calls can be traced via the Langfuse proxy by overriding `EMBEDDING_API_BASE` / `CHAT_API_BASE`. Full details: [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md).
+
+For K8s deployments, re-run `bash scripts/k8s-apply-env.sh` after adding the keys to propagate them to `job-search-secret` and `webapp-secret`, then roll the affected deployments.
+
 ## Not Yet Documented
 
 These combinations are not currently documented or validated:

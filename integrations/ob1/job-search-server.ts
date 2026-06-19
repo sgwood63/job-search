@@ -21,6 +21,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 import { Pool } from "postgres";
+import { traceGeneration, traceSpan } from "./langfuse_ts.ts";
 import {
   registerJobSearchTools,
   chunkMarkdown,
@@ -75,6 +76,13 @@ async function getEmbedding(text: string): Promise<number[]> {
     throw new Error(`Embedding API failed: ${r.status} ${msg}`);
   }
   const d = await r.json();
+  traceGeneration({
+    name: "embedding",
+    model: EMBEDDING_MODEL,
+    input: text.slice(0, 200),
+    usage: { input: d.usage?.prompt_tokens ?? 0, output: 0 },
+    tags: ["service:job-search-mcp"],
+  }).catch(() => {});
   return d.data[0].embedding;
 }
 
@@ -96,7 +104,19 @@ async function summarizeForEmbedding(content: string): Promise<string> {
     }),
   });
   const d = await r.json();
-  return d.choices[0].message.content as string;
+  const summary = d.choices[0].message.content as string;
+  traceGeneration({
+    name: "summarize-for-embedding",
+    model: CHAT_MODEL,
+    input: content.slice(0, 200),
+    output: summary.slice(0, 200),
+    usage: {
+      input: d.usage?.prompt_tokens ?? 0,
+      output: d.usage?.completion_tokens ?? 0,
+    },
+    tags: ["service:job-search-mcp"],
+  }).catch(() => {});
+  return summary;
 }
 
 async function extractMetadata(text: string): Promise<Record<string, unknown>> {
@@ -122,11 +142,24 @@ Only extract what's explicitly there.`,
     }),
   });
   const d = await r.json();
+  let extracted: Record<string, unknown>;
   try {
-    return JSON.parse(d.choices[0].message.content);
+    extracted = JSON.parse(d.choices[0].message.content);
   } catch {
-    return { topics: ["uncategorized"], type: "observation" };
+    extracted = { topics: ["uncategorized"], type: "observation" };
   }
+  traceGeneration({
+    name: "extract-metadata",
+    model: CHAT_MODEL,
+    input: text.slice(0, 200),
+    output: JSON.stringify(extracted).slice(0, 200),
+    usage: {
+      input: d.usage?.prompt_tokens ?? 0,
+      output: d.usage?.completion_tokens ?? 0,
+    },
+    tags: ["service:job-search-mcp"],
+  }).catch(() => {});
+  return extracted;
 }
 
 // --- captureThought: writes into OB1's thoughts table, tagged with source ---
@@ -298,6 +331,22 @@ app.use("*", async (c, next) => {
   }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
 });
 
+// Timing middleware — REST routes only (MCP timing handled inline in the catch-all)
+app.use("/api/*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const status = c.res?.status ?? 0;
+  traceSpan({
+    name: `rest:${c.req.method} ${c.req.path}`,
+    tags: ["service:job-search-mcp", `method:${c.req.method}`, `status:${status}`],
+    metadata: { method: c.req.method, path: c.req.path, status, duration_ms: ms },
+    durationMs: ms,
+    level: status >= 400 ? "ERROR" : "DEFAULT",
+    statusMessage: status >= 400 ? String(status) : undefined,
+  }).catch(() => {});
+});
+
 // ===========================================================================
 // REST API — /api/v2/*
 // ===========================================================================
@@ -307,12 +356,25 @@ app.use("*", async (c, next) => {
 app.put("/api/v2/files/*", async (c) => {
   const key = c.req.path.slice("/api/v2/files/".length);
   const body = await c.req.json();
+  const start = Date.now();
   const result = await uploadFileCore(pool, captureThought, {
     key,
     content: body.content,
     content_type: body.content_type ?? "text/markdown",
     binary: body.binary ?? false,
   }, chunkContent);
+  traceSpan({
+    name: "file-upload",
+    tags: ["service:job-search-mcp"],
+    metadata: {
+      key,
+      content_type: body.content_type ?? "text/markdown",
+      binary: body.binary ?? false,
+      bytes: result.bytes,
+      duration_ms: Date.now() - start,
+    },
+    durationMs: Date.now() - start,
+  }).catch(() => {});
   return c.json(result, 201, corsHeaders);
 });
 
@@ -325,7 +387,14 @@ app.get("/api/v2/files", async (c) => {
 
 app.get("/api/v2/files/*", async (c) => {
   const key = c.req.path.slice("/api/v2/files/".length);
+  const start = Date.now();
   const { bytes, contentType } = await getFileCore(key);
+  traceSpan({
+    name: "file-get",
+    tags: ["service:job-search-mcp"],
+    metadata: { key, content_type: contentType, bytes: bytes.length, duration_ms: Date.now() - start },
+    durationMs: Date.now() - start,
+  }).catch(() => {});
   return new Response(bytes, {
     headers: { "Content-Type": contentType, ...corsHeaders },
   });
@@ -520,16 +589,36 @@ app.get("/api/v2/overdue", async (c) => {
 
 app.post("/api/v2/search", async (c) => {
   const { query, limit = 5 } = await c.req.json();
+  const start = Date.now();
   const results = await searchApplicationsSemanticCore(searchThoughts, query, limit);
   if (results === null) return c.json({ error: "Search not configured" }, 503, corsHeaders);
+  traceSpan({
+    name: "search-applications-semantic",
+    tags: ["service:job-search-mcp"],
+    metadata: { query: query.slice(0, 200), limit, result_count: results.length, duration_ms: Date.now() - start },
+    durationMs: Date.now() - start,
+  }).catch(() => {});
   return c.json(results, 200, corsHeaders);
 });
 
 // Phase 2: section-level chunk search
 app.post("/api/v2/search/chunks", async (c) => {
   const { query, storage_key_prefix, limit = 5 } = await c.req.json();
+  const start = Date.now();
   const results = await searchChunksSemanticCore(pool, embedQuery, { query, storage_key_prefix, limit });
   if (results === null) return c.json({ error: "Chunk search not configured" }, 503, corsHeaders);
+  traceSpan({
+    name: "search-chunks-semantic",
+    tags: ["service:job-search-mcp"],
+    metadata: {
+      query: query.slice(0, 200),
+      storage_key_prefix: storage_key_prefix ?? null,
+      limit,
+      result_count: results.length,
+      duration_ms: Date.now() - start,
+    },
+    durationMs: Date.now() - start,
+  }).catch(() => {});
   return c.json(results, 200, corsHeaders);
 });
 
@@ -578,12 +667,41 @@ app.get("/api/v2/search-runs", async (c) => {
 app.post("/api/v2/search-runs", async (c) => {
   const body = await c.req.json() as LogSearchRunArgs;
   const id = await logSearchRunCore(pool, body);
+  traceSpan({
+    name: "ingest-run",
+    tags: ["service:job-search-mcp", `profile:${body.profile_slug ?? "unknown"}`],
+    metadata: {
+      profile_slug: body.profile_slug,
+      run_type: body.run_type,
+      query_used: body.query_used?.slice(0, 200),
+      total_fetched: body.total_fetched,
+      fit_count: body.fit_count,
+      no_fit_count: body.no_fit_count,
+      error_count: body.error_count,
+      fetch_failed_count: body.fetch_failed_count,
+    },
+  }).catch(() => {});
   return c.json({ id }, 201, corsHeaders);
 });
 
 app.post("/api/v2/ingested-positions", async (c) => {
+  const sessionId = c.req.header("x-langfuse-session-id");
   const body = await c.req.json() as LogIngestedPositionArgs;
   const result = await logIngestedPositionCore(pool, body);
+  traceSpan({
+    name: "job-screened",
+    tags: ["service:job-search", `outcome:${body.outcome}`],
+    metadata: {
+      company: body.company_name,
+      role: body.role_title,
+      outcome: body.outcome,
+      no_fit_reason: body.no_fit_reason ?? null,
+      profile_slug: body.profile_slug ?? null,
+      search_run_id: body.search_run_id ?? null,
+      is_repost: body.is_repost ?? false,
+    },
+    sessionId: sessionId || undefined,
+  }).catch(() => {});
   return c.json(result, 201, corsHeaders);
 });
 
@@ -593,15 +711,37 @@ app.post("/api/v2/ingested-positions", async (c) => {
 
 app.all("*", async (c) => {
   // Auth handled by middleware above.
+  const mcpStart = Date.now();
+  let toolName: string | null = null;
+
+  // Buffer POST body to extract the MCP tool name for telemetry, then reconstruct
+  // the request so the transport can read it. Body streams are single-use.
+  const isPost = c.req.method === "POST";
+  let bodyText: string | null = null;
+  if (isPost) {
+    bodyText = await c.req.text().catch(() => null);
+    if (bodyText) {
+      try {
+        const rpc = JSON.parse(bodyText);
+        if (rpc.method === "tools/call" && typeof rpc.params?.name === "string") {
+          toolName = rpc.params.name;
+        }
+      } catch { /* non-JSON or non-tool-call */ }
+    }
+  }
+
   // Fix: patch missing or incomplete Accept header — StreamableHTTPTransport requires both
-  // application/json and text/event-stream.
-  if (!c.req.header("accept")?.includes("text/event-stream")) {
+  // application/json and text/event-stream. Also re-attach body after reading above.
+  const needsAcceptPatch = !c.req.header("accept")?.includes("text/event-stream");
+  if (isPost || needsAcceptPatch) {
     const headers = new Headers(c.req.raw.headers);
-    headers.set("Accept", "application/json, text/event-stream");
+    if (needsAcceptPatch) {
+      headers.set("Accept", "application/json, text/event-stream");
+    }
     const patched = new Request(c.req.raw.url, {
       method: c.req.raw.method,
       headers,
-      body: c.req.raw.body,
+      body: isPost ? (bodyText ?? "") : c.req.raw.body,
       // @ts-ignore -- duplex required for streaming body in Deno
       duplex: "half",
     });
@@ -610,7 +750,16 @@ app.all("*", async (c) => {
 
   const transport = new StreamableHTTPTransport();
   await server.connect(transport);
-  return transport.handleRequest(c);
+  const response = await transport.handleRequest(c);
+
+  traceSpan({
+    name: toolName ? `mcp-tool:${toolName}` : "mcp-request",
+    tags: ["service:job-search-mcp", ...(toolName ? [`tool:${toolName}`] : [])],
+    metadata: { tool: toolName, duration_ms: Date.now() - mcpStart },
+    durationMs: Date.now() - mcpStart,
+  }).catch(() => {});
+
+  return response;
 });
 
 Deno.serve({ port: parseInt(Deno.env.get("PORT") || "8001", 10) }, app.fetch);

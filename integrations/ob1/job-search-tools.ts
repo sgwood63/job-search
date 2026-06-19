@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { traceSpan } from "./langfuse_ts.ts";
 import { S3Client, PutObjectCommand, GetObjectCommand,
          ListObjectsV2Command, DeleteObjectCommand,
          GetObjectCommandOutput } from "@aws-sdk/client-s3";
@@ -1665,6 +1666,19 @@ export function registerLogIngestedPositionTool(server: unknown, pool: unknown) 
     },
     async (args: LogIngestedPositionArgs) => {
       const result = await logIngestedPositionCore(pool, args);
+      traceSpan({
+        name: "job-screened",
+        tags: ["service:job-search", `outcome:${args.outcome}`],
+        metadata: {
+          company: args.company_name,
+          role: args.role_title,
+          outcome: args.outcome,
+          no_fit_reason: args.no_fit_reason ?? null,
+          profile_slug: args.profile_slug ?? null,
+          search_run_id: args.search_run_id ?? null,
+          is_repost: args.is_repost ?? false,
+        },
+      }).catch(() => {});
       return {
         content: [{
           type: "text",

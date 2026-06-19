@@ -5,6 +5,7 @@
 
 import { Hono } from "hono";
 import postgres from "postgres";
+import { traceGeneration, traceSpan } from "../langfuse_ts.ts";
 
 const MCP_ACCESS_KEY = Deno.env.get("MCP_ACCESS_KEY")!;
 const PORT = parseInt(Deno.env.get("PORT") || "8002");
@@ -59,7 +60,15 @@ async function embed(text: string): Promise<number[]> {
     body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
   });
   if (!res.ok) throw new Error(`Embedding API ${res.status}`);
-  return (await res.json()).data[0].embedding;
+  const d = await res.json();
+  traceGeneration({
+    name: "embedding",
+    model: EMBEDDING_MODEL,
+    input: text.slice(0, 200),
+    usage: { input: d.usage?.prompt_tokens ?? 0, output: 0 },
+    tags: ["service:ob1-rest-pg"],
+  }).catch(() => {});
+  return d.data[0].embedding;
 }
 
 function fp(text: string) { return text.toLowerCase().replace(/\s+/g, " ").replace(/[^\w\s]/g, "").trim(); }
@@ -82,6 +91,25 @@ app.use("*", async (c, next) => {
   const key = c.req.header("x-brain-key") || new URL(c.req.url).searchParams.get("key");
   if (!key || key !== MCP_ACCESS_KEY) return c.json({ error: "Invalid or missing access key" }, 401, cors);
   await next();
+});
+
+// Timing middleware — fires after auth for all non-OPTIONS, non-health routes
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS" || c.req.path === "/health") return await next();
+  const sessionId = c.req.header("x-langfuse-session-id") || undefined;
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const status = c.res?.status ?? 0;
+  traceSpan({
+    name: `rest:${c.req.method} ${c.req.path}`,
+    tags: ["service:ob1-rest-pg", `method:${c.req.method}`, `status:${status}`],
+    metadata: { method: c.req.method, path: c.req.path, status, duration_ms: ms },
+    durationMs: ms,
+    level: status >= 400 ? "ERROR" : "DEFAULT",
+    statusMessage: status >= 400 ? String(status) : undefined,
+    sessionId,
+  }).catch(() => {});
 });
 
 app.get("/health", (c) => c.json({ ok: true, status: "ok", service: "open-brain-rest-pg", version: "0.1.0" }, 200, cors));
@@ -255,12 +283,20 @@ app.post("/search", async (c) => {
     const emb = await embed(query);
     const embStr = `[${emb.join(",")}]`;
     const fetchCount = Math.min(100, limit * page * 3);
+    const dbStart = Date.now();
     const matches = await sql.unsafe(
       `SELECT id, content, metadata, created_at, (1-(embedding<=>$1::vector)) AS similarity FROM thoughts WHERE embedding IS NOT NULL AND (1-(embedding<=>$1::vector))>=$2 ORDER BY similarity DESC LIMIT $3`,
       [embStr, threshold, fetchCount]
     );
+    const dbMs = Date.now() - dbStart;
     const all = (matches as Row[]).map((r, i) => normalize(r, { similarity: Number((r as Record<string, unknown>).similarity), rank: i + 1 })).filter((r) => !exc || r.sensitivity_tier !== "restricted");
     const results = all.slice(offset, offset + limit);
+    traceSpan({
+      name: "db-semantic-search",
+      tags: ["service:ob1-rest-pg"],
+      metadata: { query: query.slice(0, 200), threshold, fetch_count: fetchCount, result_count: all.length, duration_ms: dbMs },
+      durationMs: dbMs,
+    }).catch(() => {});
     return c.json({ results, count: results.length, total: all.length, page, per_page: limit, total_pages: Math.ceil(all.length / limit), mode: "semantic" }, 200, cors);
   } catch (e) {
     return c.json({ error: String(e) }, 500, cors);

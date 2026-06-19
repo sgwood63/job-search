@@ -167,6 +167,55 @@ spec:
             limits:
               memory: 512Mi
 
+        # Container 3: Langfuse observability proxy (sidecar)
+        # openbrain-mcp routes its EMBEDDING_API_BASE and CHAT_API_BASE here
+        # (http://localhost:8080); this proxy forwards to the real upstream and
+        # logs each LLM call to Langfuse.
+        - name: langfuse-proxy
+          image: langfuse-proxy:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: proxy
+          env:
+            - name: UPSTREAM_EMBEDDING_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: openbrain-configmap
+                  key: UPSTREAM_EMBEDDING_API_BASE
+            - name: UPSTREAM_CHAT_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: openbrain-configmap
+                  key: UPSTREAM_CHAT_API_BASE
+            - name: LANGFUSE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: openbrain-configmap
+                  key: LANGFUSE_HOST
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: langfuse-public-key
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openbrain-secret
+                  key: langfuse-secret-key
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+
       volumes:
         - name: init-sql
           configMap:
