@@ -21,6 +21,10 @@ Trigger: User says "I have a new achievement," "I finished a project," "I verifi
 - [ ] **A1. role-achievements.md** — Add or update the achievement row. Include Power score and a relevance score for every active profile column (P1 through P5, or however many are active). Add sourcing/framing notes. If a metric was [UNVERIFIED] and is now confirmed, remove the flag and add source.
 - [ ] **A2. EXPERIENCE-REFERENCE.md** — Add or update the verified fact in the relevant role's section. Include dates, metrics, and technology where applicable.
 - [ ] **A3. Cross-profile propagation** — Open each `*-CONTENT.md` file for every active profile in turn. For each: does the new or updated achievement materially strengthen any bullet, fill a documented gap, or warrant a new entry? Update where relevant. This step is not complete until all active profiles have been explicitly reviewed.
+- [ ] **A3.5. Knowledge graph edges (OB1 mode only)** — Capture an achievement thought and create `demonstrates` edges:
+  1. `capture_thought(content=<achievement text + context>, metadata={source_type: 'job_search', thought_category: 'achievement', profile_slug: <profile_slug>})`
+  2. For each distinct skill or tool the achievement demonstrates (cap 8): `create_knowledge_edge(from_entity_type='project', from_entity_name=<achievement title — 1–5 word summary>, relation='demonstrates', to_entity_type=<'tool' | 'topic'>, to_entity_name=<skill name>, metadata={source: 'job_search', profile_slug: <profile_slug>})`
+  Skip in local mode.
 - [ ] **A4. applicant-maintenance.md** — Append the session entry. Include: date, achievement ID, what changed, and for each active profile CONTENT file — whether it was reviewed and whether it was updated (and why not if skipped).
 
 **career-advice.md for achievements:** Do NOT update the Profile Fit Scores table for an achievement addition — scores are set at profile creation or major career direction shifts. Update Feedback Incorporated only if the new achievement resolves a documented skill gap or materially changes the strategic advice.
