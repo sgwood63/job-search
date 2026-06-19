@@ -2,8 +2,8 @@ name: interview-prep
 kind: skill
 description: Generate an interview prep brief for a specific application and stage — required reading, output structure, stage inference, warm connections
 status: active
-pinned: v2
-latest: v2
+pinned: v3
+latest: v3
 policies:
   - factuality
   - storage-routing
@@ -13,6 +13,14 @@ inputs:
 outputs:
   - prep_brief
 changelog:
+  - version: v3
+    date: 2026-06-18
+    summary: >
+      Knowledge map (feat/ob1-knowledge-map): primary retrieval uses thought IDs from
+      notes-index.md (mcp__open-brain__fetch by ID) instead of search_chunks_semantic on
+      notes.md; legacy fallback to v2 chunk-based retrieval when notes-index.md is absent;
+      after generating prep brief, captures it as interview_prep thought and updates
+      notes-index.md with thought ID
   - version: v2
     date: 2026-06-15
     summary: Added OB1 semantic retrieval (search_chunks_semantic) for notes.md and job-description.md sections with required-section fall-back; local mode falls back to full file reads; no output structure changes

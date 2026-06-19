@@ -6,8 +6,8 @@ description: >
   save per storage-routing, and register in tracker. Called by create-application,
   search-jobs, and search-jobs-linkedin.
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 policies:
   - storage-routing
   - factuality
@@ -26,6 +26,14 @@ outputs:
   - score               # 1-10
   - profile_match       # profile slug selected by jd-evaluation
 changelog:
+  - version: v2
+    date: 2026-06-18
+    summary: >
+      Knowledge map (feat/ob1-knowledge-map): replaces notes.md stub with notes-index.md
+      (lightweight header + OB1 thought key registry). New Step 5 (OB1 only): captures
+      jd_analysis and fit_assessment thoughts via mcp__open-brain__capture_thought;
+      updates notes-index.md with returned thought IDs. Local mode unchanged (still writes
+      notes.md v1 stub). Callers now call skills/application-summary to generate notes.md.
   - version: v1
     date: 2026-06-12
     summary: >

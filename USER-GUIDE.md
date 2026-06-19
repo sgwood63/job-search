@@ -345,11 +345,18 @@ The assistant helps you structure and argue your answer. It will not fabricate f
 
 ### Capturing what happened
 
-Everything gets recorded in the application's `notes.md` automatically: the cover letter version used, questions answered, exercise approach. If you submitted something you drafted yourself, tell the assistant:
+Everything gets recorded automatically as searchable OB1 notes: the cover letter version used, questions answered, exercise approach, meeting summaries, emails. Each piece of content is indexed as a separate thought in OB1 rather than appended to a single file, so any session can retrieve exactly the relevant context without loading a growing document.
+
+A human-readable `notes.md` is generated from these thoughts whenever you need it — before PDF review, before interview prep, or on request:
+
+> "Show me the full notes for Acme Corp."
+> "Regenerate the notes for my interview tomorrow."
+
+If you submitted something you drafted yourself, tell the assistant:
 
 > "I ended up writing my own answer to the 'why us' question — here's what I sent."
 
-It saves it so your record stays complete.
+It captures it so your record stays complete and searchable.
 
 ---
 

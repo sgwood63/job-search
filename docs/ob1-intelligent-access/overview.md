@@ -2,7 +2,7 @@
 
 **Goal:** Reduce context window usage (cost + compression risk) by replacing full-file context loads with targeted semantic retrieval and table-based queries.
 
-**Status:** Phase 1 complete (drafts). Phases 2–3 in progress.
+**Status:** Phases 1–3 complete (promoted). Phase 4 (Knowledge Map) in implementation on `feat/ob1-knowledge-map`.
 
 ## Background
 
@@ -78,9 +78,40 @@ Surface relevant past applications during new JD processing and resume generatio
 | role-achievements.md in resume | Not a chunking target | Upstream maintenance source; not read during resume generation |
 | `js_ingested_positions` PK | UUID (matches all other js_* tables) | Consistency; no bigserial special cases |
 
+### Phase 4 — Knowledge Map via OB1 Thoughts (in implementation)
+
+Capture every piece of application knowledge as an OB1 thought. OB1's entity extraction worker automatically builds a graph of skills, companies, people, and requirement themes. `notes.md` becomes a generated view from those thoughts rather than the authoritative document.
+
+**What changes:**
+- `notes-index.md` replaces `notes.md` as the primary per-application file — lightweight header block + OB1 thought ID registry (~20 lines)
+- `notes.md` becomes a generated view rendered on demand by the new `skills/application-summary` skill
+- `workflows/process-jd/v2` adds Step 5: capture `jd_analysis` + `fit_assessment` thoughts immediately after screening, store thought IDs in notes-index.md
+- `workflows/create-application/v4` captures `domain_connection`, `company_research`, and `resume_strategy` thoughts; calls application-summary to render notes.md at end
+- `skills/interview-prep/v3` retrieves thoughts by ID from notes-index.md instead of loading notes.md wholesale; captures the generated prep brief as a thought
+- Profile maintenance (Phase F): when adding an achievement to CONTENT.md, also `capture_thought` with `thought_category: achievement` and `profile_slug`
+
+**Infrastructure required:** none beyond what's already deployed — uses existing `mcp__open-brain__capture_thought` and `mcp__open-brain__fetch`.
+
+**Entity graph (automatic):** OB1's entity extraction worker builds edges from thought co-occurrences. Company name → `organization` entity; skill mentions → `tool`/`topic` entities; people names → `person` entities. These accumulate across applications, building a queryable skills/company graph.
+
+**Phase 4 gap (deferred to Phase 5):** Expose OB-Graph tools (`create_edge`, `get_neighbors`, `traverse_graph`) in the OB1 MCP server to enable explicit `company requires skill` and `achievement demonstrates skill` edge creation from workflows.
+
+**Context impact:** Significant for interview-prep sessions — replaces full notes.md load with targeted thought fetches by ID.
+
+**Files changed:**
+- `workflows/process-jd/v2.md` — new Step 5 (thought capture + notes-index.md)
+- `workflows/create-application/v4.md` — thought capture + application-summary call
+- `skills/interview-prep/v3.md` — thought-based retrieval
+- `skills/application-summary/` — new skill
+- `docs/architecture/ob1-knowledge-map-spec.md` — full design spec
+
+**Related:** `docs/ob1-intelligent-access/chunking-design.md` §Relationship to Phase 4
+
 ## Related Files
 
-- Plan: `$APP_DIR/.claude/plans/now-we-have-ob1-mossy-quiche.md`
+- Plan (Phases 1–3): `$APP_DIR/.claude/plans/now-we-have-ob1-mossy-quiche.md`
+- Plan (Phase 4): `$APP_DIR/.claude/plans/ob1-enhancements-and-use-floating-crown.md`
+- Spec (Phase 4): `$APP_DIR/docs/architecture/ob1-knowledge-map-spec.md`
 - Schema: `integrations/ob1/job-search-schema.sql`
 - Tools: `integrations/ob1/job-search-tools.ts`
 - Server: `integrations/ob1/job-search-server.ts`

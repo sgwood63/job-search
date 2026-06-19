@@ -2,8 +2,8 @@ name: create-application
 kind: workflow
 description: Full JD pipeline — fetch, delegate screening and folder creation to process-jd, then fit resume generation and full notes expansion
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 policies:
   - storage-routing
 skills:
@@ -16,6 +16,13 @@ outputs:
   - verdict
   - resume_md            # fit only
 changelog:
+  - version: v4
+    date: 2026-06-18
+    summary: >
+      Knowledge map (feat/ob1-knowledge-map): replaces Step 4 notes-expansion with OB1 thought
+      capture for domain_connection, company_research, and resume_strategy; updates notes-index.md
+      with thought IDs; calls skills/application-summary to render notes.md. Status two-file rule
+      now applies to notes-index.md. Local mode falls back to v3 Step 4 inline expansion.
   - version: v3
     date: 2026-06-14
     summary: OB1 audit trail — Step 0 adds ingest history check (check_position_seen) for previously-rejected positions; Step 2 always calls log_ingested_position after process-jd; Step 4a stores domain_connection via update_application_fields

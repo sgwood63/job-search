@@ -155,10 +155,11 @@ $APPLICANT_DIR/
 │
 ├── applications/                # One folder per application
 │   └── YYYY-MM-DD-company-role/
+│       ├── notes-index.md             # PRIMARY: header block + OB1 thought key registry (v4+ model)
+│       ├── notes.md                   # GENERATED VIEW: rendered from OB1 thoughts by application-summary skill
 │       ├── job-description.md         # Processed JD + extracted key info
 │       ├── jd-<company>-<role>.md     # Original JD full text (URL/pasted source)
 │       ├── jd-<company>-<role>.pdf    # Original JD (PDF source)
-│       ├── notes.md                   # Analysis, interview prep, process, debrief
 │       ├── Name_Role.md               # Resume (markdown source)
 │       └── Name_Role.pdf              # Resume (PDF)
 │

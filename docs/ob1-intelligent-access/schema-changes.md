@@ -114,6 +114,66 @@ ALTER TABLE js_applications ADD COLUMN IF NOT EXISTS jd_requirements   jsonb;
 
 ---
 
+---
+
+## Phase 4 — OB1 Thought Metadata Schema (Knowledge Map)
+
+No new Postgres tables or columns required. Phase 4 uses the existing `thoughts` table via `mcp__open-brain__capture_thought`.
+
+**Thought metadata schema for job-search:**
+
+```json
+{
+  "source_type": "job_search",
+  "thought_category": "<category>",
+  "application_id": "<uuid from js_applications>",
+  "application_folder": "<YYYY-MM-DD-company-role>",
+  "company": "<company name>",
+  "profile_slug": "<slug>"
+}
+```
+
+**thought_category values:** `jd_analysis`, `fit_assessment`, `domain_connection`, `company_research`, `resume_strategy`, `interview_prep`, `meeting_notes`, `email`, `exercise`, `application_event`, `achievement`
+
+For `interview_prep` thoughts: add `"stage_name": "<stage>"` to metadata.  
+For `achievement` thoughts: omit `application_id` and `application_folder`.
+
+**notes-index.md** (new primary application folder file):
+
+```markdown
+# [Company] — [Role Title]
+
+**Status:** Resume Ready
+**Status Detail:** Resume generated YYYY-MM-DD — not yet submitted
+**Date:** YYYY-MM-DD
+**Profile:** <profile-slug> (score: N/10)
+**Source:** <source_name>
+**Source URL:** <url>
+
+## OB1 Thought Keys
+
+- jd_analysis: <thought_id>
+- fit_assessment: <thought_id>
+- domain_connection: <thought_id>
+- company_research: <thought_id>
+- resume_strategy: <thought_id>
+- interview_prep_1 (<stage> YYYY-MM-DD): <thought_id>
+```
+
+**Phase 4 gap — explicit edges (Phase 5 schema work):**
+
+When OB-Graph tools are exposed via the MCP server, add these typed edges:
+
+```
+graph_edges (existing OB-Graph table):
+  company_entity → "requires" → skill_entity    (from JD requirements)
+  achievement_entity → "demonstrates" → skill_entity  (from profile maintenance)
+```
+
+No DDL changes required — `graph_edges` table already exists in OB-Graph recipe.
+
+---
+
 ## Deprecated (no schema drop — backward compat)
 
 - `js_search_runs.summary_key` — column remains for historical rows; no new rows populate it after Phase 1 workflows are promoted

@@ -1,6 +1,6 @@
 # OB1 Intelligent Access — Chunking Design (Phase 2)
 
-Status: **planned** — not yet implemented.
+Status: **drafted** — see Phase 2 entry in schema-changes.md for deploy steps.
 
 ## Goal
 
@@ -108,6 +108,20 @@ deno run --allow-net --allow-env \
 ```
 
 Expected runtime: ~2 minutes per 100 files (limited by embedding API rate). Run during off-peak hours.
+
+## Relationship to Phase 4 (Knowledge Map)
+
+Phase 2 chunks and Phase 4 thoughts are **complementary, not competing**:
+
+| Mechanism | Granularity | Best for |
+|---|---|---|
+| Phase 2 chunks (`js_chunks`) | H2 section of a file | Per-requirement fuzzy retrieval from CONTENT.md during resume generation |
+| Phase 4 thoughts (OB1 `thoughts`) | Full application knowledge section | Retrieving application-specific content (fit assessment, interview prep, domain connection) by known thought ID |
+
+The chunk pipeline captures file content for profile retrieval. The thought pipeline captures application-event knowledge for interview prep and cross-app reasoning. They share OB1's embedding infrastructure but serve different query patterns.
+
+**When to use `search_chunks_semantic`:** Fuzzy content match — "find resume bullets similar to this JD requirement."  
+**When to use `mcp__open-brain__fetch`:** Known thought retrieval — "load the jd_analysis thought for this application (ID from notes-index.md)."
 
 ## Evaluation Results (to be filled after implementation)
 

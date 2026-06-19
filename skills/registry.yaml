@@ -4,10 +4,11 @@
 # this list and the directory tree stay in 1:1 sync.
 version: 1
 entries:
-  - { name: jd-evaluation,       kind: skill,    path: skills/jd-evaluation }
-  - { name: resume-generation,   kind: skill,    path: skills/resume-generation }
-  - { name: cover-letter,        kind: skill,    path: skills/cover-letter }
-  - { name: interview-prep,      kind: skill,    path: skills/interview-prep }
+  - { name: jd-evaluation,         kind: skill,    path: skills/jd-evaluation }
+  - { name: resume-generation,     kind: skill,    path: skills/resume-generation }
+  - { name: cover-letter,          kind: skill,    path: skills/cover-letter }
+  - { name: interview-prep,        kind: skill,    path: skills/interview-prep }
+  - { name: application-summary,   kind: skill,    path: skills/application-summary }
   - { name: factuality,          kind: policy,   path: policies/factuality }
   - { name: evidence-grounding,  kind: policy,   path: policies/evidence-grounding }
   - { name: company-descriptors, kind: policy,   path: policies/company-descriptors }

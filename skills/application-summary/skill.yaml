@@ -1,0 +1,25 @@
+name: application-summary
+kind: skill
+description: >
+  Generate or regenerate notes.md for an application by rendering OB1 thoughts in canonical
+  section order. OB1 mode only. Called automatically at end of create-application (v4);
+  also callable on demand before PDF review or interview prep.
+status: active
+pinned: v1
+latest: v1
+policies:
+  - storage-routing
+  - factuality
+inputs:
+  - application_folder    # YYYY-MM-DD-company-role
+  - application_id        # optional; derived from notes-index.md or get_pipeline if absent
+outputs:
+  - notes_md_key          # OB1 storage key for the generated notes.md
+changelog:
+  - version: v1
+    date: 2026-06-18
+    summary: >
+      New skill. Generates notes.md from OB1 thoughts tagged with application_id. Renders
+      jd_analysis, fit_assessment, domain_connection, company_research, resume_strategy,
+      interview_prep, meeting_notes, and application_event thoughts in canonical notes.md
+      section order. Part of the knowledge map initiative (feat/ob1-knowledge-map).
