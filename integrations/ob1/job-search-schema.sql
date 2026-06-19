@@ -22,12 +22,12 @@ CREATE TABLE IF NOT EXISTS js_files (
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now()
 );
+-- Phase 3: add thought_category to existing deployments (must precede the index below)
+ALTER TABLE js_files ADD COLUMN IF NOT EXISTS thought_category text;
 CREATE INDEX IF NOT EXISTS js_files_key_idx      ON js_files(storage_key);
 CREATE INDEX IF NOT EXISTS js_files_prefix_idx   ON js_files(storage_key text_pattern_ops);
 CREATE INDEX IF NOT EXISTS js_files_thought_idx  ON js_files(thought_id) WHERE thought_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS js_files_category_idx ON js_files(thought_category) WHERE thought_category IS NOT NULL;
--- Phase 3: add thought_category to existing deployments
-ALTER TABLE js_files ADD COLUMN IF NOT EXISTS thought_category text;
 
 -- ---------------------------------------------------------------------------
 -- js_applicant: core applicant profile (one row)
