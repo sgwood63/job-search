@@ -19,6 +19,8 @@ import { S3Client, PutObjectCommand, GetObjectCommand,
          ListObjectsV2Command, DeleteObjectCommand,
          GetObjectCommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { extractText as extractPdfText } from "unpdf";
+import mammoth from "mammoth";
 
 // ---------------------------------------------------------------------------
 // Object store client (MinIO or Supabase Storage, configured by env)
@@ -78,7 +80,134 @@ async function streamToBytes(stream: unknown): Promise<Uint8Array> {
 }
 
 function isTextType(contentType: string): boolean {
-  return contentType.startsWith("text/") || contentType === "application/json";
+  return contentType.startsWith("text/")
+    || contentType === "application/json"
+    || contentType === "application/xhtml+xml";
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: text extraction, context derivation, and category inference
+// ---------------------------------------------------------------------------
+
+async function extractAndCleanText(
+  bytes: Uint8Array,
+  contentType: string,
+  rawText?: string,
+): Promise<string | null> {
+  try {
+    if (contentType === "text/html" || contentType === "application/xhtml+xml") {
+      const html = rawText ?? new TextDecoder().decode(bytes);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+    }
+    if (contentType === "application/pdf") {
+      const { text } = await extractPdfText(bytes, { mergePages: true });
+      return text ?? null;
+    }
+    if (
+      contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      || contentType === "application/msword"
+    ) {
+      const result = await mammoth.extractRawText({ buffer: bytes.buffer as ArrayBuffer });
+      return result.value?.trim() || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface UploadContext {
+  directoryType: "application" | "profile" | "search" | "docs" | "unknown";
+  applicationStatus?: string;
+  company?: string;
+  profileSlug?: string;
+}
+
+async function deriveUploadContext(key: string, pool: unknown): Promise<UploadContext> {
+  const parts = key.split("/");
+  if (parts[0] === "applications" && parts[1]) {
+    const folder = parts[1];
+    try {
+      const c = await (pool as any).connect();
+      try {
+        const r = await c.queryObject(
+          `SELECT status, company_id FROM js_applications WHERE folder_prefix = $1 LIMIT 1`,
+          [folder],
+        );
+        if (r.rows[0]) {
+          const row = r.rows[0] as any;
+          let company: string | undefined;
+          if (row.company_id) {
+            const cr = await c.queryObject(
+              `SELECT name FROM js_companies WHERE id = $1 LIMIT 1`, [row.company_id],
+            );
+            company = (cr.rows[0] as any)?.name;
+          }
+          return { directoryType: "application", applicationStatus: row.status, company };
+        }
+      } finally { c.release(); }
+    } catch { /* best-effort */ }
+    return { directoryType: "application" };
+  }
+  if (parts[0] === "profiles" && parts[1]) {
+    return { directoryType: "profile", profileSlug: parts[1] };
+  }
+  if (parts[0] === "search") return { directoryType: "search" };
+  if (parts[0] === "docs") return { directoryType: "docs" };
+  return { directoryType: "unknown" };
+}
+
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const INFERENCE_MODEL = "claude-haiku-4-5-20251001";
+
+async function inferThoughtCategory(
+  text: string,
+  filename: string,
+  ctx: UploadContext,
+): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const snippet = text.slice(0, 2000);
+  const prompt = [
+    "You classify documents uploaded to a job search knowledge system.",
+    "Output exactly one thought_category label for the file below.",
+    "",
+    `Directory context: ${ctx.directoryType}`,
+    `Application status: ${ctx.applicationStatus ?? "unknown"}`,
+    `Company: ${ctx.company ?? "unknown"}`,
+    `Profile slug: ${ctx.profileSlug ?? "unknown"}`,
+    `Filename: ${filename}`,
+    "",
+    "Suggested categories: jd_analysis, fit_assessment, domain_connection, company_research,",
+    "resume_strategy, interview_prep, meeting_notes, email, exercise, application_event, achievement",
+    "",
+    `Content (first 2000 chars):\n${snippet}`,
+    "",
+    "Output one snake_case label only. If ambiguous and context is an application, output \"application_event\".",
+  ].join("\n");
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: INFERENCE_MODEL,
+        max_tokens: 20,
+        temperature: 0,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const category = (data?.content?.[0]?.text ?? "").trim().replace(/[^a-z_]/g, "");
+    return category || null;
+  } catch {
+    return null;
+  }
 }
 
 export type CaptureThoughtFn = (content: string, metadata: Record<string, unknown>) => Promise<string>;
@@ -157,9 +286,9 @@ export function chunkMarkdown(text: string): MarkdownChunk[] {
 export async function uploadFileCore(
   pool: unknown,
   captureThoughtFn: CaptureThoughtFn | undefined,
-  args: { key: string; content: string; content_type: string; binary: boolean },
+  args: { key: string; content: string; content_type: string; binary: boolean; thought_category?: string; application_folder?: string },
   chunkContentFn?: ChunkContentFn,
-): Promise<{ key: string; bytes: number }> {
+): Promise<{ key: string; bytes: number; thought_id?: string; thought_category?: string }> {
   const bytes = args.binary
     ? Uint8Array.from(atob(args.content), c => c.charCodeAt(0))
     : new TextEncoder().encode(args.content);
@@ -179,11 +308,30 @@ export async function uploadFileCore(
     Bucket: BUCKET, Key: args.key, Body: bytes, ContentType: args.content_type,
   }));
 
+  // Phase 3: derive context, extract text (including from PDF/DOCX/HTML), infer category, capture thought
+  const filename = args.key.split("/").pop() ?? args.key;
+  const ctx = await deriveUploadContext(args.application_folder ? `applications/${args.application_folder}/` : args.key, pool);
+
+  // Extract clean text: for non-HTML text types use content directly; for HTML strip tags; for PDF/DOCX extract
+  let cleanText: string | null = null;
+  if (!args.binary && isTextType(args.content_type)) {
+    cleanText = await extractAndCleanText(bytes, args.content_type, args.content);
+  } else if (args.binary) {
+    cleanText = await extractAndCleanText(bytes, args.content_type);
+  }
+
+  let thoughtCategory: string | null = args.thought_category ?? null;
   let thoughtId: string | null = null;
-  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && captureThoughtFn) {
+
+  if (cleanText && cleanText.length > 50 && captureThoughtFn) {
+    if (!thoughtCategory) {
+      thoughtCategory = await inferThoughtCategory(cleanText, filename, ctx);
+    }
     try {
-      thoughtId = await captureThoughtFn(args.content, {
+      thoughtId = await captureThoughtFn(cleanText, {
         type: "file", storage_key: args.key, content_type: args.content_type,
+        ...(thoughtCategory ? { thought_category: thoughtCategory } : {}),
+        ...(ctx.profileSlug ? { profile_slug: ctx.profileSlug } : {}),
       });
     } catch { /* best-effort */ }
   }
@@ -192,15 +340,16 @@ export async function uploadFileCore(
     const c = await (pool as any).connect();
     try {
       await c.queryObject(
-        `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id, thought_category)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (storage_key) DO UPDATE SET
            bucket = EXCLUDED.bucket,
            content_type = EXCLUDED.content_type,
            file_size = EXCLUDED.file_size,
            thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
+           thought_category = COALESCE(EXCLUDED.thought_category, js_files.thought_category),
            updated_at = now()`,
-        [args.key, BUCKET, args.content_type, bytes.length, thoughtId],
+        [args.key, BUCKET, args.content_type, bytes.length, thoughtId, thoughtCategory],
       );
     } finally { c.release(); }
   }
@@ -213,14 +362,20 @@ export async function uploadFileCore(
     finally { c.release(); }
   }
 
-  // Phase 2: chunk the document at H2 boundaries for section-level retrieval
-  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && chunkContentFn) {
+  // Phase 2: chunk the document at H2 boundaries for section-level retrieval (use clean text for binary types)
+  const textToChunk = (!args.binary && isTextType(args.content_type)) ? args.content : cleanText;
+  if (textToChunk && textToChunk.length > 50 && chunkContentFn) {
     try {
-      await chunkContentFn(args.content, args.key);
+      await chunkContentFn(textToChunk, args.key);
     } catch { /* best-effort — chunking failure does not fail the upload */ }
   }
 
-  return { key: args.key, bytes: bytes.length };
+  return {
+    key: args.key,
+    bytes: bytes.length,
+    ...(thoughtId ? { thought_id: thoughtId } : {}),
+    ...(thoughtCategory ? { thought_category: thoughtCategory } : {}),
+  };
 }
 
 export async function getFileCore(key: string): Promise<{ bytes: Uint8Array; contentType: string }> {
@@ -1710,6 +1865,359 @@ export function registerGetIngestionHistoryTool(server: unknown, pool: unknown) 
 // Registration helper — call from job-search-server.ts main()
 // ---------------------------------------------------------------------------
 
+// ===========================================================================
+// KNOWLEDGE GRAPH TOOLS (Phase 3 — Knowledge Map)
+// Write/read OB1's entities + edges tables directly via the shared pg connection.
+// Adds 'requires' (company→skill) and 'demonstrates' (achievement→skill) edges.
+// No OB1 server changes required — edges.relation is TEXT, not an enum.
+// ===========================================================================
+
+export interface CreateKnowledgeEdgeArgs {
+  from_entity_type: string;
+  from_entity_name: string;
+  relation: string;
+  to_entity_type: string;
+  to_entity_name: string;
+  thought_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface KnowledgeEdgeResult {
+  from_entity_id: number;
+  to_entity_id: number;
+  edge_id: number;
+  support_count: number;
+  action: "created" | "incremented";
+}
+
+async function upsertEntity(
+  client: any,
+  entity_type: string,
+  canonical_name: string,
+): Promise<number> {
+  const normalized = canonical_name.toLowerCase().trim();
+  const { rows } = await client.queryObject(
+    `INSERT INTO public.entities(entity_type, canonical_name, normalized_name)
+     VALUES($1, $2, $3)
+     ON CONFLICT(entity_type, normalized_name) DO UPDATE
+       SET last_seen_at = now(), updated_at = now()
+     RETURNING id`,
+    [entity_type, canonical_name, normalized],
+  );
+  return Number((rows[0] as any).id);
+}
+
+export async function createKnowledgeEdgeCore(
+  pool: unknown,
+  args: CreateKnowledgeEdgeArgs,
+): Promise<KnowledgeEdgeResult> {
+  const client = await (pool as any).connect();
+  try {
+    const fromId = await upsertEntity(client, args.from_entity_type, args.from_entity_name);
+    const toId   = await upsertEntity(client, args.to_entity_type,   args.to_entity_name);
+
+    const meta = JSON.stringify(args.metadata ?? {});
+    const { rows: erows } = await client.queryObject(
+      `INSERT INTO public.edges(from_entity_id, to_entity_id, relation, metadata)
+       VALUES($1, $2, $3, $4::jsonb)
+       ON CONFLICT(from_entity_id, to_entity_id, relation) DO UPDATE
+         SET support_count = public.edges.support_count + 1,
+             metadata = excluded.metadata,
+             updated_at = now()
+       RETURNING id, support_count`,
+      [fromId, toId, args.relation, meta],
+    );
+    const edge    = erows[0] as any;
+    const edgeId  = Number(edge.id);
+    const sc      = Number(edge.support_count);
+
+    if (args.thought_id) {
+      await client.queryObject(
+        `INSERT INTO public.thought_entities(thought_id, entity_id, mention_role, source)
+         VALUES($1::bigint, $2, 'subject', 'job_search')
+         ON CONFLICT(thought_id, entity_id, mention_role) DO NOTHING`,
+        [args.thought_id, fromId],
+      );
+    }
+
+    return { from_entity_id: fromId, to_entity_id: toId, edge_id: edgeId, support_count: sc,
+             action: sc === 1 ? "created" : "incremented" };
+  } finally { client.release(); }
+}
+
+export function registerCreateKnowledgeEdgeTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "create_knowledge_edge",
+    "Upsert a typed edge in OB1's entity graph. Creates or updates entities and the directed edge between them. " +
+    "Supports 'requires' (company→skill from JD) and 'demonstrates' (achievement→skill from profile). " +
+    "Idempotent: re-calling the same (from, relation, to) triple increments support_count.",
+    {
+      from_entity_type: z.string().describe("'organization' | 'project' | 'tool' | 'topic' | 'person' | 'place'"),
+      from_entity_name: z.string().describe("Canonical name of the source entity"),
+      relation: z.string().describe("Edge type: 'requires' | 'demonstrates' | 'member_of' | any OB1 relation"),
+      to_entity_type: z.string().describe("'tool' | 'topic' | 'organization' | 'person' | 'project' | 'place'"),
+      to_entity_name: z.string().describe("Canonical name of the target entity"),
+      thought_id: z.string().optional().describe("UUID of a thought to link as evidence via thought_entities"),
+      metadata: z.record(z.string(), z.unknown()).optional().describe("e.g. {application_id, source: 'job_search', profile_slug}"),
+    },
+    async (args: CreateKnowledgeEdgeArgs) => {
+      const r = await createKnowledgeEdgeCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Edge ${r.action}: ${args.from_entity_name} --[${args.relation}]--> ${args.to_entity_name} ` +
+                `(support_count=${r.support_count}, edge_id=${r.edge_id})`,
+        }],
+      };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface EntityNeighborArgs {
+  entity_name: string;
+  entity_type?: string;
+  relation?: string;
+  direction?: "out" | "in" | "both";
+  limit?: number;
+}
+
+export interface EntityNeighbor {
+  entity_id: number;
+  entity_type: string;
+  entity_name: string;
+  relation: string;
+  support_count: number;
+  metadata: Record<string, unknown>;
+}
+
+export async function getEntityNeighborsCore(
+  pool: unknown,
+  args: EntityNeighborArgs,
+): Promise<EntityNeighbor[]> {
+  const direction = args.direction ?? "out";
+  const limit     = Math.min(args.limit ?? 20, 100);
+  const normalized = args.entity_name.toLowerCase().trim();
+
+  const client = await (pool as any).connect();
+  try {
+    // Resolve the start entity
+    const typeClause = args.entity_type ? " AND e.entity_type = $2" : "";
+    const typeParam  = args.entity_type ? [normalized, args.entity_type] : [normalized];
+    const { rows: erows } = await client.queryObject(
+      `SELECT id FROM public.entities e WHERE e.normalized_name = $1${typeClause} LIMIT 1`,
+      typeParam,
+    );
+    if (!erows.length) return [];
+    const entityId = Number((erows[0] as any).id);
+
+    const relClause = args.relation ? "AND ed.relation = $2" : "";
+    const buildQuery = (fromCol: string, toCol: string) =>
+      `SELECT nb.id AS entity_id, nb.entity_type, nb.canonical_name AS entity_name,
+              ed.relation, ed.support_count, ed.metadata
+       FROM public.edges ed
+       JOIN public.entities nb ON nb.id = ed.${toCol}
+       WHERE ed.${fromCol} = $1 ${relClause}`;
+
+    let query = "";
+    const params: unknown[] = [entityId];
+    if (args.relation) params.push(args.relation);
+
+    if (direction === "out") {
+      query = buildQuery("from_entity_id", "to_entity_id");
+    } else if (direction === "in") {
+      query = buildQuery("to_entity_id", "from_entity_id");
+    } else {
+      query =
+        `SELECT * FROM (${buildQuery("from_entity_id", "to_entity_id")}) q1
+         UNION
+         SELECT * FROM (${buildQuery("to_entity_id", "from_entity_id")}) q2`;
+    }
+    query += ` ORDER BY support_count DESC LIMIT ${limit}`;
+
+    const { rows } = await client.queryObject(query, params);
+    return (rows as any[]).map((r: any) => ({
+      entity_id:     Number(r.entity_id),
+      entity_type:   r.entity_type,
+      entity_name:   r.entity_name,
+      relation:      r.relation,
+      support_count: Number(r.support_count),
+      metadata:      (r.metadata ?? {}) as Record<string, unknown>,
+    }));
+  } finally { client.release(); }
+}
+
+export function registerGetEntityNeighborsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "get_entity_neighbors",
+    "Query direct neighbors of an entity in OB1's knowledge graph. " +
+    "Use direction='out' to find what a company requires (company→skill), " +
+    "direction='in' to find achievements that demonstrate a skill (achievement→skill). " +
+    "Returns entity name, type, relation, and support_count (edge strength).",
+    {
+      entity_name:  z.string().describe("Entity to start from (case-insensitive)"),
+      entity_type:  z.string().optional().describe("Optional type filter: 'organization' | 'tool' | 'topic' | 'person' | 'project'"),
+      relation:     z.string().optional().describe("Optional relation filter: 'requires' | 'demonstrates' | 'member_of'"),
+      direction:    z.enum(["out", "in", "both"]).default("out").describe("'out'=from→to, 'in'=to←from, 'both'=union"),
+      limit:        z.number().int().min(1).max(100).default(20),
+    },
+    async (args: EntityNeighborArgs) => {
+      const results = await getEntityNeighborsCore(pool, args);
+      if (!results.length) {
+        return { content: [{ type: "text", text: `No neighbors found for '${args.entity_name}'${args.relation ? ` (relation: ${args.relation})` : ""}.` }] };
+      }
+      const lines = results.map(r =>
+        `${r.entity_name} [${r.entity_type}] via '${r.relation}' (strength=${r.support_count})`,
+      );
+      return { content: [{ type: "text", text: `Neighbors of '${args.entity_name}':\n${lines.join("\n")}` }] };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface TraverseGraphArgs {
+  start_entity_name: string;
+  start_entity_type?: string;
+  relation_types?: string[];
+  max_depth?: number;
+  direction?: "out" | "in" | "both";
+  limit?: number;
+}
+
+export interface GraphResult {
+  nodes: Array<{ id: number; entity_type: string; entity_name: string }>;
+  edges: Array<{ from_id: number; to_id: number; relation: string; support_count: number }>;
+}
+
+export async function traverseKnowledgeGraphCore(
+  pool: unknown,
+  args: TraverseGraphArgs,
+): Promise<GraphResult> {
+  const maxDepth  = Math.min(args.max_depth ?? 2, 3);
+  const maxNodes  = Math.min(args.limit ?? 50, 200);
+  const direction = args.direction ?? "out";
+
+  // Resolve start entity
+  const startNeighbors = await getEntityNeighborsCore(pool, {
+    entity_name: args.start_entity_name,
+    entity_type: args.start_entity_type,
+    relation: args.relation_types?.[0],
+    direction,
+    limit: 1,
+  });
+
+  const client = await (pool as any).connect();
+  try {
+    const normalized = args.start_entity_name.toLowerCase().trim();
+    const typeClause = args.start_entity_type ? " AND entity_type = $2" : "";
+    const typeParam  = args.start_entity_type ? [normalized, args.start_entity_type] : [normalized];
+    const { rows: sr } = await client.queryObject(
+      `SELECT id, entity_type, canonical_name FROM public.entities WHERE normalized_name = $1${typeClause} LIMIT 1`,
+      typeParam,
+    );
+    if (!sr.length) return { nodes: [], edges: [] };
+
+    const startNode = sr[0] as any;
+    const startId   = Number(startNode.id);
+
+    const visited   = new Set<number>([startId]);
+    const nodes: GraphResult["nodes"] = [{ id: startId, entity_type: startNode.entity_type, entity_name: startNode.canonical_name }];
+    const edges: GraphResult["edges"] = [];
+    let frontier    = [startId];
+
+    for (let depth = 0; depth < maxDepth && frontier.length > 0 && nodes.length < maxNodes; depth++) {
+      const nextFrontier: number[] = [];
+
+      const fromCol   = direction === "in" ? "to_entity_id" : "from_entity_id";
+      const toCol     = direction === "in" ? "from_entity_id" : "to_entity_id";
+      const relFilter = args.relation_types?.length
+        ? `AND ed.relation = ANY($2::text[])`
+        : "";
+
+      const params: unknown[] = [frontier];
+      if (args.relation_types?.length) params.push(args.relation_types);
+
+      const limitClause = maxNodes - nodes.length;
+      const { rows: hopRows } = await client.queryObject(
+        `SELECT ed.${fromCol} AS src_id, ed.${toCol} AS nb_id, ed.relation, ed.support_count,
+                nb.entity_type, nb.canonical_name
+         FROM public.edges ed
+         JOIN public.entities nb ON nb.id = ed.${toCol}
+         WHERE ed.${fromCol} = ANY($1::bigint[]) ${relFilter}
+         ORDER BY ed.support_count DESC
+         LIMIT ${limitClause * frontier.length + 50}`,
+        params,
+      );
+
+      for (const row of hopRows as any[]) {
+        const nbId = Number(row.nb_id);
+        edges.push({ from_id: Number(row.src_id), to_id: nbId, relation: row.relation, support_count: Number(row.support_count) });
+        if (!visited.has(nbId)) {
+          visited.add(nbId);
+          nodes.push({ id: nbId, entity_type: row.entity_type, entity_name: row.canonical_name });
+          nextFrontier.push(nbId);
+          if (nodes.length >= maxNodes) break;
+        }
+      }
+
+      if (direction === "both") {
+        const { rows: inRows } = await client.queryObject(
+          `SELECT ed.to_entity_id AS src_id, ed.from_entity_id AS nb_id, ed.relation, ed.support_count,
+                  nb.entity_type, nb.canonical_name
+           FROM public.edges ed
+           JOIN public.entities nb ON nb.id = ed.from_entity_id
+           WHERE ed.to_entity_id = ANY($1::bigint[]) ${relFilter}
+           ORDER BY ed.support_count DESC
+           LIMIT ${Math.max(1, maxNodes - nodes.length) * frontier.length + 50}`,
+          params,
+        );
+        for (const row of inRows as any[]) {
+          const nbId = Number(row.nb_id);
+          edges.push({ from_id: Number(row.src_id), to_id: nbId, relation: row.relation, support_count: Number(row.support_count) });
+          if (!visited.has(nbId)) {
+            visited.add(nbId);
+            nodes.push({ id: nbId, entity_type: row.entity_type, entity_name: row.canonical_name });
+            nextFrontier.push(nbId);
+            if (nodes.length >= maxNodes) break;
+          }
+        }
+      }
+
+      frontier = nextFrontier;
+    }
+
+    return { nodes, edges };
+  } finally { client.release(); }
+}
+
+export function registerTraverseKnowledgeGraphTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "traverse_knowledge_graph",
+    "BFS traversal from a starting entity in OB1's knowledge graph. " +
+    "Returns all reachable nodes and edges up to max_depth hops. " +
+    "Use to discover cross-application patterns, e.g. which companies share required skills.",
+    {
+      start_entity_name: z.string().describe("Entity to start traversal from"),
+      start_entity_type: z.string().optional().describe("Optional type to disambiguate start entity"),
+      relation_types:    z.array(z.string()).optional().describe("Filter to specific relation types, e.g. ['requires','demonstrates']"),
+      max_depth:         z.number().int().min(1).max(3).default(2),
+      direction:         z.enum(["out", "in", "both"]).default("out"),
+      limit:             z.number().int().min(1).max(200).default(50).describe("Max total nodes to return"),
+    },
+    async (args: TraverseGraphArgs) => {
+      const result = await traverseKnowledgeGraphCore(pool, args);
+      if (!result.nodes.length) {
+        return { content: [{ type: "text", text: `No graph found from '${args.start_entity_name}'.` }] };
+      }
+      const summary = `Graph from '${args.start_entity_name}': ${result.nodes.length} nodes, ${result.edges.length} edges`;
+      const nodeList = result.nodes.map(n => `  [${n.entity_type}] ${n.entity_name}`).join("\n");
+      return { content: [{ type: "text", text: `${summary}\n\nNodes:\n${nodeList}` }] };
+    },
+  );
+}
+
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
   const { captureThought, searchThoughts, embedQuery, chunkContent } = callbacks;
 
@@ -1743,6 +2251,11 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   // Phase 3: structured metadata + cross-app pattern matching
   registerUpdateApplicationFieldsTool(server, pool);
   registerFindSimilarApplicationsTool(server, pool, embedQuery);
+
+  // Phase 3: Knowledge Map — explicit entity graph edges
+  registerCreateKnowledgeEdgeTool(server, pool);
+  registerGetEntityNeighborsTool(server, pool);
+  registerTraverseKnowledgeGraphTool(server, pool);
 
   // Ingest tracking tools (Phase 1 — replaces seen-jobs.json)
   registerCheckPositionSeenTool(server, pool);

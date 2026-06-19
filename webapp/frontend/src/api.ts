@@ -142,10 +142,13 @@ export const api = {
   upload: (
     dir: string,
     file: File,
-  ): Promise<{ ok: boolean; path: string; name: string }> => {
+    options?: { applicationFolder?: string },
+  ): Promise<{ ok: boolean; path: string; name: string; thought_id?: string; thought_category?: string }> => {
     const form = new FormData()
     form.append('file', file)
-    return apiFetch(`${BASE}/upload?dir=${encodeURIComponent(dir)}`, {
+    const qs = new URLSearchParams({ dir })
+    if (options?.applicationFolder) qs.set('application_folder', options.applicationFolder)
+    return apiFetch(`${BASE}/upload?${qs}`, {
       method: 'POST',
       body: form,
     }).then(r => r.json())

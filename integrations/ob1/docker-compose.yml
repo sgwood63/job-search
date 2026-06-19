@@ -124,7 +124,7 @@ services:
       - "8080:8000"   # OB1 MCP — localhost:8080 (avoids conflict with webapp on 8000)
     restart: unless-stopped
 
-  job-search-mcp:
+  job-search-mcp:  # Phase 3 (Knowledge Map): rebuild image to get create_knowledge_edge, get_entity_neighbors, traverse_knowledge_graph tools
     build:
       context: .          # integrations/ob1/ — contains Dockerfile + deno files
       dockerfile: Dockerfile
@@ -157,6 +157,8 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-openai/gpt-4o-mini}
       # Auth
       MCP_ACCESS_KEY: ${JOB_SEARCH_MCP_KEY:?JOB_SEARCH_MCP_KEY must be set in .env}
+      # Anthropic API — used for thought_category inference at upload time (optional; inference skipped if unset)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PORT: "8001"
       # Langfuse observability (optional — tracing enabled when both keys are present)
       LANGFUSE_HOST: ${LANGFUSE_HOST:-}

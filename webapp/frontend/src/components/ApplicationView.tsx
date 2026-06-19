@@ -241,7 +241,7 @@ export default function ApplicationView() {
     setUploading(true)
     try {
       for (const file of files) {
-        const result = await api.upload(uploadDir, file)
+        const result = await api.upload(uploadDir, file, { applicationFolder: folder })
         setSelected(result.path)
       }
       setTreeVersion(v => v + 1)
@@ -286,6 +286,7 @@ export default function ApplicationView() {
           <div className="p-2 border-t">
             <UploadButton
               dir={uploadDir}
+              applicationFolder={folder}
               onUploaded={path => {
                 setTreeVersion(v => v + 1)
                 setSelected(path)

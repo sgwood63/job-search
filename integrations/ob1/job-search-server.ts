@@ -3,7 +3,7 @@
  *
  * Runs alongside the Open Brain MCP server as a separate Kubernetes Deployment.
  * Shares the same PostgreSQL database (js_* tables) and MinIO object store.
- * Provides 16 MCP tools for file storage, pipeline state, and semantic search,
+ * Provides 29 MCP tools for file storage, pipeline state, semantic search, and knowledge graph,
  * plus a REST API at /api/v2/* for direct webapp access.
  *
  * Environment variables:
@@ -356,12 +356,15 @@ app.use("/api/*", async (c, next) => {
 app.put("/api/v2/files/*", async (c) => {
   const key = c.req.path.slice("/api/v2/files/".length);
   const body = await c.req.json();
+  const thoughtCategory = c.req.query("thought_category");
   const start = Date.now();
   const result = await uploadFileCore(pool, captureThought, {
     key,
     content: body.content,
     content_type: body.content_type ?? "text/markdown",
     binary: body.binary ?? false,
+    ...(thoughtCategory ? { thought_category: thoughtCategory } : {}),
+    ...(body.application_folder ? { application_folder: body.application_folder } : {}),
   }, chunkContent);
   traceSpan({
     name: "file-upload",

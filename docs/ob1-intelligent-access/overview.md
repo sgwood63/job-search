@@ -78,25 +78,24 @@ Surface relevant past applications during new JD processing and resume generatio
 | role-achievements.md in resume | Not a chunking target | Upstream maintenance source; not read during resume generation |
 | `js_ingested_positions` PK | UUID (matches all other js_* tables) | Consistency; no bigserial special cases |
 
-### Phase 4 — Knowledge Map via OB1 Thoughts (in implementation)
+### Phase 4 — Knowledge Map via OB1 Thoughts (implemented on `feat/ob1-knowledge-map`)
 
 Capture every piece of application knowledge as an OB1 thought. OB1's entity extraction worker automatically builds a graph of skills, companies, people, and requirement themes. `notes.md` becomes a generated view from those thoughts rather than the authoritative document.
 
-**What changes:**
+**What changed:**
 - `notes-index.md` replaces `notes.md` as the primary per-application file — lightweight header block + OB1 thought ID registry (~20 lines)
-- `notes.md` becomes a generated view rendered on demand by the new `skills/application-summary` skill
-- `workflows/process-jd/v2` adds Step 5: capture `jd_analysis` + `fit_assessment` thoughts immediately after screening, store thought IDs in notes-index.md
-- `workflows/create-application/v4` captures `domain_connection`, `company_research`, and `resume_strategy` thoughts; calls application-summary to render notes.md at end
-- `skills/interview-prep/v3` retrieves thoughts by ID from notes-index.md instead of loading notes.md wholesale; captures the generated prep brief as a thought
-- Profile maintenance (Phase F): when adding an achievement to CONTENT.md, also `capture_thought` with `thought_category: achievement` and `profile_slug`
+- `notes.md` becomes a generated view rendered on demand by the new `skills/application-summary/v1` skill
+- `workflows/process-jd/v3` adds Steps 5–6: capture `jd_analysis` + `fit_assessment` thoughts; create `company→requires→skill` edges for each JD requirement
+- `workflows/create-application/v4` captures `domain_connection`, `company_research`, and `resume_strategy` thoughts
+- `skills/interview-prep/v3` retrieves thoughts by ID instead of loading notes.md wholesale
+- `skills/resume-generation/v4` adds Phase 0.25: graph traversal enrichment before content retrieval
+- Profile maintenance: when adding an achievement, `capture_thought` with `thought_category: achievement`; create `achievement→demonstrates→skill` edges
 
-**Infrastructure required:** none beyond what's already deployed — uses existing `mcp__open-brain__capture_thought` and `mcp__open-brain__fetch`.
+**New MCP tools (Phase 4 explicit edges):** `create_knowledge_edge`, `get_entity_neighbors`, `traverse_knowledge_graph` — registered in job-search-mcp server; no OB1 source changes required.
 
-**Entity graph (automatic):** OB1's entity extraction worker builds edges from thought co-occurrences. Company name → `organization` entity; skill mentions → `tool`/`topic` entities; people names → `person` entities. These accumulate across applications, building a queryable skills/company graph.
+**Automatic thought_category inference (webapp):** Every file upload now triggers Haiku-based classification at `uploadFileCore`. No user input required. PDFs and DOCX are text-extracted (`unpdf`, `mammoth`) before inference. HTML files are tag-stripped. Inferred category stored in `js_files.thought_category` and in the thought metadata. Inference skipped gracefully when `ANTHROPIC_API_KEY` absent. Chat panel file attachments use `useLocation()` to pass application folder as context.
 
-**Phase 4 gap (deferred to Phase 5):** Expose OB-Graph tools (`create_edge`, `get_neighbors`, `traverse_graph`) in the OB1 MCP server to enable explicit `company requires skill` and `achievement demonstrates skill` edge creation from workflows.
-
-**Context impact:** Significant for interview-prep sessions — replaces full notes.md load with targeted thought fetches by ID.
+**Context impact:** Significant for interview-prep — replaces full notes.md load with targeted thought fetches by ID. Upload pipeline now produces fully indexed, classified thoughts for all file types including PDFs and DOCX.
 
 **Files changed:**
 - `workflows/process-jd/v2.md` — new Step 5 (thought capture + notes-index.md)

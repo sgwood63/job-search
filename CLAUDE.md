@@ -53,6 +53,22 @@ When the user provides new experience, achievements, preference changes, or care
 - Do not update `APPLICANT-MEMORY.md` for maintenance changes
 - When a profile's target roles or JD signal keywords change, also update the `## Search Queries` table row for that profile in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`. Queries use role/title terms only — no domain expertise appended. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms per query for broad market coverage. When a profile is removed, delete its row from the Search Queries table.
 - **DATA_BACKEND=ob1:** All `$APPLICANT_DIR` reads and writes route through OB1 MCP tools per the policy `policies/storage-routing` (pinned version) — including the MCP-vs-REST upload routing for binary/large files.
+- **OB1 — `demonstrates` edges for new achievements:** After adding a new achievement and capturing its thought (see `applicant-setup.md` Phase F), create knowledge graph edges for each distinct skill or tool the achievement demonstrates (cap 8, OB1 mode only): `create_knowledge_edge(from_entity_type='project', from_entity_name=<achievement title — 1–5 word summary>, relation='demonstrates', to_entity_type=<'tool' for specific technologies | 'topic' for functional skills>, to_entity_name=<skill name>, metadata={source: 'job_search', profile_slug: <profile_slug>})`.
+
+## Knowledge Graph — Event Capture (OB1 only) — DO NOT ASK, JUST DO
+
+**Interview scheduling:** When the user reports an upcoming interview and names the interviewer (via chat or pasted email):
+
+1. Parse: interviewer name(s), scheduled date/time, stage (inferred from context), topics to be covered.
+2. Call `log_interview(application_id, stage=<inferred>, interviewer_name=<name>, scheduled_at=<datetime>, pre_notes=<email text or user notes>)`.
+3. If the user provides email text, capture it as a thought: `capture_thought(content=<email text>, metadata={source_type: 'job_search', thought_category: 'email', application_id: <uuid>, application_folder: <folder>, company: <company>, profile_slug: <profile>})`. Update notes-index.md: `- email_1: <thought_id>` (increment suffix for subsequent emails).
+4. Create a `member_of` edge for each named interviewer: `create_knowledge_edge(from_entity_type='person', from_entity_name=<interviewer_name>, relation='member_of', to_entity_type='organization', to_entity_name=<company_name>, thought_id=<email_thought_id>, metadata={source: 'job_search', application_id: <uuid>})`. The `thought_id` links the person entity to the email thought (which carries `application_id`), enabling the person→application connection.
+
+**Portal Q&A (LinkedIn Apply, company portals):** When generating an answer to a portal application question:
+
+1. Compose and present the answer.
+2. Capture: `capture_thought(content="Portal Q&A\nQuestion: <question text>\nAnswer: <answer text>", metadata={source_type: 'job_search', thought_category: 'application_event', application_id: <uuid>, application_folder: <folder_slug>, company: <company>, profile_slug: <profile>})`.
+3. Update notes-index.md: `- portal_qa_1: <thought_id>` (increment suffix for subsequent Q&As on the same application).
 
 ## Documentation Maintenance — DO NOT ASK, JUST DO
 

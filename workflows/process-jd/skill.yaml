@@ -2,12 +2,12 @@ name: process-jd
 kind: workflow
 description: >
   Core JD processing module — screen via jd-evaluation (Haiku), derive folder slug,
-  compose job-description.md / jd-*.md / notes.md stub / search-result.json (if provided),
-  save per storage-routing, and register in tracker. Called by create-application,
-  search-jobs, and search-jobs-linkedin.
+  compose job-description.md / jd-*.md / notes-index.md / search-result.json (if provided),
+  save per storage-routing, capture OB1 thoughts, write knowledge graph edges, and register
+  in tracker. Called by create-application, search-jobs, and search-jobs-linkedin.
 status: active
-pinned: v2
-latest: v2
+pinned: v3
+latest: v3
 policies:
   - storage-routing
   - factuality
@@ -26,6 +26,14 @@ outputs:
   - score               # 1-10
   - profile_match       # profile slug selected by jd-evaluation
 changelog:
+  - version: v3
+    date: 2026-06-19
+    summary: >
+      Knowledge Map Phase 3 + OB1 IA Phase 3: Haiku screening gains domain_tags and
+      jd_requirements_structured fields. New Step 4.5 (OB1 only): calls
+      update_application_fields to store domain_tags + jd_requirements on js_applications.
+      New Step 6 (OB1 only): creates company→requires→skill edges in OB1 entity graph via
+      create_knowledge_edge (capped at 15 per application, idempotent). Draft promoted to v3.
   - version: v2
     date: 2026-06-18
     summary: >

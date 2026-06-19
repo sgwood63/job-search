@@ -1,7 +1,7 @@
 # OB1 Knowledge Map — Design Spec
 
 **Branch:** `feat/ob1-knowledge-map`  
-**Status:** In implementation (Phase 1–2)
+**Status:** In implementation (Phase 1–3)
 
 ## Problem
 
@@ -31,7 +31,7 @@ Every job-search thought uses this metadata structure:
 }
 ```
 
-**thought_category values:**
+**thought_category values** — set automatically by server-side inference at upload time; explicit `?thought_category=` param takes precedence:
 
 | Category | When captured | Contains |
 |---|---|---|
@@ -120,16 +120,19 @@ OB1's entity extraction worker runs on every captured thought via the existing a
 
 Edge `support_count` increments each time the same entity pair appears together across different thoughts — relationship strength accumulates over applications.
 
-### Phase 3: Explicit edges (deferred)
+### Phase 3: Explicit edges (implemented)
 
-OB1's OB-Graph tools (`create_edge`, `get_neighbors`, `traverse_graph`) exist but are not currently exposed via the open-brain MCP server. Exposing them in `OB1/server/index.ts` will unlock:
+**Implementation approach:** Direct pg writes from `integrations/ob1/job-search-tools.ts` to OB1's shared `entities` and `edges` tables. OB1's `edges.relation` column is TEXT (not an enum), so new relation types require no OB1 schema migration. Three new MCP tools — `create_knowledge_edge`, `get_entity_neighbors`, `traverse_knowledge_graph` — are registered in the job-search-mcp server; no changes to `OB1/server/index.ts` are required.
 
 | Edge | Meaning |
 |---|---|
-| company → `requires` → skill | JD explicitly requires this skill |
-| achievement → `demonstrates` → skill | Verified achievement proves this skill |
+| company → `requires` → skill/tool | JD explicitly requires this skill (written by `process-jd/v3` Step 6) |
+| achievement → `demonstrates` → skill/tool | Verified achievement proves this skill (written during profile maintenance) |
+| person → `member_of` → organization | Interviewer works at this company (written when interview is logged) |
 
 These enable: "which achievements demonstrate the skills CompanyX requires?" — combining entity graph traversal with semantic search.
+
+**Schema:** `integrations/ob1/job-search-schema.sql` — Phase 3 section adds composite indexes `idx_edges_relation_from` and `idx_edges_relation_to` on OB1's shared `edges` table (safe to apply idempotently).
 
 ---
 
@@ -164,12 +167,37 @@ No OB1 or MCP server changes. Uses existing `mcp__open-brain__capture_thought` a
 
 - `skills/application-summary/v1.md` — generates notes.md from OB1 thoughts tagged with `application_id`; called automatically at end of `create-application`; also callable on demand
 
-### Phase 3: Explicit Edges (requires OB1 changes — separate branch)
+### Phase 3: Explicit Edges (implemented on `feat/ob1-knowledge-map`)
 
-- Expose OB-Graph tools in `OB1/server/index.ts`
-- `workflows/process-jd/v3.md` — after processing requirements, create `company requires skill` edges
-- Profile maintenance — create `achievement demonstrates skill` edges when adding achievements
-- `skills/resume-generation/v4.md` — Phase 0.5 enhancement: entity graph traversal supplements semantic chunk retrieval
+- **No OB1 source changes required** — direct pg writes to shared `entities`/`edges` tables from `integrations/ob1/job-search-tools.ts`
+- `integrations/ob1/job-search-schema.sql` — Phase 3 indexes on OB1's `edges` table; also adds `thought_category TEXT` + index to `js_files`
+- `integrations/ob1/job-search-tools.ts` — three new knowledge graph tools: `create_knowledge_edge`, `get_entity_neighbors`, `traverse_knowledge_graph`; plus automatic thought_category inference (see below)
+- `workflows/process-jd/v3.md` — Step 6 (OB1 only): creates `company→requires→skill` edges for each JD requirement (cap 15, idempotent)
+- `CLAUDE.md` + `memory/feedback_profile_maintenance.md` — Operation A Step A3.5: capture achievement thought + create `achievement→demonstrates→skill` edges; interview logging creates `person→member_of→organization` edge linked via thought_id; portal Q&A captured as `application_event` thought
+- `skills/resume-generation/v4.md` — Phase 0.25 (OB1 only): graph traversal enrichment before content retrieval; processes graph-linked requirements first in Phase 0.5
+
+#### Automatic thought_category inference (Phase 3 — webapp)
+
+Every file upload now triggers automatic `thought_category` classification at the point of `uploadFileCore`. No user input is required. An explicit `thought_category` param bypasses inference.
+
+**Text extraction pipeline:**
+
+| Content-type | Extraction method |
+|---|---|
+| `text/*` (non-HTML) | Direct — content used as-is |
+| `text/html`, `application/xhtml+xml` | `DOMParser.parseFromString` → `body.textContent` (tags stripped) |
+| `application/pdf` | `unpdf.extractText` (Deno npm: dependency) |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/msword` | `mammoth.extractRawText` |
+| Other binary | No extraction — no thought captured; upload succeeds |
+
+**Context derivation:** The storage key prefix determines directory type (`applications/`, `profiles/`, `search/`, `docs/`). For application uploads, `js_applications` is queried for `status` + `company` to enrich inference. The webapp passes `application_folder` query param when in application context.
+
+**Inference model:** Haiku via direct `fetch` to Anthropic API (no SDK). Result stored in `js_files.thought_category` and as `thought_category` in the thought metadata. Performance target: ≤ 4s per upload including extraction + inference. Inference is skipped gracefully when `ANTHROPIC_API_KEY` is absent.
+
+**Webapp upload paths updated:**
+- `POST /api/upload` — accepts `application_folder` query param; returns `thought_id` + `thought_category` in response
+- `UploadButton.tsx` — passes `applicationFolder` to upload call
+- `ChatPanel.tsx` — reads `useLocation()` to detect application context; uploads into `applications/<folder>/` when in application view
 
 ---
 
@@ -203,6 +231,41 @@ No OB1 or MCP server changes. Uses existing `mcp__open-brain__capture_thought` a
 | **P2.1** application-summary generates structurally equivalent notes.md vs. old v3 workflow for same inputs | Side-by-side section comparison |
 | **P2.2** Partial thought set handled gracefully: no errors, no empty placeholders | Run with only jd_analysis + fit_assessment thoughts present |
 | **P2.3** review-before-PDF gate unchanged | Run full create-application/v4 flow; notes.md exists at Step 6 |
+
+### Phase 3
+
+| Check | What to run | Pass condition |
+|---|---|---|
+| **P3.1 Edge creation completeness** | Run `process-jd/v3` on a new fit application. Call `get_entity_neighbors(company_name, relation='requires', direction='out')` | Returns ≥ 3 skill/tool entities |
+| **P3.2 Entity idempotency** | Run `process-jd/v3` twice on the same `application_id` | `SELECT COUNT(*) FROM entities WHERE normalized_name = lower(trim('<company>'))` = 1; edge `support_count` = 1 (idempotency check in Step 6 prevents double-write) |
+| **P3.3 Edge metadata integrity** | `SELECT metadata FROM edges WHERE relation = 'requires' LIMIT 5` | Each row contains `{"source": "job_search", "application_id": "<valid-uuid>", "profile_slug": "..."}` |
+| **P3.4 Graph traversal cross-link** | After 2 applications at different companies sharing a skill: `traverse_knowledge_graph(skill, relation_types=['requires'], direction='in', max_depth=1)` | Returns both company nodes |
+| **P3.5 Achievement→skill edges** | Run profile maintenance adding an achievement; call `get_entity_neighbors(skill, relation='demonstrates', direction='in')` | Returns the achievement project entity |
+| **P3.6 Resume graph enrichment fires** | Run `resume-generation/v4` on a company with prior `requires` edges. Check Langfuse trace | `get_entity_neighbors` call appears before first `search_chunks_semantic`; inline log "Graph enrichment: N required skills found for <company>" present |
+| **P3.7 Graceful degradation** | Run `resume-generation/v4` on a brand-new company with no edges | Completes without error; inline log "No graph edges for X — using standard semantic retrieval order" |
+| **P3.8 Performance** | Run `traverse_knowledge_graph(max_depth=2)` after ≥ 5 applications | Completes in < 2 seconds; `EXPLAIN (ANALYZE)` shows index scan on `idx_edges_relation_from` or `idx_edges_relation_to` |
+| **P3.9 Portal Q&A capture** | Generate 400-char LinkedIn answer; verify thought created | `search_thoughts({filter: {application_id, thought_category: 'application_event'}})` returns the Q&A thought; notes-index.md contains `portal_qa_1: <thought_id>` |
+| **P3.10 Person→application link via thought** | Log interview for a company with interviewer; paste email text | `get_entity_neighbors(company, relation='member_of', direction='in')` returns interviewer entity; `SELECT e.canonical_name FROM thought_entities te JOIN entities e ON te.entity_id=e.id JOIN thoughts t ON te.thought_id=t.id WHERE t.metadata->>'application_id'='<uuid>' AND e.entity_type='person'` returns interviewer name |
+| **P3.11 Exercise thought category** | Upload exercise PDF via webapp sidebar or drag-drop on application page | `js_files.thought_category = 'exercise'`; thought captured with extracted PDF text; Claude can write `exercise: <thought_id>` to notes-index.md |
+
+#### Phase 3 — Inference & Extraction Evaluation
+
+| Check | Method | Pass |
+|---|---|---|
+| **EC.1** PDF in app context | Upload exercise PDF in exercise-status application | `thought_category='exercise'`; chunk search returns PDF content |
+| **EC.2** DOCX in app context | Upload DOCX recruiter email in application | `thought_category='email'`; extracted text in thought |
+| **EC.3** HTML JD file | Upload JD HTML during JD processing | Tags stripped; `thought_category='jd_analysis'`; no raw HTML in thought |
+| **EC.4** HTML in search/ | Upload JD HTML to `search/` directory | `directoryType='search'`; `thought_category='jd_analysis'` |
+| **EC.5** PDF in profiles/ | Upload achievement PDF to `profiles/<slug>/` | `thought_category='achievement'`; `thought.metadata.profile_slug` set |
+| **EC.6** Explicit override | `PUT /api/v2/files/*?thought_category=exercise` | Inference bypassed; explicit value used |
+| **EC.7** Unsupported binary | Upload `.png` image | No thought; `thought_category=null`; upload succeeds |
+| **EC.8** No API key | Remove `ANTHROPIC_API_KEY` | Upload completes; no category; no error |
+| **EC.9** Schema | After 5 varied uploads | `SELECT storage_key, thought_category FROM js_files` — column populated and matches thought metadata |
+| **EC.10** Chunk search on PDF | Upload multi-section PDF; run `search_chunks_semantic` | Returns relevant section from PDF content |
+| **EC.11** ChatPanel in app context | Attach file while on `/applications/<folder>` | File in `applications/<folder>/`; inference uses folder context |
+| **EC.12** ChatPanel no context | Attach file while on `/` | File in `applications/`; content-only inference; no error |
+| **EC.13** Performance | 5 PDF uploads sequentially | Each < 4s (extraction + inference + thought capture) |
+| **EC.14** Idempotency | Upload same file twice | Same `thought_id`; same `thought_category`; no duplicate thoughts |
 
 ---
 

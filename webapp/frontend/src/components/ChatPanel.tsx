@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useLocation } from 'react-router-dom'
 import { useSessionContext, ChatMessage } from '../context/SessionContext'
 
 function StatusDot({ status }: { status: 'executing' | 'waiting' | 'closed' | null }) {
@@ -170,6 +171,9 @@ export function ChatInput({
 }) {
   const [input, setInput] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const location = useLocation()
+  const appFolderMatch = location.pathname.match(/^\/applications\/([^/]+)/)
+  const applicationFolder = appFolderMatch ? decodeURIComponent(appFolderMatch[1]) : undefined
 
   const handleSend = useCallback(() => {
     const text = input.trim()
@@ -183,13 +187,16 @@ export function ChatInput({
     if (!file) return
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch('/api/upload?dir=applications', { method: 'POST', body: form })
+    const dir = applicationFolder ? `applications/${applicationFolder}` : 'applications'
+    const qs = new URLSearchParams({ dir })
+    if (applicationFolder) qs.set('application_folder', applicationFolder)
+    const res = await fetch(`/api/upload?${qs}`, { method: 'POST', body: form })
     const data = await res.json()
     if (data.ok) {
       setInput(prev => prev + (prev ? '\n' : '') + `[file: ${data.name}]`)
     }
     e.target.value = ''
-  }, [])
+  }, [applicationFolder])
 
   return (
     <div className="flex-shrink-0 px-2 py-2 border-t border-gray-100 bg-white">

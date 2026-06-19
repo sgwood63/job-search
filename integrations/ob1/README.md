@@ -29,7 +29,7 @@ This directory contains the files needed to deploy the job search system as a co
 integrations/ob1/
 ├── README.md                       (this file)
 ├── job-search-schema.sql           (9 SQL tables — run once against OB1 Postgres)
-├── job-search-tools.ts             (17 MCP tool implementations)
+├── job-search-tools.ts             (29 MCP tool implementations — 26 base + 3 Phase 3 knowledge graph tools)
 ├── job-search-server.ts            (job-search-mcp entry point — Deno HTTP server)
 ├── deno.json                       (import map for job-search-mcp)
 ├── Dockerfile                      (builds the job-search-mcp image)
@@ -174,6 +174,70 @@ This creates `Service/openbrain-db` in the `openbrain` namespace without modifyi
 ```bash
 kubectl cp integrations/ob1/job-search-schema.sql openbrain/openbrain-0:/tmp/schema.sql -c db
 kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f /tmp/schema.sql
+```
+
+The schema is idempotent — safe to re-run. Expected output includes `CREATE TABLE` (first run only), `CREATE INDEX`, and `ALTER TABLE` lines.
+
+**Phase 3 (Knowledge Map) — included in schema above:**
+
+The schema adds two composite indexes on OB1's shared `edges` table (`idx_edges_relation_from`, `idx_edges_relation_to`) and three nullable columns on `js_applications` (`domain_connection`, `domain_tags`, `jd_requirements`). These must be applied **before** the Phase 3 job-search-mcp image is deployed (step 8). No data migration is required — all new columns are nullable and existing application records are unaffected.
+
+**OB1 entity extraction prerequisite (Phase 3 only, fresh installs):**
+
+The knowledge graph tools write directly to OB1's `entities` and `edges` tables, which are created by the OB1 entity extraction schema. This schema is not applied automatically — apply it once after OB1 is running:
+
+```bash
+# 6a. Add updated_at + content_fingerprint columns to thoughts (required by entity extraction)
+kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -tAc "
+  ALTER TABLE thoughts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+  CREATE INDEX IF NOT EXISTS idx_thoughts_updated_at ON thoughts (updated_at DESC);
+  ALTER TABLE thoughts ADD COLUMN IF NOT EXISTS content_fingerprint TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_thoughts_fingerprint ON thoughts (content_fingerprint) WHERE content_fingerprint IS NOT NULL;
+"
+
+# 6b. Apply OB1 entity extraction schema (creates entities, edges, thought_entities tables)
+kubectl cp "$OB1_REPO_PATH/schemas/entity-extraction/schema.sql" openbrain/openbrain-0:/tmp/entity-extraction.sql -c db
+kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -f /tmp/entity-extraction.sql
+
+# 6c. Create thought_entities + entity_extraction_queue adapted for k8s (bigint thought IDs, not UUID)
+kubectl exec -n openbrain openbrain-0 -c db -- psql -U postgres -d openbrain -tAc "
+  CREATE TABLE IF NOT EXISTS public.thought_entities (
+    thought_id BIGINT NOT NULL REFERENCES public.thoughts(id) ON DELETE CASCADE,
+    entity_id  BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
+    mention_role TEXT NOT NULL DEFAULT 'mentioned',
+    confidence   NUMERIC(3,2),
+    source       TEXT NOT NULL DEFAULT 'entity_worker',
+    evidence     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (thought_id, entity_id, mention_role)
+  );
+  CREATE INDEX IF NOT EXISTS idx_thought_entities_entity ON public.thought_entities(entity_id);
+  CREATE INDEX IF NOT EXISTS idx_thought_entities_thought ON public.thought_entities(thought_id);
+  CREATE TABLE IF NOT EXISTS public.entity_extraction_queue (
+    thought_id    BIGINT PRIMARY KEY REFERENCES public.thoughts(id) ON DELETE CASCADE,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    attempt_count INT  NOT NULL DEFAULT 0,
+    last_error    TEXT, queued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at TIMESTAMPTZ, processed_at TIMESTAMPTZ,
+    source_fingerprint TEXT, source_updated_at TIMESTAMPTZ,
+    worker_version TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+  );
+  CREATE INDEX IF NOT EXISTS idx_extraction_queue_status ON public.entity_extraction_queue(status) WHERE status = 'pending';
+"
+```
+
+> **Note:** The OB1 entity extraction schema was designed for Supabase (UUID thought IDs, service_role/authenticated roles). In the k8s deployment, thought IDs are BIGINT and standard PostgreSQL roles are used. Steps 6b and 6c handle this: 6b applies the schema (errors for thought_entities/entity_extraction_queue are expected and handled by 6c), then 6c creates those two tables adapted for BIGINT IDs. The `entities` and `edges` tables created by 6b are the correct schema.
+
+After the image rebuild in step 8, three new MCP tools are available:
+- `create_knowledge_edge` — upsert typed edges in OB1's entity graph (`company→requires→skill`, `achievement→demonstrates→skill`, `person→member_of→organization`)
+- `get_entity_neighbors` — query direct neighbors of an entity with optional relation/direction filters
+- `traverse_knowledge_graph` — BFS traversal from a starting entity across the job-search knowledge graph
+
+Verify after deployment:
+```bash
+bash integrations/ob1/tests/test-deployment.sh test_job_search_mcp       # expects 29 tools
+bash integrations/ob1/tests/test-deployment.sh test_knowledge_graph_indexes  # expects both indexes
 ```
 
 ### 7. MinIO Setup

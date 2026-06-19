@@ -192,6 +192,23 @@ test_js_tables() {
   fi
 }
 
+test_knowledge_graph_indexes() {
+  header "Knowledge Graph Indexes (Phase 3)"
+  local idx_from idx_to
+  idx_from=$(psql_exec "SELECT indexname FROM pg_indexes WHERE tablename='edges' AND indexname='idx_edges_relation_from'" 2>/dev/null | tr -d ' ')
+  idx_to=$(psql_exec "SELECT indexname FROM pg_indexes WHERE tablename='edges' AND indexname='idx_edges_relation_to'" 2>/dev/null | tr -d ' ')
+  if [[ "$idx_from" == "idx_edges_relation_from" ]]; then
+    pass "idx_edges_relation_from present on edges table"
+  else
+    fail "idx_edges_relation_from missing — re-run schema step: kubectl cp + psql -f job-search-schema.sql"
+  fi
+  if [[ "$idx_to" == "idx_edges_relation_to" ]]; then
+    pass "idx_edges_relation_to present on edges table"
+  else
+    fail "idx_edges_relation_to missing — re-run schema step: kubectl cp + psql -f job-search-schema.sql"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # MinIO tests
 # ---------------------------------------------------------------------------
@@ -273,10 +290,10 @@ test_job_search_mcp() {
   local tool_count
   tool_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null || echo "0")
 
-  if [[ "$tool_count" -eq 26 ]]; then
-    pass "job-search MCP responds — 26 tools"
+  if [[ "$tool_count" -eq 29 ]]; then
+    pass "job-search MCP responds — 29 tools"
   elif [[ "$tool_count" -gt 0 ]]; then
-    fail "job-search MCP responded with $tool_count tools (expected 26)"
+    fail "job-search MCP responded with $tool_count tools (expected 29)"
   else
     fail "job-search MCP failed or returned 0 tools (response: ${response:0:100})"
   fi
@@ -494,6 +511,7 @@ ALL_TESTS=(
   test_pods
   test_postgres_connect
   test_js_tables
+  test_knowledge_graph_indexes
   test_minio_bucket
   test_ingress
   test_ob1_mcp

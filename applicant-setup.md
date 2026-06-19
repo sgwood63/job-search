@@ -259,7 +259,7 @@ For any maintenance update, consult this registry to determine which files are a
 
 The File Registry and Cross-Profile Propagation Rule cover the general case. Two specific operations require explicit step-by-step checklists because they consistently produce missed updates when reasoned from the registry alone. See `memory/feedback_profile_maintenance.md` for the full checklists.
 
-**Operation A — New Achievement Added** (4 steps: role-achievements.md → EXPERIENCE-REFERENCE.md → cross-profile CONTENT propagation for all active profiles → applicant-maintenance.md log). Do not update career-advice.md §1 Profile Fit Scores for an achievement addition.
+**Operation A — New Achievement Added** (5 steps: role-achievements.md → EXPERIENCE-REFERENCE.md → cross-profile CONTENT propagation for all active profiles → OB1 thought capture + demonstrates edges [A3.5, OB1 only] → applicant-maintenance.md log). Do not update career-advice.md §1 Profile Fit Scores for an achievement addition.
 
 **Operation B — New Profile Created** (6 steps + B4.5: create strategy file → create CONTENT file → add profile column to role-achievements.md for all existing achievements → update PROFILES-QUICK-REFERENCE.md matching table row → add Search Queries table row → add profile row and scoring rationale to career-advice.md §1 and §5 → applicant-maintenance.md log). career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations) are always updated when a profile is created — this is not optional. See `memory/feedback_profile_maintenance.md` for the full checklist including step B4.5.
 

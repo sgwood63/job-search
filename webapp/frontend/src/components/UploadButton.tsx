@@ -5,9 +5,10 @@ type Props = {
   dir: string
   onUploaded: (path: string) => void
   label?: string
+  applicationFolder?: string
 }
 
-export default function UploadButton({ dir, onUploaded, label = 'Upload file' }: Props) {
+export default function UploadButton({ dir, onUploaded, label = 'Upload file', applicationFolder }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +19,7 @@ export default function UploadButton({ dir, onUploaded, label = 'Upload file' }:
     setError(null)
     try {
       for (const file of Array.from(files)) {
-        const result = await api.upload(dir, file)
+        const result = await api.upload(dir, file, applicationFolder ? { applicationFolder } : undefined)
         onUploaded(result.path)
       }
     } catch (e) {

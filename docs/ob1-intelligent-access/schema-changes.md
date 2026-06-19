@@ -96,9 +96,11 @@ CREATE INDEX IF NOT EXISTS idx_chunks_file_id     ON js_chunks(file_id);
 
 ---
 
-## Phase 3 — Extend `js_applications`
+## Phase 3 — Extend `js_applications` + `js_files` (Knowledge Map)
 
-Status: **drafted** — DDL in job-search-schema.sql; tools in job-search-tools.ts + server; workflows in process-jd/draft.md, create-application/draft.md; skill in resume-generation/draft.md
+Status: **implemented** on `feat/ob1-knowledge-map`
+
+### `js_applications` additions
 
 Adds structured columns extracted from notes.md at process-jd time. Enables `find_similar_applications` without loading files.
 
@@ -109,8 +111,29 @@ ALTER TABLE js_applications ADD COLUMN IF NOT EXISTS jd_requirements   jsonb;
   -- format: {"required": ["...", ...], "preferred": ["...", ...]}
 ```
 
-**New MCP tool (Phase 3):**
+### `js_files` addition — `thought_category`
+
+Stores the thought category (inferred or explicit) on every file record for direct queryability without joining through `thoughts`.
+
+```sql
+ALTER TABLE js_files ADD COLUMN IF NOT EXISTS thought_category text;
+CREATE INDEX IF NOT EXISTS js_files_category_idx ON js_files(thought_category) WHERE thought_category IS NOT NULL;
+```
+
+### OB1 `edges` table — Phase 3 indexes
+
+New composite indexes on OB1's shared `edges` table to support `get_entity_neighbors` and `traverse_knowledge_graph`:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_edges_relation_from ON edges(relation, from_entity_id);
+CREATE INDEX IF NOT EXISTS idx_edges_relation_to   ON edges(relation, to_entity_id);
+```
+
+**New MCP tools (Phase 3):**
 - `find_similar_applications(query, exclude_id?, limit?)` — semantic search across applications by domain connection
+- `create_knowledge_edge(...)` — upsert typed edge in OB1 `entities`/`edges` tables
+- `get_entity_neighbors(entity, ...)` — query direct neighbors; supports direction + relation filter
+- `traverse_knowledge_graph(entity, ...)` — BFS traversal up to max_depth hops
 
 ---
 
