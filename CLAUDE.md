@@ -101,6 +101,10 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 **Review before PDF.** Write `.md` → assess vs. JD → edit → generate PDF → verify page count. Never skip. Full pipeline in skill `resume-generation`.
 
+**OB1 MCP routing for thought operations.** In job-search sessions, always use `mcp__job_search__search_thoughts` and `mcp__job_search__list_thoughts` — these include thought IDs in output. Do NOT use `mcp__open_brain__search_thoughts` or `mcp__open_brain__list_thoughts` for job-search work. See `policies/storage-routing` (draft) for the full routing table.
+
+**No edits to the OB1 local checkout.** Never modify files in the local OB1 repo checkout for job-search purposes. Job-search tools and output changes belong in `$APP_DIR/integrations/ob1/`. See `policies/no-ob1-edits` (v1) for the full rule and scope.
+
 ## Resume Generation
 
 **Before generating any resume:** Read the skill `skills/resume-generation` (pinned version, or `draft.md` if present) plus the policies listed in its `skill.yaml`, and apply all rules — length, structure, signal density, verification gate, evaluation report, PDF command.

@@ -13,6 +13,7 @@ entries:
   - { name: evidence-grounding,  kind: policy,   path: policies/evidence-grounding }
   - { name: company-descriptors, kind: policy,   path: policies/company-descriptors }
   - { name: storage-routing,     kind: policy,   path: policies/storage-routing }
+  - { name: no-ob1-edits,        kind: policy,   path: policies/no-ob1-edits }
   - { name: create-application,       kind: workflow, path: workflows/create-application }
   - { name: prepare-interview,        kind: workflow, path: workflows/prepare-interview }
   - { name: process-jd,               kind: workflow, path: workflows/process-jd }

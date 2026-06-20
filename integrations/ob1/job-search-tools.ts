@@ -216,11 +216,19 @@ export type SearchThoughtsFn = (
   limit: number,
   filter: Record<string, unknown>,
 ) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; similarity: number; created_at: string }>>;
+export type ListThoughtsFn = (
+  limit: number,
+  type?: string,
+  topic?: string,
+  person?: string,
+  days?: number,
+) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; created_at: string }>>;
 export type EmbedQueryFn = (query: string) => Promise<number[]>;
 export type ChunkContentFn = (content: string, storageKey: string) => Promise<void>;
 export type JobSearchCallbacks = {
   captureThought?: CaptureThoughtFn;
   searchThoughts?: SearchThoughtsFn;
+  listThoughts?: ListThoughtsFn;
   embedQuery?: EmbedQueryFn;
   chunkContent?: ChunkContentFn;
 };
@@ -2218,8 +2226,165 @@ export function registerTraverseKnowledgeGraphTool(server: unknown, pool: unknow
   );
 }
 
+// ---------------------------------------------------------------------------
+// listThoughtsCore — list thoughts from OB1's thoughts table with optional filters
+// ---------------------------------------------------------------------------
+
+export async function listThoughtsCore(
+  pool: unknown,
+  limit: number,
+  type?: string,
+  topic?: string,
+  person?: string,
+  days?: number,
+): Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; created_at: string }>> {
+  const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let paramIdx = 1;
+
+  if (type) {
+    conditions.push(`metadata->>'type' = $${paramIdx}`);
+    params.push(type);
+    paramIdx++;
+  }
+  if (topic) {
+    conditions.push(`metadata->'topics' ? $${paramIdx}`);
+    params.push(topic);
+    paramIdx++;
+  }
+  if (person) {
+    conditions.push(`metadata->'people' ? $${paramIdx}`);
+    params.push(person);
+    paramIdx++;
+  }
+  if (days) {
+    conditions.push(`created_at >= NOW() - INTERVAL '${Number(days)} days'`);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const client = await p.connect();
+  try {
+    const result = await client.queryObject<{
+      id: string; content: string; metadata: Record<string, unknown>; created_at: string;
+    }>(
+      `SELECT id::text AS id, content, metadata, created_at
+       FROM thoughts
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${paramIdx}`,
+      [...params, limit],
+    );
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// registerSearchThoughtsTool — search_thoughts with thought IDs in output
+// ---------------------------------------------------------------------------
+
+export function registerSearchThoughtsTool(server: unknown, searchThoughtsFn?: SearchThoughtsFn) {
+  (server as any).tool(
+    "search_thoughts",
+    "Semantically search OB1 thoughts. Returns thought ID in each result for use with reference or update operations.",
+    {
+      query: z.string().describe("What to search for"),
+      limit: z.number().optional().default(10),
+      type_filter: z.string().optional().describe("Optional: filter results by metadata.type post-query"),
+      source_filter: z.string().optional().describe("Optional: filter by metadata.source"),
+    },
+    async (args: { query: string; limit: number; type_filter?: string; source_filter?: string }) => {
+      if (!searchThoughtsFn) {
+        return { content: [{ type: "text", text: "search_thoughts: searchThoughts callback not configured" }] };
+      }
+      const { query, limit, type_filter: typeFilter, source_filter: sourceFilter } = args;
+      try {
+        const filter: Record<string, unknown> = {};
+        if (sourceFilter) filter.source = sourceFilter;
+        let results = await searchThoughtsFn(query, limit, filter);
+        if (typeFilter) {
+          results = results.filter(t => String((t.metadata || {}).type || "") === typeFilter);
+        }
+
+        if (!results.length) {
+          return { content: [{ type: "text", text: `No thoughts found matching "${query}".` }] };
+        }
+
+        const blocks = results.map((t, i) => {
+          const m = (t.metadata || {}) as Record<string, unknown>;
+          const parts = [
+            `--- Result ${i + 1} (${(t.similarity * 100).toFixed(1)}% match) ---`,
+            `ID: ${t.id}`,
+            `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
+            `Type: ${String(m.type || "unknown")}`,
+          ];
+          if (Array.isArray(m.topics) && m.topics.length)
+            parts.push(`Topics: ${(m.topics as string[]).join(", ")}`);
+          if (Array.isArray(m.people) && m.people.length)
+            parts.push(`People: ${(m.people as string[]).join(", ")}`);
+          if (Array.isArray(m.action_items) && m.action_items.length)
+            parts.push(`Actions: ${(m.action_items as string[]).join("; ")}`);
+          parts.push(`\n${t.content}`);
+          return parts.join("\n");
+        });
+
+        return {
+          content: [{ type: "text", text: `Found ${results.length} thought(s):\n\n${blocks.join("\n\n")}` }],
+        };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// registerListThoughtsTool — list_thoughts with thought IDs in output
+// ---------------------------------------------------------------------------
+
+export function registerListThoughtsTool(server: unknown, listThoughtsFn?: ListThoughtsFn) {
+  (server as any).tool(
+    "list_thoughts",
+    "List recently captured thoughts with optional filters. Returns thought IDs for reference operations.",
+    {
+      limit: z.number().optional().default(10),
+      type: z.string().optional().describe("Filter by type: observation, task, idea, reference, person_note"),
+      topic: z.string().optional().describe("Filter by topic tag"),
+      person: z.string().optional().describe("Filter by person mentioned"),
+      days: z.number().optional().describe("Only thoughts from the last N days"),
+    },
+    async (args: { limit: number; type?: string; topic?: string; person?: string; days?: number }) => {
+      if (!listThoughtsFn) {
+        return { content: [{ type: "text", text: "list_thoughts: listThoughts callback not configured" }] };
+      }
+      const { limit, type, topic, person, days } = args;
+      try {
+        const rows = await listThoughtsFn(limit, type, topic, person, days);
+
+        if (!rows.length) {
+          return { content: [{ type: "text", text: "No thoughts found." }] };
+        }
+
+        const entries = rows.map((t, i) => {
+          const m = (t.metadata || {}) as Record<string, unknown>;
+          const tags = Array.isArray(m.topics) ? (m.topics as string[]).join(", ") : "";
+          return `${i + 1}. [${new Date(t.created_at).toLocaleDateString()}] (${String(m.type || "??")}${tags ? " - " + tags : ""}) [id:${t.id}]\n   ${t.content}`;
+        });
+
+        return {
+          content: [{ type: "text", text: `${rows.length} recent thought(s):\n\n${entries.join("\n\n")}` }],
+        };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
-  const { captureThought, searchThoughts, embedQuery, chunkContent } = callbacks;
+  const { captureThought, searchThoughts, listThoughts, embedQuery, chunkContent } = callbacks;
 
   // File tools
   registerUploadFileTool(server, pool, captureThought, chunkContent);
@@ -2256,6 +2421,10 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerCreateKnowledgeEdgeTool(server, pool);
   registerGetEntityNeighborsTool(server, pool);
   registerTraverseKnowledgeGraphTool(server, pool);
+
+  // Thought query tools (job-search variants include thought IDs in output)
+  registerSearchThoughtsTool(server, searchThoughts);
+  registerListThoughtsTool(server, listThoughts);
 
   // Ingest tracking tools (Phase 1 — replaces seen-jobs.json)
   registerCheckPositionSeenTool(server, pool);

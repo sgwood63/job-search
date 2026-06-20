@@ -3,7 +3,7 @@
  *
  * Runs alongside the Open Brain MCP server as a separate Kubernetes Deployment.
  * Shares the same PostgreSQL database (js_* tables) and MinIO object store.
- * Provides 29 MCP tools for file storage, pipeline state, semantic search, and knowledge graph,
+ * Provides 31 MCP tools for file storage, pipeline state, semantic search, knowledge graph, and thought queries,
  * plus a REST API at /api/v2/* for direct webapp access.
  *
  * Environment variables:
@@ -24,6 +24,7 @@ import { Pool } from "postgres";
 import { traceGeneration, traceSpan } from "./langfuse_ts.ts";
 import {
   registerJobSearchTools,
+  listThoughtsCore,
   chunkMarkdown,
   uploadFileCore, getFileCore, getFileUrlCore, listFilesCore, deleteFileCore, deleteApplicationCore,
   getPipelineCore, getApplicationCore, getProfilesCore, deleteProfileCore, upsertProfileCore, getOverdueFollowupsCore,
@@ -229,6 +230,18 @@ async function searchThoughts(
   }
 }
 
+// --- listThoughts: list from OB1's thoughts table with optional filters ---
+
+async function listThoughts(
+  limit: number,
+  type?: string,
+  topic?: string,
+  person?: string,
+  days?: number,
+): Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; created_at: string }>> {
+  return listThoughtsCore(pool, limit, type, topic, person, days);
+}
+
 // --- embedQuery: thin wrapper so getEmbedding satisfies EmbedQueryFn ---
 
 const embedQuery: EmbedQueryFn = (query: string): Promise<number[]> => getEmbedding(query);
@@ -279,7 +292,7 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-registerJobSearchTools(server, pool, { captureThought, searchThoughts, embedQuery, chunkContent });
+registerJobSearchTools(server, pool, { captureThought, searchThoughts, listThoughts, embedQuery, chunkContent });
 
 // --- Hono App ---
 

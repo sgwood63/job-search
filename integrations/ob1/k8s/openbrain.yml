@@ -169,7 +169,7 @@ spec:
 
         # Container 3: Langfuse observability proxy (sidecar)
         # openbrain-mcp routes its EMBEDDING_API_BASE and CHAT_API_BASE here
-        # (http://localhost:8080); this proxy forwards to the real upstream and
+        # (http://localhost:8080/v1); this proxy forwards to the real upstream and
         # logs each LLM call to Langfuse.
         - name: langfuse-proxy
           image: langfuse-proxy:latest

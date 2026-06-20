@@ -34,9 +34,11 @@ Two MCP servers are registered when OB1 is configured. They have distinct, non-o
 
 - **`mcp__job_search__*`** — owns ALL file I/O for APPLICANT content. `upload_file`, `get_file`, `list_files`, `delete_file`, and `get_file_url` are general-purpose and apply to every key under `$APPLICANT_DIR`: applicant.md, profiles, memory files, applications, search results — all of it. The name `job-search` is the server namespace, not a scope restriction to job application folders.
 
-- **`mcp__open_brain__*`** — owns thought querying and capture: `search_thoughts`, `list_thoughts`, `thought_stats`, `capture_thought`, `fetch`, `search`. It does NOT own file reads or writes. Do not use it as a substitute for `upload_file` or `get_file`.
+- **`mcp__open_brain__*`** — owns thought capture and stats: `capture_thought`, `thought_stats`, `fetch`, `search`. It does NOT own file reads or writes.
 
-If in doubt about which server to call: file operations → `mcp__job_search__*`, thought/search operations → `mcp__open_brain__*`.
+- **Thought query exception:** `search_thoughts` and `list_thoughts` exist on **both** servers. In job-search sessions, always use the `mcp__job_search__*` variants — they include thought IDs in output, which are required for reference and update operations. The `mcp__open_brain__*` variants omit thought IDs and are not suitable for job-search workflows.
+
+If in doubt about which server to call: file operations → `mcp__job_search__*`, thought capture/stats → `mcp__open_brain__*`, thought search/list → `mcp__job_search__*`.
 
 ## Session start check
 
@@ -66,6 +68,8 @@ No fallback, no curl workaround. If the tools are missing, we don't have a syste
 | **Position audit trail** | Read `search/ingested-positions.csv` | `get_ingestion_history(profile?, outcome?, limit?)` | On demand |
 | **Log search run** | Append to `search/search-log.csv` | `log_search_run(...)` → returns `search_run_id` UUID | End of each ingest run (after summary .md uploaded) |
 | **Search run history** | Read `search/search-log.csv` | `get_search_runs(profile?, since?, limit?)` | On demand; also used for backfill idempotency |
+| **Semantic thought search** | — | `mcp__job_search__search_thoughts(query, ...)` — **not** `mcp__open_brain__search_thoughts` | On demand; job-search variant includes thought IDs |
+| **List recent thoughts** | — | `mcp__job_search__list_thoughts(limit, ...)` — **not** `mcp__open_brain__list_thoughts` | On demand; job-search variant includes thought IDs |
 
 **Session start loads only:** `applicant.md` + `memory/APPLICANT-MEMORY.md` (in parallel). Pipeline and overdue follow-ups are deferred to `/status` and application workflow commands.
 

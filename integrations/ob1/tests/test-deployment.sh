@@ -319,10 +319,10 @@ test_job_search_mcp() {
   local tool_count
   tool_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null || echo "0")
 
-  if [[ "$tool_count" -eq 29 ]]; then
-    pass "job-search MCP responds — 29 tools"
+  if [[ "$tool_count" -eq 31 ]]; then
+    pass "job-search MCP responds — 31 tools"
   elif [[ "$tool_count" -gt 0 ]]; then
-    fail "job-search MCP responded with $tool_count tools (expected 29)"
+    fail "job-search MCP responded with $tool_count tools (expected 31)"
   else
     fail "job-search MCP failed or returned 0 tools (response: ${response:0:100})"
   fi

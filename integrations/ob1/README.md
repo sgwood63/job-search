@@ -29,7 +29,7 @@ This directory contains the files needed to deploy the job search system as a co
 integrations/ob1/
 ├── README.md                       (this file)
 ├── job-search-schema.sql           (9 SQL tables — run once against OB1 Postgres)
-├── job-search-tools.ts             (29 MCP tool implementations — 26 base + 3 Phase 3 knowledge graph tools)
+├── job-search-tools.ts             (31 MCP tool implementations — 26 base + 3 Phase 3 knowledge graph + 2 thought query tools)
 ├── job-search-server.ts            (job-search-mcp entry point — Deno HTTP server)
 ├── deno.json                       (import map for job-search-mcp)
 ├── Dockerfile                      (builds the job-search-mcp image)
@@ -236,7 +236,7 @@ After the image rebuild in step 8, three new MCP tools are available:
 
 Verify after deployment:
 ```bash
-bash integrations/ob1/tests/test-deployment.sh test_job_search_mcp       # expects 29 tools
+bash integrations/ob1/tests/test-deployment.sh test_job_search_mcp       # expects 31 tools
 bash integrations/ob1/tests/test-deployment.sh test_knowledge_graph_indexes  # expects both indexes
 ```
 

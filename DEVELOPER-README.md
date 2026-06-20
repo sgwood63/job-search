@@ -122,14 +122,15 @@ $APP_DIR/
     └── ob1/
         ├── README.md                # Full K8s deployment guide
         ├── job-search-schema.sql    # 9 js_* Postgres tables
-        ├── job-search-tools.ts      # 29 MCP tool implementations (26 base + 3 Phase 3 knowledge graph tools)
+        ├── job-search-tools.ts      # 31 MCP tool implementations (26 base + 3 Phase 3 knowledge graph + 2 thought query tools)
         ├── job-search-server.ts     # MCP HTTP server entry point (Deno/Hono)
         ├── Dockerfile               # Builds job-search-mcp image
         ├── docker-compose.yml       # OB1 data services (postgres + minio)
         ├── k8s/                     # Kubernetes manifests
         └── tests/
             ├── test-deployment.sh       # 30-assertion deployment verification suite (bash)
-            └── test-knowledge-graph.ts  # 11 unit tests for Phase 3 knowledge graph core functions (Deno)
+            ├── test-knowledge-graph.ts  # 11 unit tests for Phase 3 knowledge graph core functions (Deno)
+            └── test-search-thoughts.ts  # 15 unit tests for search_thoughts/list_thoughts tools (Deno)
 ```
 
 ### `$APPLICANT_DIR` file tree
@@ -188,7 +189,7 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 | Component | What it is | URL |
 |---|---|---|
 | `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server — 21 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
+| `job-search-mcp` | Deployment: Deno/Hono server — 23 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles, thought queries (with IDs) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
 | `minio` | Deployment: S3-compatible object store | `http://localhost/minio` (console) / `localhost:30900` (S3) |
 | nginx Ingress | Routes `/ob1`, `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
 
@@ -223,6 +224,7 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
 | `integrations/ob1/tests/test-deployment.sh` | 30-assertion deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, MCP servers (OB1 + job-search), webapp health, migration data, functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
 | `integrations/ob1/tests/test-knowledge-graph.ts` | 11 Deno unit tests for Phase 3 knowledge graph core functions (`createKnowledgeEdgeCore`, `getEntityNeighborsCore`, `traverseKnowledgeGraphCore`) — all DB I/O mocked, no live services needed. **Requires Deno** (`curl -fsSL https://deno.land/install.sh \| sh`). Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-knowledge-graph.ts` |
+| `integrations/ob1/tests/test-search-thoughts.ts` | 15 Deno unit tests for `listThoughtsCore`, `registerSearchThoughtsTool`, and `registerListThoughtsTool` — all DB I/O mocked, no live services needed. Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-search-thoughts.ts` |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
 

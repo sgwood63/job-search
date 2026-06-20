@@ -126,9 +126,9 @@ kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} create configmap openbrain-conf
   --from-literal=DB_PORT="${DB_PORT:-5432}" \
   --from-literal=DB_NAME="${DB_NAME:-openbrain}" \
   --from-literal=DB_USER="${DB_USER:-postgres}" \
-  --from-literal=EMBEDDING_API_BASE="http://localhost:8080" \
+  --from-literal=EMBEDDING_API_BASE="http://localhost:8080/v1" \
   --from-literal=EMBEDDING_MODEL="${EMBEDDING_MODEL:-openai/text-embedding-3-small}" \
-  --from-literal=CHAT_API_BASE="http://localhost:8080" \
+  --from-literal=CHAT_API_BASE="http://localhost:8080/v1" \
   --from-literal=CHAT_MODEL="${CHAT_MODEL:-openai/gpt-4o-mini}" \
   --from-literal=UPSTREAM_EMBEDDING_API_BASE="${EMBEDDING_API_BASE:-https://openrouter.ai/api/v1}" \
   --from-literal=UPSTREAM_CHAT_API_BASE="${CHAT_API_BASE:-https://openrouter.ai/api/v1}" \
