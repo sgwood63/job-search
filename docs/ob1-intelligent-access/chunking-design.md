@@ -8,12 +8,28 @@ Replace full-file context loads in interview-prep and resume-generation with sec
 
 ## Algorithm
 
+### `extractAsMarkdown(bytes, contentType, rawText?)` — convert-to-markdown layer
+
+Every upload goes through a type-specific converter that produces best-effort markdown before chunking. `chunkMarkdown` is called on this output for all file types.
+
+| Content type | Converter | Heading output |
+|---|---|---|
+| `text/markdown`, `text/plain` | Pass through | Preserved as-is |
+| `text/html` | `domToMarkdown()` — DOM walk, emits `## ` for H1/H2, `### ` for H3/H4, `- ` for LI | From `<h1>`/`<h2>` tags |
+| DOCX (`.docx`, `.doc`) | `mammoth.convert()` with style map — Word Heading 1/2/3 → `## ` / `### ` | From Word heading styles |
+| PDF | `extractMarkdownViaHaiku()` — sends base64 PDF as document block to Haiku; combined markdown + `thought_category` in one call (falls back to `unpdf` plain text when `ANTHROPIC_API_KEY` absent) | Inferred by Haiku |
+| Other binary | `null` — no thought or chunks | — |
+
+This means `section_title` is populated for HTML, DOCX, and PDF chunks (not just markdown), enabling `search_chunks_semantic` to return meaningful section names for JD PDFs, DOCX exercise definitions, and HTML job postings.
+
+**PDF optimization:** `extractMarkdownViaHaiku()` returns both `markdown` and `thought_category` in a single Haiku call, replacing the two separate calls (`extractAsMarkdown` + `inferThoughtCategory`) that other types require.
+
 ### `chunkMarkdown(text: string)`
 
 Splits a markdown document into H2-level sections.
 
 ```
-Input: full text of a .md file
+Input: text (markdown or extracted plain text)
 Output: Array<{ title: string | null, index: number, content: string }>
 ```
 
@@ -22,20 +38,22 @@ Rules:
 2. Preamble (text before first `## `) → chunk 0, `title = null`
 3. Each `## Foo` block → one chunk, `title = "Foo"`, `index = n`
 4. Skip empty chunks (< 30 chars after trim)
-5. Max chunk size: 8000 chars. If a section exceeds this, split at paragraph boundaries (`\n\n`) and create sub-chunks with `title = "Foo (continued <n>)"` and sequential section_index values
-6. Minimum prefix guard: if `coPrefix.length < 4` or `rolePrefix.length < 4`, skip tier-4 fuzzy check in `check_position_seen` (too short to be meaningful)
+5. Max chunk size: 8000 chars. If a section exceeds this, split at paragraph (`\n\n`) boundaries and create sub-chunks with `title = "Foo (continued <n>)"` and sequential section_index values
+6. **Headerless sections** (plain text — plain-text PDF fallback, raw `.txt` JDs): split at 1500-char paragraph target (`PARA_SPLIT_SIZE`) instead of 8000 chars. If no `\n\n` paragraph breaks exist (flat/scanned PDFs), fall back to single-`\n` line splitting. All chunks have `section_title = null`.
+7. Minimum prefix guard: if `coPrefix.length < 4` or `rolePrefix.length < 4`, skip tier-4 fuzzy check in `check_position_seen` (too short to be meaningful)
 
 ### Upload pipeline integration (`uploadFileCore`)
 
-After the existing whole-document thought capture, call chunking for all `text/*` files:
+For every upload, the pipeline is:
 
-1. `chunks = chunkMarkdown(content)`
-2. Delete existing rows in `js_chunks` for this `storage_key` (idempotent re-upload)
-3. For each chunk:
-   - `captureThought(chunk.content, { type: "file-chunk", storage_key, section_title: chunk.title, section_index: chunk.index })`
-   - Insert into `js_chunks` with the returned `thought_id`
+1. **Convert to markdown:** call `extractAsMarkdown()` (see table above). For PDFs, call `extractMarkdownViaHaiku()` which returns `{markdown, thought_category}` — skips the separate inference call.
+2. **Capture whole-doc thought:** `captureThought(cleanText, { type: "file", storage_key, thought_category, ... })` — serves `search_applications_semantic`.
+3. **Chunk and embed sections:**
+   - `chunks = chunkMarkdown(cleanText)` (or `args.content` as fallback for non-binary when `extractAsMarkdown` returns null)
+   - Delete existing rows in `js_chunks` for this `storage_key` (idempotent re-upload)
+   - For each chunk: `captureThought(chunk.content, { type: "file-chunk", storage_key, section_title: chunk.title, section_index: chunk.index })` → insert into `js_chunks`
 
-The whole-document thought (existing behavior) is preserved — it serves `search_applications_semantic`. Chunks serve `search_chunks_semantic`. Both coexist.
+Both whole-doc thought (`js_files.thought_id`) and section chunks (`js_chunks.thought_id`) coexist. The `textToChunk` falls back to `args.content` for non-binary files if `extractAsMarkdown` returns null (preserves backward compatibility for existing markdown files).
 
 ## `search_chunks_semantic` Query
 
@@ -53,7 +71,7 @@ ORDER BY similarity ASC   -- pgvector cosine distance: lower = more similar
 LIMIT $limit
 ```
 
-Returns results with `similarity < 0.4` threshold (cosine distance; ≈ > 60% semantic similarity). Results with `similarity >= 0.4` are filtered out as insufficiently relevant.
+Returns results with `similarity < 0.6` threshold (cosine distance; lower = more similar). Results at or above 0.6 are filtered out as insufficiently relevant.
 
 ## Retrieval Patterns by Skill
 

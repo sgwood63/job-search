@@ -89,7 +89,104 @@ function isTextType(contentType: string): boolean {
 // Phase 3: text extraction, context derivation, and category inference
 // ---------------------------------------------------------------------------
 
-async function extractAndCleanText(
+// Walk a DOM element and emit best-effort markdown, preserving heading structure.
+function domToMarkdown(el: Element | null): string {
+  if (!el) return "";
+  const lines: string[] = [];
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = (node as Text).textContent?.trim();
+      if (t) lines.push(t);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = (node as Element).tagName;
+      const inner = domToMarkdown(node as Element).trim();
+      if (!inner) continue;
+      if (tag === "H1" || tag === "H2") lines.push(`## ${inner}`);
+      else if (tag === "H3" || tag === "H4") lines.push(`### ${inner}`);
+      else if (tag === "LI") lines.push(`- ${inner}`);
+      else if (["P", "DIV", "SECTION", "ARTICLE"].includes(tag)) {
+        lines.push(inner);
+        lines.push("");
+      } else {
+        lines.push(inner);
+      }
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+// Send a PDF to Haiku as a document block and get back markdown + thought_category in one call.
+// Returns null if the API key is absent or the call fails — caller should fall back to unpdf.
+async function extractMarkdownViaHaiku(
+  bytes: Uint8Array,
+  filename: string,
+  ctx: UploadContext,
+): Promise<{ markdown: string; thought_category: string } | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const prompt = [
+    "You are processing a document for a job search knowledge system.",
+    "",
+    "Output format (two sections, required):",
+    "Line 1: exactly one thought_category label (snake_case only)",
+    "Line 2: ---",
+    "Lines 3+: the full document converted to well-structured markdown",
+    "",
+    "Category options: jd_analysis, fit_assessment, domain_connection, company_research,",
+    "resume_strategy, interview_prep, meeting_notes, email, exercise, application_event, achievement",
+    "",
+    "Markdown rules:",
+    "- Preserve ALL content verbatim; do not summarize or omit anything",
+    "- Use ## for major sections (Requirements, Responsibilities, About the Role, etc.)",
+    "- Use ### for subsections; bullet lists for requirement/responsibility lists",
+    "- Separate paragraphs with blank lines",
+    "",
+    `Context: ${ctx.directoryType} directory, company: ${ctx.company ?? "unknown"}, filename: ${filename}`,
+    "Default category: jd_analysis for JDs, exercise for exercise docs, interview_prep for interview materials.",
+  ].join("\n");
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: INFERENCE_MODEL,
+        max_tokens: 4096,
+        temperature: 0,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) } },
+            { type: "text", text: prompt },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const output = (data?.content?.[0]?.text ?? "").trim();
+    const sepIdx = output.indexOf("\n---\n");
+    if (sepIdx === -1) return null;
+    const thought_category = output.slice(0, sepIdx).trim().replace(/[^a-z_]/g, "");
+    const markdown = output.slice(sepIdx + 5).trim();
+    return markdown ? { markdown, thought_category } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Convert uploaded file bytes to best-effort markdown for thought capture and chunking.
+// HTML → DOM walk; DOCX → mammoth heading style map; PDF → unpdf plain text (Haiku handles PDF upstream);
+// text/* → pass through; other binary → null.
+async function extractAsMarkdown(
   bytes: Uint8Array,
   contentType: string,
   rawText?: string,
@@ -98,9 +195,10 @@ async function extractAndCleanText(
     if (contentType === "text/html" || contentType === "application/xhtml+xml") {
       const html = rawText ?? new TextDecoder().decode(bytes);
       const doc = new DOMParser().parseFromString(html, "text/html");
-      return doc.body?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+      return domToMarkdown(doc.body);
     }
     if (contentType === "application/pdf") {
+      // Fallback path (used when ANTHROPIC_API_KEY is absent or Haiku call fails).
       const { text } = await extractPdfText(bytes, { mergePages: true });
       return text ?? null;
     }
@@ -108,8 +206,18 @@ async function extractAndCleanText(
       contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       || contentType === "application/msword"
     ) {
-      const result = await mammoth.extractRawText({ buffer: bytes.buffer as unknown as any });
+      const result = await mammoth.convert(
+        { buffer: bytes.buffer as unknown as any },
+        { styleMap: [
+          "p[style-name='Heading 1'] => ## $1",
+          "p[style-name='Heading 2'] => ## $1",
+          "p[style-name='Heading 3'] => ### $1",
+        ]},
+      );
       return result.value?.trim() || null;
+    }
+    if (isTextType(contentType)) {
+      return rawText ?? new TextDecoder().decode(bytes);
     }
     return null;
   } catch {
@@ -246,6 +354,9 @@ export interface MarkdownChunk {
 export function chunkMarkdown(text: string): MarkdownChunk[] {
   const MAX_CHUNK = 8000;
   const MIN_CHUNK = 30;
+  // Headerless sections larger than this get paragraph-split even if under MAX_CHUNK.
+  // Catches verbatim JD files (no ## headers) that would otherwise become one giant blob.
+  const PARA_SPLIT_SIZE = 1500;
   const chunks: MarkdownChunk[] = [];
   // Split on H2 boundaries; keep the ## header with its section
   const parts = text.split(/(?=\n## )/);
@@ -255,15 +366,20 @@ export function chunkMarkdown(text: string): MarkdownChunk[] {
     if (trimmed.length < MIN_CHUNK) continue;
     const headerMatch = trimmed.match(/^## (.+)/);
     const title = headerMatch ? headerMatch[1].trim() : null;
-    // If this chunk is oversized, split at paragraph boundaries
-    if (trimmed.length <= MAX_CHUNK) {
+    // Paragraph-split when: (a) oversized, or (b) no H2 header and exceeds PARA_SPLIT_SIZE
+    if (trimmed.length <= MAX_CHUNK && !(title === null && trimmed.length > PARA_SPLIT_SIZE)) {
       chunks.push({ title, index: chunks.length, content: trimmed });
     } else {
-      const paras = trimmed.split(/\n\n+/);
+      // Use PARA_SPLIT_SIZE as target when splitting a headerless section; MAX_CHUNK otherwise.
+      const splitTarget = title === null ? PARA_SPLIT_SIZE : MAX_CHUNK;
+      // Fall back to single-newline splitting for flat PDFs with no paragraph breaks.
+      const paras = trimmed.includes("\n\n")
+        ? trimmed.split(/\n\n+/)
+        : trimmed.split(/\n/).filter(l => l.trim().length > 0);
       let buf = "";
       let subIdx = 0;
       for (const para of paras) {
-        if (buf.length + para.length + 2 > MAX_CHUNK && buf.length >= MIN_CHUNK) {
+        if (buf.length + para.length + 2 > splitTarget && buf.length >= MIN_CHUNK) {
           chunks.push({
             title: subIdx === 0 ? title : `${title ?? "…"} (continued ${subIdx})`,
             index: chunks.length,
@@ -316,19 +432,28 @@ export async function uploadFileCore(
     Bucket: BUCKET, Key: args.key, Body: bytes, ContentType: args.content_type,
   }));
 
-  // Phase 3: derive context, extract text (including from PDF/DOCX/HTML), infer category, capture thought
+  // Phase 3: derive context, extract markdown, infer category, capture thought
   const filename = args.key.split("/").pop() ?? args.key;
   const ctx = await deriveUploadContext(args.application_folder ? `applications/${args.application_folder}/` : args.key, pool);
 
-  // Extract clean text: for non-HTML text types use content directly; for HTML strip tags; for PDF/DOCX extract
   let cleanText: string | null = null;
-  if (!args.binary && isTextType(args.content_type)) {
-    cleanText = await extractAndCleanText(bytes, args.content_type, args.content);
-  } else if (args.binary) {
-    cleanText = await extractAndCleanText(bytes, args.content_type);
+  let thoughtCategory: string | null = args.thought_category ?? null;
+
+  if (args.binary && args.content_type === "application/pdf") {
+    // PDF: Haiku converts to markdown and returns category in one call; fall back to unpdf plain text.
+    const haiku = await extractMarkdownViaHaiku(bytes, filename, ctx);
+    if (haiku) {
+      cleanText = haiku.markdown;
+      if (!thoughtCategory) thoughtCategory = haiku.thought_category;
+    } else {
+      cleanText = await extractAsMarkdown(bytes, args.content_type);
+    }
+  } else if (!args.binary) {
+    cleanText = await extractAsMarkdown(bytes, args.content_type, args.content);
+  } else {
+    cleanText = await extractAsMarkdown(bytes, args.content_type);
   }
 
-  let thoughtCategory: string | null = args.thought_category ?? null;
   let thoughtId: string | null = null;
 
   if (cleanText && cleanText.length > 50 && captureThoughtFn) {
@@ -370,8 +495,9 @@ export async function uploadFileCore(
     finally { c.release(); }
   }
 
-  // Phase 2: chunk the document at H2 boundaries for section-level retrieval (use clean text for binary types)
-  const textToChunk = (!args.binary && isTextType(args.content_type)) ? args.content : cleanText;
+  // Phase 2: chunk at H2 boundaries for section-level retrieval.
+  // cleanText is best-effort markdown for all types; fall back to args.content for non-binary if null.
+  const textToChunk = cleanText ?? (!args.binary ? args.content : null);
   if (textToChunk && textToChunk.length > 50 && chunkContentFn) {
     try {
       await chunkContentFn(textToChunk, args.key);
@@ -1562,7 +1688,7 @@ export async function searchChunksSemanticCore(
        FROM js_chunks c
        JOIN thoughts t ON c.thought_id = t.id
        WHERE ($2::text IS NULL OR c.storage_key LIKE $2 || '%')
-         AND (t.embedding <=> $1::vector) < 0.4
+         AND (t.embedding <=> $1::vector) < 0.6
        ORDER BY similarity ASC
        LIMIT $3`,
       [embeddingLiteral, storage_key_prefix ?? null, limit],
@@ -1582,7 +1708,7 @@ export function registerSearchChunksSemanticTool(server: unknown, pool: unknown,
     "search_chunks_semantic",
     "Semantic search across document sections (H2 chunks). Returns scored sections rather than whole files. " +
     "Use storage_key_prefix to scope to a folder (e.g. 'applications/2026-05-15-co-role/'). " +
-    "Results filtered to similarity < 0.4 (cosine distance; lower = more similar).",
+    "Results filtered to similarity < 0.6 (cosine distance; lower = more similar).",
     {
       query: z.string().describe("Natural language query, e.g. 'domain connection fintech compliance'"),
       storage_key_prefix: z.string().nullish().describe(
@@ -2282,6 +2408,64 @@ export async function listThoughtsCore(
 }
 
 // ---------------------------------------------------------------------------
+// registerCaptureThoughtTool — capture_thought with rich job-search metadata
+// Exposes captureThoughtFn as a top-level MCP tool so Claude Code and the
+// webapp can call it with structured fields instead of embedding YAML in content.
+// ---------------------------------------------------------------------------
+
+export function registerCaptureThoughtTool(server: unknown, captureThoughtFn?: CaptureThoughtFn) {
+  (server as any).tool(
+    "capture_thought",
+    "Capture a thought in OB1 with structured job-search metadata. " +
+    "Returns the thought ID for use in notes-index.md and knowledge graph edges. " +
+    "Prefer this over mcp__open-brain__capture_thought in job-search sessions — " +
+    "it passes metadata as proper fields rather than embedded YAML frontmatter.",
+    {
+      content: z.string().describe("Thought content to capture"),
+      thought_category: z.string().optional().describe(
+        "Category: jd_analysis | fit_assessment | domain_connection | company_research | " +
+        "resume_strategy | resume_evaluation | interview_prep | email | application_event | achievement",
+      ),
+      source_type: z.string().optional().default("job_search"),
+      application_id: z.string().optional().describe("Application UUID"),
+      application_folder: z.string().optional().describe("Folder slug, e.g. '2026-05-27-wilson-sonsini-senior-ai-risk-advisor'"),
+      company: z.string().optional(),
+      profile_slug: z.string().optional(),
+      extra_metadata: z.record(z.string(), z.unknown()).optional().describe("Any additional metadata fields"),
+    },
+    async (args: {
+      content: string;
+      thought_category?: string;
+      source_type?: string;
+      application_id?: string;
+      application_folder?: string;
+      company?: string;
+      profile_slug?: string;
+      extra_metadata?: Record<string, unknown>;
+    }) => {
+      if (!captureThoughtFn) {
+        return { content: [{ type: "text", text: "capture_thought: captureThought callback not configured" }] };
+      }
+      const metadata: Record<string, unknown> = {
+        source_type: args.source_type ?? "job_search",
+        ...(args.thought_category ? { thought_category: args.thought_category } : {}),
+        ...(args.application_id ? { application_id: args.application_id } : {}),
+        ...(args.application_folder ? { application_folder: args.application_folder } : {}),
+        ...(args.company ? { company: args.company } : {}),
+        ...(args.profile_slug ? { profile_slug: args.profile_slug } : {}),
+        ...(args.extra_metadata ?? {}),
+      };
+      try {
+        const thoughtId = await captureThoughtFn(args.content, metadata);
+        return { content: [{ type: "text", text: `Thought captured: ${thoughtId}` }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // registerSearchThoughtsTool — search_thoughts with thought IDs in output
 // ---------------------------------------------------------------------------
 
@@ -2422,7 +2606,8 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerGetEntityNeighborsTool(server, pool);
   registerTraverseKnowledgeGraphTool(server, pool);
 
-  // Thought query tools (job-search variants include thought IDs in output)
+  // Thought tools (capture + query; job-search variants include thought IDs in output)
+  registerCaptureThoughtTool(server, captureThought);
   registerSearchThoughtsTool(server, searchThoughts);
   registerListThoughtsTool(server, listThoughts);
 

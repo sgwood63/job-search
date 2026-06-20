@@ -93,9 +93,17 @@ Capture every piece of application knowledge as an OB1 thought. OB1's entity ext
 
 **New MCP tools (Phase 4 explicit edges):** `create_knowledge_edge`, `get_entity_neighbors`, `traverse_knowledge_graph` — registered in job-search-mcp server; no OB1 source changes required.
 
-**Automatic thought_category inference (webapp):** Every file upload now triggers Haiku-based classification at `uploadFileCore`. No user input required. PDFs and DOCX are text-extracted (`unpdf`, `mammoth`) before inference. HTML files are tag-stripped. Inferred category stored in `js_files.thought_category` and in the thought metadata. Inference skipped gracefully when `ANTHROPIC_API_KEY` absent. Chat panel file attachments use `useLocation()` to pass application folder as context.
+**Automatic thought_category inference + binary file extraction:** Every file upload goes through `extractAsMarkdown()` before thought capture and chunking. Type-specific converters produce best-effort markdown with headings preserved:
+- **HTML** → `domToMarkdown()` DOM walk (H1/H2 → `## `, H3/H4 → `### `, LI → `- `)
+- **DOCX** → `mammoth.convert()` with Word heading style map (Heading 1/2 → `## `)
+- **PDF** → `extractMarkdownViaHaiku()`: single Haiku call returns both markdown AND `thought_category` (one API call, not two); falls back to `unpdf` plain text when `ANTHROPIC_API_KEY` absent
+- **text/markdown, text/plain** → pass through
 
-**Context impact:** Significant for interview-prep — replaces full notes.md load with targeted thought fetches by ID. Upload pipeline now produces fully indexed, classified thoughts for all file types including PDFs and DOCX.
+The new `capture_thought` MCP tool (`mcp__job-search__capture_thought`) exposes the `captureThoughtFn` callback with structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`, etc.). Prefer it over `mcp__open-brain__capture_thought` in job-search sessions — it passes metadata as typed fields instead of YAML embedded in content.
+
+Inferred category stored in `js_files.thought_category` and in the thought metadata. Chat panel file attachments use `useLocation()` to pass application folder as context.
+
+**Context impact:** Significant for interview-prep — replaces full notes.md load with targeted thought fetches by ID. Upload pipeline now produces fully indexed, classified thoughts for all file types including PDFs and DOCX, with section-level chunks that carry `section_title` from headings in DOCX, HTML, and PDF content.
 
 **Files changed:**
 - `workflows/process-jd/v2.md` — new Step 5 (thought capture + notes-index.md)
