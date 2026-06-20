@@ -112,14 +112,29 @@ upload_file(key, content, content_type='text/markdown')
 **REST API** — use for binary or large files:
 ```bash
 source "$APP_DIR/.env"
-FILE_B64=$(base64 -i "$LOCAL_FILE_PATH")
-curl -s -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
+# Write JSON body to a temp file — inline -d silently truncates large base64 payloads
+python3 -c "
+import json, base64, sys
+data = open('$LOCAL_FILE_PATH', 'rb').read()
+sys.stdout.write(json.dumps({'content': base64.b64encode(data).decode(), 'content_type': '$CONTENT_TYPE', 'binary': True}))
+" > /tmp/upload_payload.json
+HTTP_STATUS=$(curl -s -o /tmp/upload_response.json -w "%{http_code}" \
+  -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
   -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"content\":\"$FILE_B64\",\"content_type\":\"$CONTENT_TYPE\",\"binary\":true}"
+  --data @/tmp/upload_payload.json)
+rm /tmp/upload_payload.json
+if [[ "$HTTP_STATUS" != 2* ]]; then
+  echo "ERROR: Upload failed (HTTP $HTTP_STATUS). Stop and report to user."
+  cat /tmp/upload_response.json
+  exit 1
+fi
+rm /tmp/upload_response.json
 ```
 
 Note: `binary: true` tells the server the content is base64-encoded bytes. Text files sent via REST API should use `binary: false` and pass the raw text as `content` (no base64).
+
+**If the REST API fails: hard stop.** Report the HTTP status and response to the user. Never fall back to writing directly to MinIO (bypasses `js_files` and thought capture — file is invisible to semantic search) or to `$APPLICANT_DIR` (creates silent drift with OB1 as authoritative store). Both forbidden fallbacks are worse than stopping.
 
 **Why the REST API for large files:** The MCP tool passes content as a JSON-RPC parameter. MCP transport imposes size limits that binary files (e.g., resume PDFs at 75–150KB) exceed. The REST API accepts the same payload as a direct HTTP body — no parameter size constraint. Proven failure: 75KB PDF via MCP tool = "base64 is too large for the MCP upload parameter" (2026-06-08).
 
@@ -151,12 +166,23 @@ rm "$TMP_HTML"
 pdfinfo "$TMP_PDF" | grep Pages
 
 # 2. Upload PDF to OB1 via REST API (binary — too large for MCP tool parameter)
-PDF_B64=$(base64 -i "$TMP_PDF")
-curl -s -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
+# Write JSON body to a temp file — inline -d silently truncates large base64 payloads
+python3 -c "
+import json, base64, sys
+sys.stdout.write(json.dumps({'content': base64.b64encode(open('$TMP_PDF', 'rb').read()).decode(), 'content_type': 'application/pdf', 'binary': True}))
+" > /tmp/upload_payload.json
+HTTP_STATUS=$(curl -s -o /tmp/upload_response.json -w "%{http_code}" \
+  -X PUT "$JOB_SEARCH_MCP_URL/api/v2/files/$KEY" \
   -H "x-brain-key: $JOB_SEARCH_MCP_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"content\":\"$PDF_B64\",\"content_type\":\"application/pdf\",\"binary\":true}"
-rm "$TMP_PDF"
+  --data @/tmp/upload_payload.json)
+rm /tmp/upload_payload.json "$TMP_PDF"
+# Hard stop on failure — do NOT fall back to MinIO or $APPLICANT_DIR
+if [[ "$HTTP_STATUS" != 2* ]]; then
+  echo "ERROR: PDF upload failed (HTTP $HTTP_STATUS). Stop and report to user — do not write to MinIO or $APPLICANT_DIR."
+  cat /tmp/upload_response.json; rm /tmp/upload_response.json; exit 1
+fi
+rm /tmp/upload_response.json
 ```
 
 ## When webapp shows stale content

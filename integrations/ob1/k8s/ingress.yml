@@ -33,10 +33,3 @@ spec:
             name: job-search-mcp
             port:
               number: 8001
-      - path: /minio(/|$)(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: minio
-            port:
-              number: 9001

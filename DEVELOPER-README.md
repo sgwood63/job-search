@@ -189,9 +189,9 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 | Component | What it is | URL |
 |---|---|---|
 | `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server — 23 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles, thought queries (with IDs) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
-| `minio` | Deployment: S3-compatible object store | `http://localhost/minio` (console) / `localhost:30900` (S3) |
-| nginx Ingress | Routes `/ob1`, `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
+| `job-search-mcp` | Deployment: Deno/Hono server — 32 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles, thought capture + queries (with IDs) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
+| `minio` | Deployment: S3-compatible object store | ClusterIP only — not externally accessible; use `kubectl port-forward svc/minio -n openbrain 9000:9000` for admin access |
+| nginx Ingress | Routes `/ob1`, `/job-search` | Port 80 — no per-session port-forwarding |
 
 All services are permanently accessible through nginx Ingress once deployed. PostgreSQL is cluster-internal; use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand (required for `migrate-to-ob1.py` only — the webapp no longer accesses Postgres directly).
 
@@ -225,6 +225,7 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `integrations/ob1/tests/test-deployment.sh` | 30-assertion deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, MCP servers (OB1 + job-search), webapp health, migration data, functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
 | `integrations/ob1/tests/test-knowledge-graph.ts` | 11 Deno unit tests for Phase 3 knowledge graph core functions (`createKnowledgeEdgeCore`, `getEntityNeighborsCore`, `traverseKnowledgeGraphCore`) — all DB I/O mocked, no live services needed. **Requires Deno** (`curl -fsSL https://deno.land/install.sh \| sh`). Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-knowledge-graph.ts` |
 | `integrations/ob1/tests/test-search-thoughts.ts` | 15 Deno unit tests for `listThoughtsCore`, `registerSearchThoughtsTool`, and `registerListThoughtsTool` — all DB I/O mocked, no live services needed. Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-search-thoughts.ts` |
+| `integrations/ob1/tests/test-chunking.ts` | 15 Deno unit tests for Phase 2 chunking core functions (`chunkMarkdown`, `searchChunksSemanticCore`) — covers H2 splitting, preamble handling, oversized sections, headerless paragraph splitting, single-newline fallback, similarity threshold, and SQL parameter passing. All DB I/O mocked. Run: `cd integrations/ob1 && deno test --allow-env --allow-sys --no-check tests/test-chunking.ts` |
 
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
 
@@ -564,7 +565,7 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `JOB_SEARCH_MCP_URL` | Manual | Base URL for job-search MCP server (e.g. `http://localhost/job-search`) |
 | `JOB_SEARCH_MCP_KEY` | Manual | Auth key for job-search MCP and REST API (`x-brain-key` header) |
 | `JOB_SEARCH_REST_URL` | Manual | Base URL for job-search REST API — consumed by the webapp; K8s: `http://job-search-mcp.openbrain.svc.cluster.local:8001`; Compose: `http://job-search-mcp:8001`; local dev: `http://localhost:8001` |
-| `MINIO_ENDPOINT` | Manual | MinIO S3 API address (e.g. `localhost:30900`) |
+| `MINIO_ENDPOINT` | Manual | MinIO S3 API address — cluster-internal: `minio.openbrain.svc.cluster.local:9000`; admin/migration use: run `kubectl port-forward svc/minio -n openbrain 9000:9000` and set to `localhost:9000` |
 | `MINIO_ACCESS_KEY` | Manual | MinIO access key |
 | `MINIO_SECRET_KEY` | Manual | MinIO secret key |
 | `MINIO_BUCKET` | Manual | MinIO bucket name (e.g. `job-search`) |
