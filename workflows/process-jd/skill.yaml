@@ -6,8 +6,8 @@ description: >
   save per storage-routing, capture OB1 thoughts, write knowledge graph edges, and register
   in tracker. Called by create-application, search-jobs, and search-jobs-linkedin.
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 policies:
   - storage-routing
   - factuality
@@ -19,6 +19,7 @@ inputs:
   - source_name         # e.g. "SearchAPI / Google Jobs", "LinkedIn Recommendations", "Manual"
   - profile_hint        # optional profile slug; jd-evaluation may override
   - source_metadata     # optional dict: {via?, posted_at?, job_id?, raw_source_json?}
+  - kg_context          # optional — pre-fetched KG neighbors (passed by callers that run Step 0 themselves)
 outputs:
   - folder_slug         # YYYY-MM-DD-company-role
   - application_id      # OB1 UUID or local folder path
@@ -26,6 +27,15 @@ outputs:
   - score               # 1-10
   - profile_match       # profile slug selected by jd-evaluation
 changelog:
+  - version: v4
+    date: 2026-06-21
+    summary: >
+      New Step 0 (OB1 only): KG context lookup via get_entity_neighbors before Haiku screening;
+      surfaces prior skill signals, existing applications, and known contacts; result injected into
+      Haiku prompt as kg_context. Performance: Step 4 OB1 uploads (upload_file ×N +
+      update_application_fields) now issued in one parallel turn; Step 5 thought captures
+      (jd_analysis + fit_assessment) issued in one parallel turn; Step 6 KG edges all issued in
+      one parallel turn instead of a serial loop.
   - version: v3
     date: 2026-06-19
     summary: >

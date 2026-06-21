@@ -5,8 +5,8 @@ description: >
   (Haiku via process-jd); deduplicate against seen-jobs.json; save fit jobs as
   application stubs for review. Reports a per-run summary file and CSV log entry.
 status: active
-pinned: v2
-latest: v2
+pinned: v3
+latest: v3
 policies:
   - storage-routing
   - factuality
@@ -16,8 +16,17 @@ inputs:
   - batch_size      # optional; defaults to SEARCH_BATCH_SIZE env var (default 10)
 outputs:
   - summary_file    # $APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md
-  - search_log_entry # appended to search-log.csv or logged via log_search_run()
+  - search_log_entry # OB1: update_search_run call; local: appended to search-log.csv
 changelog:
+  - version: v3
+    date: 2026-06-21
+    summary: >
+      log_search_run moved to Step 2 (before processing loop) so search_run_id is valid for all
+      log_ingested_position calls; final counters patched via update_search_run in Step 4b.
+      New Step 3c-ii: prior-assessment gate via search_thoughts — skips re-fetch if a fresh fit
+      assessment exists (< 30 days). JD content handling rule (full_jd_content stays in memory,
+      no temp files). Raw data rule (no per-company raw JSON files; analysis runs in subprocesses).
+      Companion doc pre-load in Step 1 (process-jd workflow + storage-routing policy).
   - version: v2
     date: 2026-06-14
     summary: OB1 transition — log_search_run returns UUID; Step 4 now generates per-run summary .md (uploaded to OB1 as summary_key) before calling log_search_run; positions link to search_run_id

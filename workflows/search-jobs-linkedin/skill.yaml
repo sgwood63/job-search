@@ -5,17 +5,29 @@ description: >
   with jd-evaluation (Haiku via process-jd) against all active profiles; save fit
   jobs as application stubs for review. Reports a per-run summary file and log entry.
 status: active
-pinned: v2
-latest: v2
+pinned: v3
+latest: v3
 policies:
   - storage-routing
   - factuality
 inputs:
-  - max_pages    # optional; defaults to 4; pass 0 for unlimited
+  - max_pages      # optional; defaults to 4; pass 0 for unlimited
+  - page_delay     # optional; seconds between scraper pages (default 20)
+  - jd_delay       # optional; seconds between JD fetches (default 10)
+  - profile_slug   # optional; if given, runs keyword-search mode (one URL per Search Queries row)
 outputs:
   - summary_file
   - search_log_entry
 changelog:
+  - version: v3
+    date: 2026-06-21
+    summary: >
+      Two-pass architecture: Phase A (batch dedup — check_position_seen calls may be parallelized),
+      Phase B (pre-fetch all JDs to /tmp/jd-<job_id>.md), Phase C (process from files). Avoids
+      interleaving Playwright blocking with OB1 writes. KG pre-check per new job
+      (get_entity_neighbors) surfaces known contacts and prior skill signals before process-jd.
+      Auth failure in Phase B aborts before any processing. Domain connection and TodoWrite
+      prohibitions made explicit. LinkedIn-specific CSS selectors + 12k char cap in fetch-jd.py.
   - version: v2
     date: 2026-06-14
     summary: OB1 transition — Step 5 now generates per-run summary .md (uploaded to OB1 as summary_key) before calling log_search_run; log_search_run returns search_run_id; Changes from v1 note corrected to confirm summary .md is still generated

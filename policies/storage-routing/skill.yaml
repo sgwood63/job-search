@@ -2,9 +2,18 @@ name: storage-routing
 kind: policy
 description: Canonical DATA_BACKEND routing — when OB1 is configured, all APPLICANT file reads/writes go through OB1 MCP tools; MCP not connected = hard stop; upload routing MCP vs REST
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 changelog:
+  - version: v2
+    date: 2026-06-21
+    summary: >
+      Ingest dedup tool mapping (check_position_seen, log_ingested_position, get_ingestion_history,
+      log_search_run→UUID, get_search_runs); local dedup CSV (search/ingested-positions.csv) replaces
+      seen-jobs.json + linkedin-seen-jobs.json; two-MCP-server disambiguation (job-search owns all
+      file I/O; thought queries must use job-search variants); session start check for both servers;
+      REST API upload path for binary/large files with curl template; PDF generation workflow for
+      OB1 mode; stale content debugging guidance; scope override note for get_file/upload_file.
   - version: v1
     date: 2026-06-12
     summary: Migrated verbatim from memory/feedback_ob1_integration.md plus the DATA_BACKEND bullet from CLAUDE.md Profile Maintenance
