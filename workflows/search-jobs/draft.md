@@ -34,6 +34,13 @@ Pre-extract and cache for reuse across all jobs:
 - From `applicant.md`: "Location" section, "Deal-breakers (Hard No)" section, compensation/target salary line
 - From `PROFILES-QUICK-REFERENCE.md`: `## Hard Stops` section, `## Location Check` section
 
+**Pre-load workflow companions** (run in parallel with the PROFILES-QUICK-REFERENCE.md load above):
+- Read `$APP_DIR/workflows/process-jd/draft.md` if it exists, else `$APP_DIR/workflows/process-jd/v3.md`
+- Read the pinned storage-routing policy version (check `$APP_DIR/policies/storage-routing/skill.yaml` for the pinned version, then read that file)
+- OB1: `get_file('memory/applicant-setup-status.md')`
+
+These documents are re-read after every auto-compaction event during long ingest runs. Loading them here puts them in the cache prefix for the entire session. `applicant-setup-status.md` is auto-generated (Stop hook) and Claude never writes it — loading it once prevents repeated `rest:GET /api/v2/files/memory/applicant-setup-status.md` calls.
+
 **Local mode only — load dedup table:**
 Read `$APPLICANT_DIR/search/ingested-positions.csv` into memory as an in-memory lookup set. If the file does not exist, start with an empty set.
 
@@ -84,11 +91,14 @@ If batch file is empty (no jobs returned): output "No jobs returned from search.
 
 Read the batch file line by line (NDJSON). **For each job object:**
 
+**Compact guidance:** After every 10 positions processed in this loop, if no manual `/compact` has been run recently, use `/compact` to flush accumulated JD text from context. Each full JD adds 1,000–5,000 tokens; without periodic compaction, auto-compaction fires at unpredictable points, busts the cache prefix, and triggers re-reads of all companion docs loaded in Step 1.
+
 **3c. Dedup check:**
 
 Extract `candidate_urls` from `raw.apply_links[].link` and `apply_link` (may be empty).
 
-- **OB1:** Call `check_position_seen(source_url=<first candidate_url or null>, company_name=<raw.company_name>, role_title=<raw.title>)`
+- **OB1:** Call `check_position_seen(source_url=<first candidate_url or null>, company_name=<raw.company_name or null>, role_title=<raw.title or null>)`
+  - **Null-literal rule:** When `raw.company_name` or `raw.title` is absent, undefined, or empty, pass the JSON literal `null` — never omit the value or leave it blank. Sending `{"company_name": , "role_title": }` is invalid JSON and will cause an InputValidationError on every call.
   - `seen=true AND is_repost=false`: call `log_ingested_position(..., outcome='duplicate', search_run_id=<search_run_id>)`, increment `duplicate_count`, output `= <Company> — <Role> [already seen]`, continue to next job
   - `seen=true AND is_repost=true`: call `log_ingested_position(..., outcome='duplicate', is_repost=true, first_seen_at=<result.first_seen_at>, search_run_id=<search_run_id>)`, increment `duplicate_count` and `repost_count`, append to `repost_jobs`, output `~ <Company> — <Role> [repost — first seen <first_seen_at>]`, continue to next job
   - `seen=false`: continue below
