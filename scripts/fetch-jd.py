@@ -169,11 +169,54 @@ _LINKEDIN_JD_SELECTORS = (
 # Used as a last resort when all CSS selectors fail (LinkedIn frequently restructures).
 _LINKEDIN_CONTENT_MARKERS = ("About the job", "About this job", "Job description")
 
+# LinkedIn "See more" expand button selectors, tried in priority order.
+# LinkedIn frequently A/B tests button classes; keeping a fallback chain is necessary.
+_LINKEDIN_EXPAND_SELECTORS = (
+    "button[aria-label='Click to see more description']",        # canonical aria-label, 2023-2025
+    "button[aria-label='Show more, visually expands previously read content']",  # 2026 redesign
+    ".jobs-description__footer-button",                           # stable BEM class, ~2023+
+    "[class*='jobs-description'][class*='footer']",               # covers renamed A/B variants
+    ".jobs-description button.inline-show-more-text__button",     # "…more" inline link variant
+    ".jobs-description button[aria-expanded='false']",            # aria contract: collapsed button
+)
+
 # Footer markers: text that signals the end of job content on LinkedIn full-page extracts.
 # Content is trimmed at the first occurrence of any of these.
-_LINKEDIN_FOOTER_MARKERS = ("\nSelect language\n", "\nLanguage\n")
+_LINKEDIN_FOOTER_MARKERS = (
+    "\nSelect language\n",              # language-selector nav
+    "\nLanguage\n",                     # variant
+    "\nSet alert for similar jobs",     # job alert prompt; appears immediately after JD
+    "\nMore jobs\n",                    # similar-jobs sidebar section heading
+    "\nBenefits found in job post\n",   # LinkedIn benefits section below JD
+    "\nSee how you compare",            # skills-match widget for logged-in users
+    "\nLooking for talent?\n",          # LinkedIn Recruiter ad copy
+    "\nLinkedIn Corporation",           # legal footer
+    "\n© LinkedIn",                     # alternate legal footer form
+)
 
 DEFAULT_MAX_CHARS = 12000
+
+
+def _expand_linkedin_jd(page) -> bool:
+    """Try to click the LinkedIn "See more" expand button for the job description.
+
+    Iterates through _LINKEDIN_EXPAND_SELECTORS in priority order. Clicks the
+    first button that is visible and not disabled, then waits 800ms for the DOM
+    to update. Returns True if clicked, False otherwise.
+
+    Called at the top of the LinkedIn branch in _extract_body() before the CSS
+    selector chain so extraction runs against the expanded DOM.
+    """
+    for sel in _LINKEDIN_EXPAND_SELECTORS:
+        try:
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible() and not btn.is_disabled():
+                btn.click()
+                page.wait_for_timeout(800)
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _extract_body(page, url: str, max_chars: int | None = DEFAULT_MAX_CHARS) -> str:
@@ -188,6 +231,7 @@ def _extract_body(page, url: str, max_chars: int | None = DEFAULT_MAX_CHARS) -> 
     """
     body = ""
     if "linkedin.com" in url:
+        _expand_linkedin_jd(page)
         for sel in _LINKEDIN_JD_SELECTORS:
             try:
                 el = page.query_selector(sel)
@@ -205,6 +249,8 @@ def _extract_body(page, url: str, max_chars: int | None = DEFAULT_MAX_CHARS) -> 
                 if idx != -1:
                     body = full[idx:]
                     break
+            if not body:
+                body = full  # no marker found; use full body to avoid a second inner_text("body") call
         if body:
             for footer in _LINKEDIN_FOOTER_MARKERS:
                 fidx = body.find(footer)

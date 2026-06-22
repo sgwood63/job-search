@@ -1,0 +1,45 @@
+{
+  "version": "2026-06-22",
+  "note": "Individual JD URLs expire (exit 3 = closed). Refresh via: mcp__job-search__search_chunks_semantic('Source: https <ats-domain> fetched via fetch-jd'). Index pages (stable=true) don't expire.",
+  "urls": [
+    {
+      "label": "Greenhouse — Anthropic index (stable listing page)",
+      "url": "https://boards.greenhouse.io/anthropic",
+      "site_type": "greenhouse",
+      "individual_jd": false,
+      "stable": true
+    },
+    {
+      "label": "Lever — Anthropic index (stable listing page)",
+      "url": "https://jobs.lever.co/anthropic/",
+      "site_type": "lever",
+      "individual_jd": false,
+      "stable": true
+    },
+    {
+      "label": "Ashby — Nash individual JD (may expire)",
+      "url": "https://jobs.ashbyhq.com/Nash/1343b864-b48c-43b0-92a4-af8d934d8938",
+      "site_type": "ashby",
+      "individual_jd": true,
+      "stable": false,
+      "ob1_source": "applications/2026-05-08-nash-technical-customer-success-manager/"
+    },
+    {
+      "label": "GoodLeap — individual JD (custom company careers page, may expire)",
+      "url": "https://www.goodleap.com/careers/55c9385b-0c60-4c50-b814-741ee8b8dbd9",
+      "site_type": "custom-company-page",
+      "individual_jd": true,
+      "stable": false,
+      "ob1_source": "applications/2026-04-29-goodleap-senior-ai-solutions-engineer/"
+    },
+    {
+      "label": "Unknown site — Genesys (custom careers page, novel domain for fetch-jd)",
+      "url": "https://www.genesys.com/company/careers",
+      "site_type": "unknown",
+      "individual_jd": false,
+      "stable": false,
+      "skip_content_check": true,
+      "note": "Genesys uses a custom domain with no named ATS — represents a completely novel site. fetch-jd has no special handling for it. Page is JS-rendered; page.inner_text('body') returns no content."
+    }
+  ]
+}

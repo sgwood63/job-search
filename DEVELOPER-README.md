@@ -119,7 +119,14 @@ $APP_DIR/
 │   ├── langfuse_cc_hook.py      # Stop hook: posts session turn telemetry to Langfuse (silent no-op if keys absent)
 │   ├── launch-chrome-debug.sh  # Launches Chrome with CDP remote debugging (port 9222) for LinkedIn live-browser sessions
 │   ├── README.md                # Script documentation
-│   └── README-linkedin-extractors.md
+│   ├── README-linkedin-extractors.md
+│   └── tests/
+│       ├── conftest.py              # Shared fixtures; bootstraps APP_DIR before collection
+│       ├── test_fetch_scripts.py    # Unit/mock tests for fetch-jd.py and fetch-linkedin-recs.py (no network)
+│       ├── test_fetch_e2e.py        # E2E tests (-m e2e / e2e_jd / e2e_public); public tier is CI-safe
+│       ├── check-test-urls.py       # Maintenance: checks non-stable URLs in data/public-jd-urls.json for expiry
+│       └── data/
+│           └── public-jd-urls.json  # Real ATS URLs used by e2e_public tests; non-stable entries expire (exit 3)
 │
 └── integrations/
     └── ob1/
