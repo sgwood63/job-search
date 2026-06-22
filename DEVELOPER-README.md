@@ -59,6 +59,8 @@ $APP_DIR/
 ├── applicant-setup.md           # Onboarding phases A–E + Phase F (profile maintenance)
 │
 ├── docs/
+│   ├── ob1-merge-spec.md        # OB1 consolidation spec — single-server merge, 34 tools, BigInt fix (implemented)
+│   ├── webapp-parity-spec.md    # Webapp parity spec — Thoughts UI, /ob1/rest/* proxy routes (in progress)
 │   ├── architecture/            # Design PDF, approved plan, implementation record, phase 3/4 roadmap
 │   ├── ob1-search-runs/         # Search runs API spec, deploy checklist, backfill procedure
 │   ├── ob1-intelligent-access/  # Context-optimization roadmap (chunking design, schema changes)
@@ -115,22 +117,26 @@ $APP_DIR/
 │   ├── status-line.sh           # Dynamic status bar for Claude Code VS Code extension
 │   ├── generate-setup-status.sh # Auto-generates applicant-setup-status.md (Stop hook)
 │   ├── langfuse_cc_hook.py      # Stop hook: posts session turn telemetry to Langfuse (silent no-op if keys absent)
+│   ├── launch-chrome-debug.sh  # Launches Chrome with CDP remote debugging (port 9222) for LinkedIn live-browser sessions
 │   ├── README.md                # Script documentation
 │   └── README-linkedin-extractors.md
 │
 └── integrations/
     └── ob1/
         ├── README.md                # Full K8s deployment guide
-        ├── job-search-schema.sql    # 9 js_* Postgres tables
-        ├── job-search-tools.ts      # 31 MCP tool implementations (26 base + 3 Phase 3 knowledge graph + 2 thought query tools)
+        ├── full-schema.sql          # Authoritative 3-layer schema (thoughts+pgvector, entities+edges, js_*) — use for fresh deploys
+        ├── job-search-schema.sql    # Layer 3 only (js_* tables) — idempotent; use full-schema.sql for fresh deploys
+        ├── job-search-tools.ts      # 34 MCP tool implementations (31 job-search + 3 OB1-compat absorbed tools)
         ├── job-search-server.ts     # MCP HTTP server entry point (Deno/Hono)
         ├── Dockerfile               # Builds job-search-mcp image
         ├── docker-compose.yml       # OB1 data services (postgres + minio)
         ├── k8s/                     # Kubernetes manifests
         └── tests/
             ├── test-deployment.sh       # 30-assertion deployment verification suite (bash)
+            ├── test-ob1-tools.ts        # 9 unit tests for absorbed OB1-compat tools (search, fetch, thought_stats; BigInt safety) (Deno)
             ├── test-knowledge-graph.ts  # 11 unit tests for Phase 3 knowledge graph core functions (Deno)
-            └── test-search-thoughts.ts  # 15 unit tests for search_thoughts/list_thoughts tools (Deno)
+            ├── test-search-thoughts.ts  # 15 unit tests for search_thoughts/list_thoughts tools (Deno)
+            └── test-chunking.ts         # 15 unit tests for HTML/DOCX/PDF extraction + markdown chunking (Deno)
 ```
 
 ### `$APPLICANT_DIR` file tree
@@ -182,16 +188,16 @@ OB1 is an optional replacement for the local `$APPLICANT_DIR` + cloud sync path.
 - **PostgreSQL** (`js_*` tables) — structured state (pipeline, contacts, interviews, search runs, ingested positions)
 - **pgvector** — semantic search over all content via OB1's `thoughts` table
 
-**Prerequisite:** A local clone of the OB1 repo is required (`$OB1_REPO_PATH` in `.env`) to build the `openbrain-mcp-server:latest` Docker image used by the OB1 StatefulSet. The `job-search-mcp` image is built from this repo and has no external dependency.
+No OB1 repo required — the `openbrain-0` StatefulSet runs only PostgreSQL (`postgres:16` from Docker Hub); the OB1 MCP sidecar and langfuse-proxy have been removed. The `job-search-mcp` image (built from this repo) contains all 34 tools.
 
 ### Architecture (3 pods + nginx Ingress)
 
 | Component | What it is | URL |
 |---|---|---|
-| `openbrain-0` | StatefulSet: PostgreSQL + OB1 MCP sidecar | `http://localhost/ob1/mcp` |
-| `job-search-mcp` | Deployment: Deno/Hono server — 32 MCP tools + REST API (`/api/v2/*`) — search-runs, ingested-positions, files, applications, profiles, thought capture + queries (with IDs) | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
+| `openbrain-0` | StatefulSet: PostgreSQL only (1/1 container) | Port 5432 — cluster-internal via `openbrain-db` Service |
+| `job-search-mcp` | Deployment: Deno/Hono server — 34 MCP tools + REST API (`/api/v2/*` + `/ob1/rest/*`) — all job-search and OB1-compat tools in a single server | `http://localhost/job-search/mcp` · `http://localhost/job-search/api/v2/*` |
 | `minio` | Deployment: S3-compatible object store | ClusterIP only — not externally accessible; use `kubectl port-forward svc/minio -n openbrain 9000:9000` for admin access |
-| nginx Ingress | Routes `/ob1`, `/job-search` | Port 80 — no per-session port-forwarding |
+| nginx Ingress | Routes `/job-search`, `/minio` | Port 80 — no per-session port-forwarding |
 
 All services are permanently accessible through nginx Ingress once deployed. PostgreSQL is cluster-internal; use `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` on demand (required for `migrate-to-ob1.py` only — the webapp no longer accesses Postgres directly).
 
@@ -199,16 +205,22 @@ All services are permanently accessible through nginx Ingress once deployed. Pos
 
 ### MCP transport
 
-Both servers use the **Streamable HTTP** transport. Claude Code requires:
+The single server uses the **Streamable HTTP** transport. Claude Code requires:
 - `"type": "http"` in `.mcp.json`
-- URL pointing to the `/mcp` endpoint (e.g. `http://localhost/ob1/mcp`)
+- URL pointing to the `/mcp` endpoint (e.g. `http://localhost/job-search/mcp`)
 - `x-brain-key` auth header
 
-`.mcp.json` is gitignored and auto-generated by `bash scripts/k8s-apply-env.sh` from `.env` values.
+`.mcp.json` is gitignored and auto-generated by `bash scripts/k8s-apply-env.sh` from `.env` values. It contains a single `job-search` entry.
+
+If nginx Ingress is not up, connect directly via port-forward:
+```bash
+kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
+kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
+```
 
 ### Session-start protocol
 
-When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job-search__*` and `mcp__open-brain__*` appear in the deferred tools list at session start. If they do not appear — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `policies/storage-routing/` (pinned version).
+When `DATA_BACKEND=ob1` in `.env`, Claude Code verifies that `mcp__job_search__*` tools appear in the deferred tools list at session start. The `mcp__open_brain__*` server has been removed — `mcp__job_search__*` is the only server. If job-search tools are absent — hard stop, do not fall back to local files or cloud sync. Tell the user to restart Claude Code. See `policies/storage-routing/` (pinned version).
 
 ### Data persistence (Docker Desktop)
 
@@ -222,7 +234,8 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
 | `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
-| `integrations/ob1/tests/test-deployment.sh` | 30-assertion deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, MCP servers (OB1 + job-search), webapp health, migration data, functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
+| `integrations/ob1/tests/test-deployment.sh` | Deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, single MCP server (34 tools), OB1-compat tool checks, webapp health, and functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
+| `integrations/ob1/tests/test-ob1-tools.ts` | 9 Deno unit tests for the absorbed OB1-compat tools (`registerSearchTool`, `registerFetchTool`, `registerThoughtStatsTool`) — verifies search/fetch shapes, BigInt safety (`id::text AS id`), and COUNT::int cast. All DB I/O mocked. Run: `cd integrations/ob1 && deno test --no-check --allow-env --allow-sys tests/test-ob1-tools.ts` |
 | `integrations/ob1/tests/test-knowledge-graph.ts` | 11 Deno unit tests for Phase 3 knowledge graph core functions (`createKnowledgeEdgeCore`, `getEntityNeighborsCore`, `traverseKnowledgeGraphCore`) — all DB I/O mocked, no live services needed. **Requires Deno** (`curl -fsSL https://deno.land/install.sh \| sh`). Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-knowledge-graph.ts` |
 | `integrations/ob1/tests/test-search-thoughts.ts` | 15 Deno unit tests for `listThoughtsCore`, `registerSearchThoughtsTool`, and `registerListThoughtsTool` — all DB I/O mocked, no live services needed. Run: `cd integrations/ob1 && deno test --allow-env --allow-sys tests/test-search-thoughts.ts` |
 | `integrations/ob1/tests/test-chunking.ts` | 15 Deno unit tests for Phase 2 chunking core functions (`chunkMarkdown`, `searchChunksSemanticCore`) — covers H2 splitting, preamble handling, oversized sections, headerless paragraph splitting, single-newline fallback, similarity threshold, and SQL parameter passing. All DB I/O mocked. Run: `cd integrations/ob1 && deno test --allow-env --allow-sys --no-check tests/test-chunking.ts` |
@@ -238,6 +251,8 @@ See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy che
 For deployment options (local launch, Docker Compose, K8s) and a comparison of all modes, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 The browser webapp (`webapp/`) provides a React + FastAPI UI for browsing and editing applicant data. It supports both `local` and `ob1` data modes (selected by `DATA_BACKEND` in `.env`).
+
+**Views:** Tracker (`/`), Application detail, Base Docs, Setup Guide, Command Launcher, Docs, Search (ingest run history), and — in OB1 mode — **Thoughts** (`/thoughts`): browse and semantic-search all captured knowledge graph artifacts (portal Q&A, emails, notes, interview prep) with per-thought metadata and a detail view showing related thoughts.
 
 See [webapp/README.md](webapp/README.md) for prerequisites, configuration, launch instructions, API endpoints, and test suites.
 
@@ -322,7 +337,6 @@ MINIO_ENDPOINT=minio:9000
 And in `.env`:
 ```
 DATA_BACKEND=ob1
-OB1_MCP_URL=http://localhost:8080
 JOB_SEARCH_MCP_URL=http://localhost:8081
 JOB_SEARCH_REST_URL=http://job-search-mcp:8001
 ```
@@ -451,40 +465,58 @@ Process rules live in four locations with different scopes:
 
 ## JD Fetching
 
-`scripts/fetch-jd.py` uses Playwright to fetch job description pages. Called automatically by Claude during the JD workflow.
+`scripts/fetch-jd.py` is a general-purpose Playwright page fetcher for login-walled URLs. It is called automatically by Claude in three contexts:
 
-**Primary path:** Claude tries WebFetch first. On login wall or failure, falls back to the Playwright script.
+1. `/linkedin-ingest` — fetch individual LinkedIn job description pages
+2. `/ingest` (Google Jobs) — fallback when WebFetch fails on a JD URL
+3. Chat with URL — fallback in the create-application workflow when WebFetch hits a login wall
+
+**Most ATS pages (Greenhouse, Lever, Workday) are public** — no auth setup needed for those. LinkedIn is the primary case requiring setup.
+
+**Auth storage:** `$AUTH_DIR/<domain>.json` — defaults to `$APP_DIR/.auth/` when `AUTH_DIR` is not set. `$APP_DIR/.auth/` is already in `.gitignore`. See `.env.example` for `AUTH_DIR` configuration and migration instructions if you previously had auth files at `$APPLICANT_DIR/.auth/`.
 
 **Exit codes:**
 - `0` — success
 - `1` — navigation error → ask user to paste JD text
-- `2` — auth required or expired → show user the `--setup` command from stderr
+- `2` — auth required or expired → run auth setup (below)
 - `3` — job posting closed or no longer available → skip; folder not created
 
-**Auth setup for login-walled sites:**
+**Headless vs. Chrome mode:** Default is headless Chromium with saved session files. Works reliably for public pages and likely for non-LinkedIn login-walled pages with valid cookies. For LinkedIn, headless mode may be blocked by bot detection — Chrome profile mode is more reliable.
+
+### Auth setup — Firefox (no window needed)
+
+If you're logged into LinkedIn in Firefox, this imports your session silently:
 
 ```bash
 source "$APP_DIR/.env"
-"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/jobs/view/123'
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/login'
 ```
 
-Opens the default browser → log in → press Enter. The script scans Firefox profiles for session cookies. Falls back to manual DevTools entry (`F12 → Application → Cookies`, copy the session cookie name and value).
+Scans Firefox profiles automatically. You'll see `Saved N cookies for linkedin.com.` Re-run when exit code 2 is returned. If no Firefox session is found (or Firefox isn't installed), use Chrome.
 
-Auth is saved to `$APPLICANT_DIR/.auth/<domain>.json`. Re-run `--setup` or `--import` when exit code 2 is returned.
+### Auth setup — Chrome
 
-> **Note:** Chromium-family browsers (Chrome, Edge, Brave, Arc) encrypt cookies via the OS keychain, which requires system-level access and is not reliably available to external tools. Use Firefox or the manual DevTools fallback.
+Set `CHROME_PROFILE` in `.env` to the Chrome profile path where you're logged into LinkedIn. Find it in Chrome at `chrome://version/` → Profile Path. Log into LinkedIn in that profile first.
 
-**Import cookies from Firefox without opening a browser:**
+The script runs in one of two modes:
+
+**Profile-launch mode (default):** Chrome opens briefly per fetch and closes. No additional setup.
+
+**CDP mode (optional, faster):** Run `bash "$APP_DIR/scripts/launch-chrome-debug.sh"` once to start a persistent debug Chrome window. Chrome must NOT already be running on the same profile — quit it first.
+
+### Direct fetch commands
 
 ```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" "<url>"
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
 "$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --import linkedin.com
 ```
 
-**Save full page text as markdown to a file:**
+### Container deployment
 
-```bash
-"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --md-out "$FOLDER/jd-company-role.md" "<url>"
-```
+`fetch-jd.py` works headless in containers for public ATS pages (no auth needed). For LinkedIn URLs in containers, inject the auth file via K8s secret or docker-compose volume mount and set `AUTH_DIR` to the mount path — see `.env.example` for exact commands.
+
+**`/linkedin-ingest` (feed scraping) requires real Chrome and must run locally.** LinkedIn returns only 1–2 cards per page in headless mode vs. 25 with a real browser. Do not attempt to run `/linkedin-ingest` in a K8s pod or container.
 
 ---
 
@@ -559,9 +591,6 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `SEARCH_TARGET_FITS` | Manual | Target fit count per `/ingest` run (default 10) |
 | `SEARCH_BATCH_SIZE` | Manual | Max new jobs per API call in `/ingest` (default 10) |
 | `DATA_BACKEND` | Manual | `"local"` (default) or `"ob1"` — selects backend for both the webapp and Claude Code terminal sessions |
-| `OB1_REPO_PATH` | Manual | Path to local OB1 repo clone; required to build `openbrain-mcp-server:latest` |
-| `OB1_MCP_URL` | Manual | Base URL for OB1 MCP server (e.g. `http://localhost/ob1`) |
-| `OB1_MCP_KEY` | Manual | Auth key for OB1 MCP server (`x-brain-key` header) |
 | `JOB_SEARCH_MCP_URL` | Manual | Base URL for job-search MCP server (e.g. `http://localhost/job-search`) |
 | `JOB_SEARCH_MCP_KEY` | Manual | Auth key for job-search MCP and REST API (`x-brain-key` header) |
 | `JOB_SEARCH_REST_URL` | Manual | Base URL for job-search REST API — consumed by the webapp; K8s: `http://job-search-mcp.openbrain.svc.cluster.local:8001`; Compose: `http://job-search-mcp:8001`; local dev: `http://localhost:8001` |
@@ -579,7 +608,7 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `LANGFUSE_PUBLIC_KEY` | Langfuse project public key (`pk-lf-...`) |
 | `LANGFUSE_SECRET_KEY` | Langfuse project secret key (`sk-lf-...`) |
 
-Tracing activates automatically when both keys are present. See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the full trace schema, dashboard usage, and how to trace OB1 core MCP calls via the Langfuse proxy.
+Tracing activates automatically when both keys are present. See [docs/observability/langfuse-integration.md](docs/observability/langfuse-integration.md) for the full trace schema and dashboard usage. (The OB1 Langfuse proxy container has been removed — job-search-mcp traces directly.)
 
 **`.claude/settings.json`**:
 

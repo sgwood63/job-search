@@ -39,7 +39,7 @@ When the user says "start setup", "set up applicant", or expresses clear intent 
 
 ## Automated Workflow — DO NOT ASK, JUST DO
 
-When the user provides a job description (URL, document, or paste), execute the workflow `workflows/create-application` (pinned version) immediately. In brief: **Fetch** (fallback chain in the workflow) → **Delegate to `process-jd`** (screen via `jd-evaluation` Haiku agent, create folder + JD files + initial notes, register in tracker) → **No fit:** stop — `process-jd` closed it → **Fit:** switch to Sonnet, expand notes to full structure, generate resume via skill `resume-generation`, update tracker, present for review.
+When the user provides a job description (URL, document, or paste), execute workflow `workflows/create-application` (pinned version) immediately. Read the workflow doc for the full fetch → screen → create → resume chain.
 
 ## Profile Maintenance — DO NOT ASK, JUST DO
 
@@ -57,18 +57,7 @@ When the user provides new experience, achievements, preference changes, or care
 
 ## Knowledge Graph — Event Capture (OB1 only) — DO NOT ASK, JUST DO
 
-**Interview scheduling:** When the user reports an upcoming interview and names the interviewer (via chat or pasted email):
-
-1. Parse: interviewer name(s), scheduled date/time, stage (inferred from context), topics to be covered.
-2. Call `log_interview(application_id, stage=<inferred>, interviewer_name=<name>, scheduled_at=<datetime>, pre_notes=<email text or user notes>)`.
-3. If the user provides email text, capture it as a thought: `capture_thought(content=<email text>, metadata={source_type: 'job_search', thought_category: 'email', application_id: <uuid>, application_folder: <folder>, company: <company>, profile_slug: <profile>})`. Update notes-index.md: `- email_1: <thought_id>` (increment suffix for subsequent emails).
-4. Create a `member_of` edge for each named interviewer: `create_knowledge_edge(from_entity_type='person', from_entity_name=<interviewer_name>, relation='member_of', to_entity_type='organization', to_entity_name=<company_name>, thought_id=<email_thought_id>, metadata={source: 'job_search', application_id: <uuid>})`. The `thought_id` links the person entity to the email thought (which carries `application_id`), enabling the person→application connection.
-
-**Portal Q&A (LinkedIn Apply, company portals):** When generating an answer to a portal application question:
-
-1. Compose and present the answer.
-2. Capture: `capture_thought(content="Portal Q&A\nQuestion: <question text>\nAnswer: <answer text>", metadata={source_type: 'job_search', thought_category: 'application_event', application_id: <uuid>, application_folder: <folder_slug>, company: <company>, profile_slug: <profile>})`.
-3. Update notes-index.md: `- portal_qa_1: <thought_id>` (increment suffix for subsequent Q&As on the same application).
+For interview scheduling and portal Q&A capture, follow policy `policies/knowledge-graph-events` (v1).
 
 ## Documentation Maintenance — DO NOT ASK, JUST DO
 
@@ -101,7 +90,7 @@ When the user replies "continue" (or equivalent), **retry the blocked operation 
 
 **Review before PDF.** Write `.md` → assess vs. JD → edit → generate PDF → verify page count. Never skip. Full pipeline in skill `resume-generation`.
 
-**OB1 MCP routing for thought operations.** In job-search sessions, always use `mcp__job_search__search_thoughts` and `mcp__job_search__list_thoughts` — these include thought IDs in output. Do NOT use `mcp__open_brain__search_thoughts` or `mcp__open_brain__list_thoughts` for job-search work. See `policies/storage-routing` (draft) for the full routing table.
+**Single MCP server — always use `mcp__job_search__*`.** All thought operations, knowledge graph tools, and job-search tools route through `mcp__job_search__*` only. The separate `open-brain` MCP server has been removed — `mcp__open_brain__*` tools do not exist. `mcp__job_search__search_thoughts` and `mcp__job_search__list_thoughts` include thought IDs in output. See `policies/storage-routing` (draft) for the full routing table.
 
 **No edits to the OB1 local checkout.** Never modify files in the local OB1 repo checkout for job-search purposes. Job-search tools and output changes belong in `$APP_DIR/integrations/ob1/`. See `policies/no-ob1-edits` (v1) for the full rule and scope.
 
@@ -123,19 +112,11 @@ Custom slash commands are in `$APP_DIR/.claude/commands/`. See [USER-GUIDE.md](U
 | `/interview [company] [stage]` | Load interview prep context for a specific application |
 | `/memory [update\|add\|read]` | Navigate and sync the memory system |
 | `/ingest [profile]` | Run workflow `search-jobs` (Google Jobs via SearchAPI); per-job processing via `process-jd`; saves fit jobs as stubs; generates per-run summary `.md` (OB1: uploaded + logged to `js_search_runs`; local: written to `search/` + `search-log.csv`) |
-| `/linkedin-ingest [--max-pages N]` | Run workflow `search-jobs-linkedin` (LinkedIn recommendations); per-job processing via `process-jd`; saves fit jobs as stubs; generates per-run summary `.md` (OB1: uploaded + logged to `js_search_runs`; local: written to `search/` + `search-log.csv`) |
+| `/linkedin-ingest [profile] [--max-pages N] [--page-delay N] [--jd-delay N]` | Run workflow `search-jobs-linkedin` (recommended feed when no profile; profile-search mode when profile slug given — one LinkedIn search URL per Search Queries row, deduped across sub-queries); per-job processing via `process-jd`; saves fit jobs as stubs; generates per-run summary `.md` (OB1: uploaded + logged to `js_search_runs`; local: written to `search/` + `search-log.csv`) |
 
 ## OB1 Integration
 
-**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, all APPLICANT file operations must use OB1 MCP tools — direct `$APPLICANT_DIR` reads and writes are forbidden. For the canonical routing rule, MCP tool mapping table, and hard-stop protocol, see the policy `policies/storage-routing` (pinned version).
-
-Port-forwards (nginx Ingress routes them; no port-forward needed when Ingress is up):
-```bash
-kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
-kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
-```
-
-MCP servers are registered in `.mcp.json` (gitignored). Copy `.mcp.json.example` and fill in your access keys if the file doesn't exist yet.
+**OB1 is configured when:** `DATA_BACKEND=ob1` in `.env`. When configured, all APPLICANT file operations must use OB1 MCP tools — direct `$APPLICANT_DIR` reads and writes are forbidden. See policy `policies/storage-routing` (pinned) for routing rules, MCP tool mapping, and hard-stop protocol. For port-forward commands and `.mcp.json` setup, see `DEVELOPER-README.md`.
 
 ## Session Strategy
 

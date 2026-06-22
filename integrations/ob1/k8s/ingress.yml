@@ -5,9 +5,8 @@ metadata:
   namespace: openbrain
   annotations:
     # Strip the path prefix before forwarding to the backend service.
-    # /ob1/sse  → /sse   (OB1 MCP)
-    # /job-search/sse → /sse  (job-search MCP)
-    # /minio/   → /      (MinIO console)
+    # /job-search/sse → /sse  (job-search MCP — all OB1 + job-search tools)
+    # /minio/         → /     (MinIO console)
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     # MCP servers use SSE streams for tool-call responses; the default 60s
     # proxy_read_timeout kills POST SSE streams during long LLM turns.
@@ -19,13 +18,6 @@ spec:
   rules:
   - http:
       paths:
-      - path: /ob1(/|$)(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: openbrain
-            port:
-              number: 8000
       - path: /job-search(/|$)(.*)
         pathType: ImplementationSpecific
         backend:

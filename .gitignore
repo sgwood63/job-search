@@ -42,3 +42,6 @@ __pycache__/
 scripts/scratchpad
 Job-Search-2026.code-workspace
 .runtime-events/
+
+# Test output — generated fixtures, not checked in
+scripts/tests/test-output/

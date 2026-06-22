@@ -1155,3 +1155,261 @@ def test_search_runs_local_mode_returns_empty(client):
     resp = client.get("/api/search-runs")
     assert resp.status_code == 200
     assert resp.json() == {"records": []}
+
+
+# ===========================================================================
+# ObRestClient — /ob1/rest/* methods (merged from ob1-rest-pg)
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_get_thoughts_hits_ob1_rest_endpoint():
+    """get_thoughts calls /ob1/rest/thoughts, not /api/v2/."""
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"thoughts": [], "total": 0}))
+    client._client = http_mock
+
+    await client.get_thoughts()
+
+    url_called = http_mock.get.call_args[0][0]
+    assert url_called == '/ob1/rest/thoughts'
+
+
+@pytest.mark.asyncio
+async def test_get_thoughts_passes_params():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"thoughts": [], "total": 0}))
+    client._client = http_mock
+
+    await client.get_thoughts(limit=10, offset=20, sort='asc', filter_type='email')
+
+    _, kwargs = http_mock.get.call_args
+    params = kwargs['params']
+    assert params['limit'] == 10
+    assert params['offset'] == 20
+    assert params['sort'] == 'asc'
+    assert params['type'] == 'email'
+
+
+@pytest.mark.asyncio
+async def test_get_thoughts_omits_filter_type_when_none():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"thoughts": [], "total": 0}))
+    client._client = http_mock
+
+    await client.get_thoughts(filter_type=None)
+
+    _, kwargs = http_mock.get.call_args
+    assert 'type' not in kwargs['params']
+
+
+@pytest.mark.asyncio
+async def test_get_thought_hits_correct_url():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"id": "42", "content": "test"}))
+    client._client = http_mock
+
+    await client.get_thought("42")
+
+    url_called = http_mock.get.call_args[0][0]
+    assert url_called == '/ob1/rest/thought/42'
+
+
+@pytest.mark.asyncio
+async def test_search_thoughts_posts_correct_body():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.post = AsyncMock(return_value=FakeResponse(200, {"results": [], "total": 0}))
+    client._client = http_mock
+
+    await client.search_thoughts("resume tips", limit=15, mode='keyword')
+
+    _, kwargs = http_mock.post.call_args
+    assert kwargs['json'] == {"query": "resume tips", "limit": 15, "mode": "keyword"}
+    url_called = http_mock.post.call_args[0][0]
+    assert url_called == '/ob1/rest/search'
+
+
+@pytest.mark.asyncio
+async def test_get_thought_stats_hits_ob1_rest_stats():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"total": 5, "by_type": {"email": 2}}))
+    client._client = http_mock
+
+    result = await client.get_thought_stats()
+
+    url_called = http_mock.get.call_args[0][0]
+    assert url_called == '/ob1/rest/stats'
+    assert result["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_get_thought_connections_hits_correct_url():
+    client = make_client()
+    http_mock = MagicMock()
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, []))
+    client._client = http_mock
+
+    await client.get_thought_connections("99", limit=5)
+
+    url_called = http_mock.get.call_args[0][0]
+    assert url_called == '/ob1/rest/thought/99/connections'
+    _, kwargs = http_mock.get.call_args
+    assert kwargs['params']['limit'] == 5
+
+
+# ===========================================================================
+# GET /api/thoughts
+# ===========================================================================
+
+THOUGHT_ROW = {
+    "id": "101",
+    "content": "# Meeting notes\nGreat conversation with hiring manager.",
+    "metadata": {"thought_category": "email", "company": "Acme"},
+    "created_at": "2026-05-01T10:00:00",
+}
+
+
+def test_list_thoughts_ob1_returns_data(ob1_client):
+    client, mock = ob1_client
+    mock.get_thoughts = AsyncMock(return_value={"thoughts": [THOUGHT_ROW], "total": 1})
+
+    resp = client.get("/api/thoughts")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["thoughts"][0]["id"] == "101"
+    assert data["thoughts"][0]["metadata"]["company"] == "Acme"
+
+
+def test_list_thoughts_passes_params_to_ob_rest(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/thoughts", params={"limit": 10, "offset": 5, "sort": "asc", "type": "email"})
+    mock.get_thoughts.assert_called_once_with(limit=10, offset=5, sort='asc', filter_type='email')
+
+
+def test_list_thoughts_caps_limit_at_200(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/thoughts", params={"limit": 999})
+    _, kwargs = mock.get_thoughts.call_args
+    assert kwargs["limit"] == 200
+
+
+def test_list_thoughts_local_mode_returns_503(client):
+    resp = client.get("/api/thoughts")
+    assert resp.status_code == 503
+
+
+# ===========================================================================
+# GET /api/thoughts/stats
+# ===========================================================================
+
+def test_thoughts_stats_ob1_returns_stats(ob1_client):
+    client, mock = ob1_client
+    mock.get_thought_stats = AsyncMock(return_value={"total": 12, "by_type": {"email": 5, "note": 7}})
+
+    resp = client.get("/api/thoughts/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 12
+    assert data["by_type"]["email"] == 5
+
+
+def test_thoughts_stats_local_mode_returns_503(client):
+    resp = client.get("/api/thoughts/stats")
+    assert resp.status_code == 503
+
+
+# ===========================================================================
+# GET /api/thoughts/{thought_id}
+# ===========================================================================
+
+def test_get_thought_ob1_returns_thought(ob1_client):
+    client, mock = ob1_client
+    mock.get_thought = AsyncMock(return_value=THOUGHT_ROW)
+
+    resp = client.get("/api/thoughts/101")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == "101"
+    assert "Meeting notes" in data["content"]
+    mock.get_thought.assert_called_once_with("101")
+
+
+def test_get_thought_local_mode_returns_503(client):
+    resp = client.get("/api/thoughts/101")
+    assert resp.status_code == 503
+
+
+# ===========================================================================
+# GET /api/thoughts/{thought_id}/connections
+# ===========================================================================
+
+CONNECTION_ROW = {
+    "id": "202",
+    "content": "# Related thought",
+    "metadata": {},
+    "created_at": "2026-05-02T08:00:00",
+}
+
+
+def test_thought_connections_ob1_returns_connections(ob1_client):
+    client, mock = ob1_client
+    mock.get_thought_connections = AsyncMock(return_value=[CONNECTION_ROW])
+
+    resp = client.get("/api/thoughts/101/connections")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["id"] == "202"
+    mock.get_thought_connections.assert_called_once_with("101", limit=10)
+
+
+def test_thought_connections_passes_limit_param(ob1_client):
+    client, mock = ob1_client
+    client.get("/api/thoughts/101/connections", params={"limit": 25})
+    mock.get_thought_connections.assert_called_once_with("101", limit=25)
+
+
+def test_thought_connections_local_mode_returns_503(client):
+    resp = client.get("/api/thoughts/101/connections")
+    assert resp.status_code == 503
+
+
+# ===========================================================================
+# POST /api/thoughts/search
+# ===========================================================================
+
+def test_search_thoughts_ob1_returns_results(ob1_client):
+    client, mock = ob1_client
+    mock.search_thoughts = AsyncMock(return_value={"results": [THOUGHT_ROW], "total": 1})
+
+    resp = client.post("/api/thoughts/search", json={"query": "hiring manager", "limit": 5})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["results"][0]["id"] == "101"
+    mock.search_thoughts.assert_called_once_with(query="hiring manager", limit=5, mode="semantic")
+
+
+def test_search_thoughts_passes_mode(ob1_client):
+    client, mock = ob1_client
+    client.post("/api/thoughts/search", json={"query": "q", "mode": "keyword"})
+    _, kwargs = mock.search_thoughts.call_args
+    assert kwargs["mode"] == "keyword"
+
+
+def test_search_thoughts_caps_limit_at_100(ob1_client):
+    client, mock = ob1_client
+    client.post("/api/thoughts/search", json={"query": "q", "limit": 999})
+    _, kwargs = mock.search_thoughts.call_args
+    assert kwargs["limit"] == 100
+
+
+def test_search_thoughts_local_mode_returns_503(client):
+    resp = client.post("/api/thoughts/search", json={"query": "anything"})
+    assert resp.status_code == 503

@@ -9,6 +9,20 @@ The backend supports two data modes, selected by `DATA_BACKEND` in `.env`:
 | **Local** (default) | `local` | Files read directly from `APPLICANT_DIR` on the local filesystem |
 | **OB1** | `ob1` | PostgreSQL (`js_*` tables) for pipeline state + MinIO or Supabase for file content |
 
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+- [Install Dependencies](#install-dependencies)
+- [Launch — Recommended (single script)](#launch--recommended-single-script)
+- [Launch — Development (Vite dev server)](#launch--development-vite-dev-server)
+- [Launch — One-time build only](#launch--one-time-build-only)
+- [Launch — Docker](#launch--docker)
+- [Features](#features)
+- [API Endpoints](#api-endpoints)
+- [Verifying Connectivity](#verifying-connectivity)
+- [Testing](#testing)
+
 ## Prerequisites
 
 - Python 3.8+ and Node.js + npm

@@ -54,7 +54,7 @@ def test_list_skills(skills_client):
     names = {r['name'] for r in rows}
     assert {'jd-evaluation', 'resume-generation', 'storage-routing', 'create-application'} <= names
     rg = next(r for r in rows if r['name'] == 'resume-generation')
-    assert rg['kind'] == 'skill' and rg['pinned'] == 'v1' and rg['has_draft'] is False
+    assert rg['kind'] == 'skill' and rg['pinned'] == 'v4' and rg['has_draft'] is False
     assert 'factuality' in rg['policies']
 
 

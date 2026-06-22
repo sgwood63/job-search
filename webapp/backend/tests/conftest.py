@@ -68,6 +68,11 @@ def mock_ob_rest():
     m.find_similar_applications = AsyncMock(return_value=[])
     m.get_ingestion_history = AsyncMock(return_value=[])
     m.get_search_runs = AsyncMock(return_value=[])
+    m.get_thoughts = AsyncMock(return_value={"thoughts": [], "total": 0})
+    m.get_thought = AsyncMock(return_value={"id": "1", "content": "# Test", "metadata": {}, "created_at": "2026-01-01T00:00:00"})
+    m.search_thoughts = AsyncMock(return_value={"results": [], "total": 0})
+    m.get_thought_stats = AsyncMock(return_value={"total": 0, "by_type": {}})
+    m.get_thought_connections = AsyncMock(return_value=[])
     m.ping = AsyncMock(return_value=True)
     m.close = AsyncMock(return_value=None)
     return m

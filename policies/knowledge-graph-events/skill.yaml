@@ -1,0 +1,10 @@
+name: knowledge-graph-events
+kind: policy
+description: When and how to capture knowledge graph events during active job search sessions — interview scheduling and portal Q&A
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-21
+    summary: Extracted from CLAUDE.md to reduce cached prefix size; content unchanged

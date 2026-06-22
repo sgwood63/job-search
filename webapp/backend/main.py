@@ -227,6 +227,37 @@ class ObRestClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_thoughts(self, limit: int = 50, offset: int = 0, sort: str = 'desc', filter_type: str | None = None) -> dict:
+        page = (offset // limit) + 1 if limit > 0 else 1
+        params: dict = {'per_page': limit, 'page': page, 'order': sort}
+        if filter_type:
+            params['type'] = filter_type
+        r = await self._http.get('/ob1/rest/thoughts', params=params)
+        r.raise_for_status()
+        data = r.json()
+        return {'thoughts': data.get('data', [])}
+
+    async def get_thought(self, thought_id: str) -> dict:
+        r = await self._http.get(f'/ob1/rest/thought/{thought_id}')
+        r.raise_for_status()
+        return r.json()
+
+    async def search_thoughts(self, query: str, limit: int = 20, mode: str = 'semantic') -> dict:
+        r = await self._http.post('/ob1/rest/search', json={'query': query, 'limit': limit, 'mode': mode})
+        r.raise_for_status()
+        return r.json()
+
+    async def get_thought_stats(self) -> dict:
+        r = await self._http.get('/ob1/rest/stats')
+        r.raise_for_status()
+        data = r.json()
+        return {'total': data.get('total_thoughts', 0), 'by_type': data.get('types', {})}
+
+    async def get_thought_connections(self, thought_id: str, limit: int = 10) -> list:
+        r = await self._http.get(f'/ob1/rest/thought/{thought_id}/connections', params={'limit': limit})
+        r.raise_for_status()
+        return r.json()
+
     async def get_ingestion_history(self, profile_slug: str | None = None, outcome: str | None = None, limit: int = 50, direct_only: bool = False) -> list[dict]:
         params: dict = {'limit': limit}
         if profile_slug:
@@ -911,6 +942,52 @@ async def search_runs(
         profile_slug=profile_slug, since=since, limit=min(limit, 200)
     )
     return {'records': records}
+
+
+# ── Thoughts browser (OB1-compat routes) ─────────────────────────────────────
+
+@app.get('/api/thoughts/stats')
+async def thoughts_stats():
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought_stats()
+
+
+@app.get('/api/thoughts/{thought_id}/connections')
+async def thought_connections(thought_id: str, limit: int = Query(10)):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought_connections(thought_id, limit=limit)
+
+
+@app.get('/api/thoughts/{thought_id}')
+async def get_thought(thought_id: str):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought(thought_id)
+
+
+@app.get('/api/thoughts')
+async def list_thoughts(
+    limit: int = Query(50),
+    offset: int = Query(0),
+    sort: str = Query('desc'),
+    type: Optional[str] = Query(None),
+):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thoughts(limit=min(limit, 200), offset=offset, sort=sort, filter_type=type)
+
+
+@app.post('/api/thoughts/search')
+async def search_thoughts(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.search_thoughts(
+        query=body.get('query', ''),
+        limit=min(int(body.get('limit', 20)), 100),
+        mode=body.get('mode', 'semantic'),
+    )
 
 
 # ── Delete file ───────────────────────────────────────────────────────────────

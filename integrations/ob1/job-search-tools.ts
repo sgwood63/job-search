@@ -28,6 +28,8 @@ import mammoth from "mammoth";
 
 const OBJECT_STORE_BACKEND = Deno.env.get("OBJECT_STORE_BACKEND") ?? "minio";
 const BUCKET = Deno.env.get("MINIO_BUCKET") ?? Deno.env.get("SUPABASE_BUCKET") ?? "job-search";
+const CITATION_BASE_URL =
+  Deno.env.get("CITATION_BASE_URL") ?? "http://localhost/job-search/thoughts";
 
 function makeS3Client(): S3Client {
   if (OBJECT_STORE_BACKEND === "supabase") {
@@ -1157,6 +1159,21 @@ export async function logSearchRunCore(pool: unknown, args: LogSearchRunArgs): P
   } finally { client.release(); }
 }
 
+export interface UpdateSearchRunArgs {
+  id: string;
+  summary_key?: string;
+}
+
+export async function updateSearchRunCore(pool: unknown, args: UpdateSearchRunArgs): Promise<void> {
+  const client = await (pool as any).connect();
+  try {
+    await client.queryObject(
+      `UPDATE js_search_runs SET summary_key = $1 WHERE id = $2`,
+      [args.summary_key ?? null, args.id],
+    );
+  } finally { client.release(); }
+}
+
 export interface GetSearchRunsArgs {
   profile_slug?: string | null;
   since?: string | null;
@@ -1457,6 +1474,26 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
         content: [{
           type: "text",
           text: JSON.stringify({ id, profile_slug: args.profile_slug, fit_count: args.fit_count, total_results: args.total_results }),
+        }],
+      };
+    },
+  );
+}
+
+export function registerUpdateSearchRunTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "update_search_run",
+    "Update fields on an existing search run record (e.g. attach summary_key after uploading the summary file).",
+    {
+      id: z.string().uuid().describe("UUID of the js_search_runs row to update"),
+      summary_key: z.string().optional().describe("Object store key for the summary .md file"),
+    },
+    async (args: UpdateSearchRunArgs) => {
+      await updateSearchRunCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Search run ${args.id} updated.`,
         }],
       };
     },
@@ -2567,6 +2604,181 @@ export function registerListThoughtsTool(server: unknown, listThoughtsFn?: ListT
   );
 }
 
+// ---------------------------------------------------------------------------
+// OB1 compatibility tools — absorbed from OB1 MCP server
+// These replace mcp__open-brain__* with mcp__job-search__* equivalents so that
+// only one MCP server is needed. All thought IDs are returned as strings (::text
+// cast) to avoid BigInt serialization errors from the BIGSERIAL id column.
+// ---------------------------------------------------------------------------
+
+function ob1ThoughtTitle(content: string, createdAt?: string): string {
+  const firstLine = content.replace(/\s+/g, " ").trim().slice(0, 80);
+  const datePrefix = createdAt ? new Date(createdAt).toLocaleDateString() : "Open Brain";
+  return firstLine ? `${datePrefix} - ${firstLine}` : `${datePrefix} thought`;
+}
+
+function ob1ThoughtUrl(id: string): string {
+  return `${CITATION_BASE_URL.replace(/\/$/, "")}/${id}`;
+}
+
+export function registerSearchTool(server: unknown, pool: unknown, embedQueryFn?: EmbedQueryFn) {
+  (server as any).tool(
+    "search",
+    "Search Open Brain memories by meaning. Read-only ChatGPT-connector-compatible tool; pair with fetch to retrieve full content.",
+    {
+      query: z.string().describe("The search query to run against Open Brain thoughts"),
+    },
+    async ({ query }: { query: string }) => {
+      if (!embedQueryFn) {
+        return { content: [{ type: "text", text: "search: embedQuery callback not configured" }] };
+      }
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const qEmb = await embedQueryFn(query);
+        const embStr = `[${qEmb.join(",")}]`;
+        const client = await p.connect();
+        try {
+          const result = await client.queryObject<{ id: string; content: string; created_at: string }>(
+            `SELECT id::text AS id, content, created_at
+             FROM thoughts
+             WHERE 1 - (embedding <=> $1::vector) >= 0.5
+             ORDER BY embedding <=> $1::vector
+             LIMIT $2`,
+            [embStr, 10],
+          );
+          const results = result.rows.map((t) => ({
+            id: t.id,
+            title: ob1ThoughtTitle(t.content, t.created_at),
+            url: ob1ThoughtUrl(t.id),
+          }));
+          return { content: [{ type: "text", text: JSON.stringify({ results }) }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+export function registerFetchTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "fetch",
+    "Fetch one Open Brain thought by ID. Use after search to retrieve full text and metadata for citation.",
+    {
+      id: z.string().describe("The thought ID returned by the search tool"),
+    },
+    async ({ id }: { id: string }) => {
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const client = await p.connect();
+        try {
+          const result = await client.queryObject<{
+            id: string; content: string; metadata: Record<string, unknown>;
+            created_at: string; updated_at: string | null;
+          }>(
+            `SELECT id::text AS id, content, metadata, created_at, updated_at
+             FROM thoughts
+             WHERE id = $1
+             LIMIT 1`,
+            [id],
+          );
+          const thought = result.rows[0];
+          if (!thought) {
+            return { content: [{ type: "text", text: `No thought found for ID ${id}.` }], isError: true };
+          }
+          const document = {
+            id: thought.id,
+            title: ob1ThoughtTitle(thought.content, thought.created_at),
+            text: thought.content,
+            url: ob1ThoughtUrl(thought.id),
+            metadata: {
+              ...thought.metadata,
+              created_at: thought.created_at,
+              updated_at: thought.updated_at,
+            },
+          };
+          return { content: [{ type: "text", text: JSON.stringify(document) }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+export function registerThoughtStatsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "thought_stats",
+    "Get a summary of all captured thoughts: total count, type breakdown, top topics, and people mentioned.",
+    {},
+    async () => {
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const client = await p.connect();
+        try {
+          const countResult = await client.queryObject<{ count: number }>(
+            "SELECT COUNT(*)::int AS count FROM thoughts",
+          );
+          const dataResult = await client.queryObject<{
+            metadata: Record<string, unknown>; created_at: string;
+          }>(
+            "SELECT metadata, created_at FROM thoughts ORDER BY created_at DESC",
+          );
+
+          const count = countResult.rows[0]?.count ?? 0;
+          const data = dataResult.rows;
+          const types: Record<string, number> = {};
+          const topics: Record<string, number> = {};
+          const people: Record<string, number> = {};
+
+          for (const r of data) {
+            const m = r.metadata || {};
+            if (m.type) types[m.type as string] = (types[m.type as string] || 0) + 1;
+            if (Array.isArray(m.topics))
+              for (const t of m.topics) topics[t as string] = (topics[t as string] || 0) + 1;
+            if (Array.isArray(m.people))
+              for (const per of m.people) people[per as string] = (people[per as string] || 0) + 1;
+          }
+
+          const sort = (o: Record<string, number>): [string, number][] =>
+            Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+          const lines: string[] = [
+            `Total thoughts: ${count}`,
+            `Date range: ${
+              data.length
+                ? new Date(data[data.length - 1].created_at).toLocaleDateString() +
+                  " -> " + new Date(data[0].created_at).toLocaleDateString()
+                : "N/A"
+            }`,
+            "",
+            "Types:",
+            ...sort(types).map(([k, v]) => `  ${k}: ${v}`),
+          ];
+          if (Object.keys(topics).length) {
+            lines.push("", "Top topics:");
+            for (const [k, v] of sort(topics)) lines.push(`  ${k}: ${v}`);
+          }
+          if (Object.keys(people).length) {
+            lines.push("", "People mentioned:");
+            for (const [k, v] of sort(people)) lines.push(`  ${k}: ${v}`);
+          }
+
+          return { content: [{ type: "text", text: lines.join("\n") }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
   const { captureThought, searchThoughts, listThoughts, embedQuery, chunkContent } = callbacks;
 
@@ -2591,6 +2803,7 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerUpsertCompanyTool(server, pool);
   registerUpsertProfileTool(server, pool);
   registerLogSearchRunTool(server, pool);
+  registerUpdateSearchRunTool(server, pool);
   registerGetSearchRunsTool(server, pool);
   registerSearchApplicationsSemanticTool(server, pool, searchThoughts);
 
@@ -2610,6 +2823,11 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerCaptureThoughtTool(server, captureThought);
   registerSearchThoughtsTool(server, searchThoughts);
   registerListThoughtsTool(server, listThoughts);
+
+  // OB1 compatibility tools (absorbed from OB1 MCP server — eliminates open-brain dependency)
+  registerSearchTool(server, pool, embedQuery);
+  registerFetchTool(server, pool);
+  registerThoughtStatsTool(server, pool);
 
   // Ingest tracking tools (Phase 1 — replaces seen-jobs.json)
   registerCheckPositionSeenTool(server, pool);

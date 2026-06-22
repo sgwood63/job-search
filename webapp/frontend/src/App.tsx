@@ -9,6 +9,8 @@ import HelpView from './components/HelpView'
 import SetupView from './components/SetupView'
 import SessionsView from './components/SessionsView'
 import ChatPanel from './components/ChatPanel'
+import ThoughtsView from './components/ThoughtsView'
+import ThoughtDetail from './components/ThoughtDetail'
 import { SessionProvider } from './context/SessionContext'
 
 function AppLayout() {
@@ -28,6 +30,8 @@ function AppLayout() {
             <Route path="/ingestion" element={<SearchView />} />
             <Route path="/sessions" element={<SessionsView />} />
             <Route path="/applications/:folder" element={<ApplicationView />} />
+            <Route path="/thoughts" element={<ThoughtsView />} />
+            <Route path="/thoughts/:id" element={<ThoughtDetail />} />
             <Route path="/help" element={<HelpView />} />
             <Route path="/setup" element={<SetupView />} />
             {/* Legacy redirects */}

@@ -7,6 +7,7 @@
   - [Step 2: Run the applicant setup process](#step-2-run-the-applicant-setup-process)
 - [Phase 2: Building the Pipeline](#phase-2-building-the-pipeline)
 - [Phase 3: Interview Process](#phase-3-interview-process)
+- [Where the Rules Live](#where-the-rules-live)
 
 ---
 

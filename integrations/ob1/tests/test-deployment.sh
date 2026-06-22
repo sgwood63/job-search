@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# test-deployment.sh — OB1 + job-search-mcp deployment verification
+# test-deployment.sh — job-search-mcp deployment verification (single-server architecture)
+#
+# After the OB1 MCP merge, there is ONE MCP server: job-search (36 tools).
+# The open-brain server and ob1-rest-pg Deployment have been removed.
+# openbrain-0 runs only the db container (1/1 ready).
 #
 # Usage:
 #   bash integrations/ob1/tests/test-deployment.sh                      # run all tests
@@ -7,7 +11,7 @@
 #
 # Environment:
 #   K8S_BASE_URL   Base URL for HTTP tests (default: http://localhost)
-#   Source .env first to provide MINIO_*, OB1_MCP_KEY, JOB_SEARCH_MCP_KEY, DB_*
+#   Source .env first to provide MINIO_*, JOB_SEARCH_MCP_KEY, DB_*
 #
 # Platform notes:
 #   Docker Desktop (Mac): K8S_BASE_URL=http://localhost (LoadBalancer binds directly)
@@ -109,7 +113,7 @@ test_pods() {
   pods=$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null)
 
   # Plain pods: just check Running
-  for expected in "minio" "ob1-rest-pg" "ob1-dashboard" "job-search-mcp"; do
+  for expected in "minio" "job-search-mcp"; do
     local pod_line status restarts
     pod_line=$(echo "$pods" | grep "$expected" | head -1)
     if [[ -z "$pod_line" ]]; then
@@ -125,7 +129,7 @@ test_pods() {
     fi
   done
 
-  # openbrain-0: must be 3/3 (db + mcp-server + langfuse-proxy)
+  # openbrain-0: must be 1/1 (db only — mcp-server + langfuse-proxy removed)
   local ob_line ob_ready ob_status ob_restarts
   ob_line=$(echo "$pods" | grep "^openbrain-0" | head -1)
   if [[ -z "$ob_line" ]]; then
@@ -134,10 +138,10 @@ test_pods() {
     ob_ready=$(echo "$ob_line" | awk '{print $2}')
     ob_status=$(echo "$ob_line" | awk '{print $3}')
     ob_restarts=$(echo "$ob_line" | awk '{print $4}')
-    if [[ "$ob_status" == "Running" && "$ob_ready" == "3/3" ]]; then
-      pass "openbrain-0: Running 3/3 (restarts: $ob_restarts)"
+    if [[ "$ob_status" == "Running" && "$ob_ready" == "1/1" ]]; then
+      pass "openbrain-0: Running 1/1 (restarts: $ob_restarts)"
     else
-      fail "openbrain-0: $ob_status $ob_ready (expected Running 3/3, restarts: $ob_restarts)"
+      fail "openbrain-0: $ob_status $ob_ready (expected Running 1/1, restarts: $ob_restarts)"
     fi
   fi
 
@@ -283,35 +287,29 @@ except Exception as e:
 
 test_ingress() {
   header "Ingress Routing"
-  local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" "$K8S_BASE_URL/ob1/" 2>/dev/null)
-  if [[ "$status" == "401" || "$status" == "200" ]]; then
-    pass "OB1 Ingress path responds (HTTP $status)"
-  elif [[ "$status" == "000" ]]; then
+  # /ob1 path has been removed — only /job-search remains
+  local js_status ob1_status
+  js_status=$(curl -s -o /dev/null -w "%{http_code}" "$K8S_BASE_URL/job-search/" 2>/dev/null)
+  ob1_status=$(curl -s -o /dev/null -w "%{http_code}" "$K8S_BASE_URL/ob1/" 2>/dev/null)
+
+  if [[ "$js_status" == "000" ]]; then
     fail "Ingress not reachable at $K8S_BASE_URL (connection refused)"
-  else
-    fail "Unexpected HTTP $status from $K8S_BASE_URL/ob1/"
+    return
   fi
-}
-
-test_ob1_mcp() {
-  header "OB1 MCP Server"
-  if ! require_env OB1_MCP_KEY; then return; fi
-
-  local response
-  response=$(mcp_list_tools "$K8S_BASE_URL/ob1/mcp" "$OB1_MCP_KEY")
-  local tool_count
-  tool_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null || echo "0")
-
-  if [[ "$tool_count" -gt 0 ]]; then
-    pass "OB1 MCP responds — $tool_count tools"
+  if [[ "$js_status" == "401" || "$js_status" == "200" ]]; then
+    pass "/job-search Ingress path responds (HTTP $js_status)"
   else
-    fail "OB1 MCP failed or returned 0 tools (response: ${response:0:100})"
+    fail "Unexpected HTTP $js_status from $K8S_BASE_URL/job-search/"
+  fi
+  if [[ "$ob1_status" == "404" || "$ob1_status" == "000" || "$ob1_status" == "503" ]]; then
+    pass "/ob1 Ingress path removed (HTTP $ob1_status — expected)"
+  else
+    fail "/ob1 Ingress path still responds (HTTP $ob1_status) — remove /ob1 rule from ingress.yml"
   fi
 }
 
 test_job_search_mcp() {
-  header "job-search MCP Server"
+  header "job-search MCP Server (36 tools — includes absorbed OB1 tools + update_search_run)"
   if ! require_env JOB_SEARCH_MCP_KEY; then return; fi
 
   local response
@@ -319,12 +317,45 @@ test_job_search_mcp() {
   local tool_count
   tool_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null || echo "0")
 
-  if [[ "$tool_count" -eq 31 ]]; then
-    pass "job-search MCP responds — 31 tools"
+  if [[ "$tool_count" -eq 36 ]]; then
+    pass "job-search MCP responds — 36 tools"
   elif [[ "$tool_count" -gt 0 ]]; then
-    fail "job-search MCP responded with $tool_count tools (expected 31)"
+    fail "job-search MCP responded with $tool_count tools (expected 36)"
   else
     fail "job-search MCP failed or returned 0 tools (response: ${response:0:100})"
+  fi
+}
+
+test_ob1_tools() {
+  header "OB1-compat Tools (absorbed into job-search)"
+  if ! require_env JOB_SEARCH_MCP_KEY; then return; fi
+
+  local response
+  response=$(mcp_list_tools "$K8S_BASE_URL/job-search/mcp" "$JOB_SEARCH_MCP_KEY")
+
+  # Verify the 3 absorbed OB1 tools are present
+  for tool in search fetch thought_stats; do
+    if echo "$response" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+names = [t['name'] for t in d.get('result', {}).get('tools', [])]
+sys.exit(0 if '$tool' in names else 1)
+" 2>/dev/null; then
+      pass "$tool (OB1-compat) registered in job-search MCP"
+    else
+      fail "$tool (OB1-compat) missing from job-search MCP tool list"
+    fi
+  done
+
+  # Call thought_stats and verify BigInt-safe response (no crash)
+  local stats_response
+  stats_response=$(mcp_call "$K8S_BASE_URL/job-search/mcp" "$JOB_SEARCH_MCP_KEY" "thought_stats" '{}')
+  if echo "$stats_response" | grep -q "Total thoughts"; then
+    pass "thought_stats returns text (BigInt-safe)"
+  elif echo "$stats_response" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if not d.get('result',{}).get('isError') else 1)" 2>/dev/null; then
+    pass "thought_stats: no error (possibly empty thoughts table)"
+  else
+    fail "thought_stats failed (response: ${stats_response:0:100})"
   fi
 }
 
@@ -334,14 +365,17 @@ test_mcp_json() {
     fail ".mcp.json does not exist — run: source .env && bash scripts/k8s-apply-env.sh"
     return
   fi
-  local has_ob1 has_js
-  has_ob1=$(python3 -c "import json; d=json.load(open('.mcp.json')); print('ok' if 'open-brain' in d.get('mcpServers',{}) else 'missing')" 2>/dev/null)
+  local has_ob1 has_js server_count
+  has_ob1=$(python3 -c "import json; d=json.load(open('.mcp.json')); print('present' if 'open-brain' in d.get('mcpServers',{}) else 'absent')" 2>/dev/null)
   has_js=$(python3 -c "import json; d=json.load(open('.mcp.json')); print('ok' if 'job-search' in d.get('mcpServers',{}) else 'missing')" 2>/dev/null)
+  server_count=$(python3 -c "import json; d=json.load(open('.mcp.json')); print(len(d.get('mcpServers',{})))" 2>/dev/null)
 
-  if [[ "$has_ob1" == "ok" && "$has_js" == "ok" ]]; then
-    pass ".mcp.json exists with both open-brain and job-search servers"
+  if [[ "$has_js" == "ok" && "$has_ob1" == "absent" && "$server_count" -eq 1 ]]; then
+    pass ".mcp.json: single server (job-search only, no open-brain)"
+  elif [[ "$has_ob1" == "present" ]]; then
+    fail ".mcp.json still has open-brain entry — re-run: source .env && bash scripts/k8s-apply-env.sh"
   else
-    fail ".mcp.json missing servers — open-brain: $has_ob1, job-search: $has_js"
+    fail ".mcp.json missing job-search server (job-search: $has_js, servers: $server_count)"
   fi
 }
 
@@ -483,13 +517,14 @@ test_mcp_create_application() {
 
 test_langfuse_keys() {
   header "Langfuse Keys in Secrets"
-  local pub_key
-  pub_key=$(kubectl get secret openbrain-secret -n "$NAMESPACE" \
-    -o jsonpath='{.data.langfuse-public-key}' 2>/dev/null | base64 -d 2>/dev/null)
-  if [[ -n "$pub_key" && "$pub_key" != "FILL_IN" ]]; then
-    pass "openbrain-secret: langfuse-public-key present"
+  # openbrain-secret now has postgres-password only (no langfuse keys)
+  local ob_keys
+  ob_keys=$(kubectl get secret openbrain-secret -n "$NAMESPACE" \
+    -o jsonpath='{.data}' 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(list(d.keys()))" 2>/dev/null)
+  if echo "$ob_keys" | grep -q "langfuse"; then
+    fail "openbrain-secret still contains langfuse keys — re-run k8s-apply-env.sh"
   else
-    fail "openbrain-secret: langfuse-public-key missing or placeholder"
+    pass "openbrain-secret: no langfuse keys (postgres-password only)"
   fi
 
   local wa_pub
@@ -500,18 +535,15 @@ test_langfuse_keys() {
   else
     fail "webapp-secret: LANGFUSE_PUBLIC_KEY missing or placeholder"
   fi
-}
 
-test_langfuse_proxy() {
-  header "Langfuse Proxy Sidecar"
-  local health
-  health=$(kubectl exec -n "$NAMESPACE" openbrain-0 -c langfuse-proxy -- \
-    deno eval "const r = await fetch('http://localhost:8080/health'); console.log(r.status, await r.text())" \
-    2>/dev/null || echo "")
-  if echo "$health" | grep -q "^200"; then
-    pass "langfuse-proxy /health: 200 ok"
+  # job-search-secret should have langfuse keys (used by job-search-mcp directly)
+  local js_pub
+  js_pub=$(kubectl get secret job-search-secret -n "$NAMESPACE" \
+    -o jsonpath='{.data.LANGFUSE_PUBLIC_KEY}' 2>/dev/null | base64 -d 2>/dev/null)
+  if [[ -n "$js_pub" && "$js_pub" != "FILL_IN" ]]; then
+    pass "job-search-secret: LANGFUSE_PUBLIC_KEY present"
   else
-    fail "langfuse-proxy /health failed (got: '${health:0:80}')"
+    fail "job-search-secret: LANGFUSE_PUBLIC_KEY missing or placeholder"
   fi
 }
 
@@ -544,11 +576,10 @@ ALL_TESTS=(
   test_knowledge_graph_mcp_tools
   test_minio_bucket
   test_ingress
-  test_ob1_mcp
   test_job_search_mcp
+  test_ob1_tools
   test_mcp_json
   test_langfuse_keys
-  test_langfuse_proxy
   test_webapp_health
   test_migration_data
   test_mcp_get_pipeline

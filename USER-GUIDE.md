@@ -12,10 +12,13 @@
   - [Command Launcher and Terminal](#command-launcher-and-terminal)
   - [Documentation View](#documentation-view)
   - [Search View](#search-view)
+  - [Thoughts View](#thoughts-view)
 - [Getting Set Up](#getting-set-up)
   - [Prerequisites](#prerequisites)
   - [Step 1 — Run the setup script](#step-1--run-the-setup-script)
   - [Step 2 — Start the applicant setup conversation](#step-2--start-the-applicant-setup-conversation)
+- [Finding Jobs Proactively](#finding-jobs-proactively)
+  - [LinkedIn Ingest — `/linkedin-ingest`](#linkedin-ingest--linkedin-ingest)
 - [Working With a Job Posting](#working-with-a-job-posting)
   - [Step 1: Get a resume draft](#step-1-get-a-resume-draft)
   - [Step 2: Review and refine the draft](#step-2-review-and-refine-the-draft)
@@ -143,6 +146,18 @@ The Search view gives you a history of every job ingestion run and every positio
 
 Both tabs support filtering by profile slug.
 
+### Thoughts View
+
+The Thoughts view (`/thoughts`) lets you browse and search all captured knowledge artifacts — portal Q&A answers, interview emails, meeting notes, exercise write-ups, and any other content captured from your job search activity. Available in OB1 mode only.
+
+**Stats bar:** Displays total thought count and the top 3 thought categories (e.g. `application_event`, `interview_prep`, `email`).
+
+**Semantic search:** Type a phrase to run a similarity search across all thought content. Results show a match percentage. Click **Clear** to return to the full list.
+
+**Thought cards:** Each card shows a content preview, relative age, and metadata tags (category, company, profile). Click any card to open the detail view.
+
+**Detail view:** Renders the full thought content (formatted markdown or monospace), all metadata as a table, and a list of up to 8 semantically related thoughts — each clickable for direct navigation.
+
 ---
 
 ## Getting Set Up
@@ -219,6 +234,73 @@ This searches Google Jobs using the role-title queries defined for that profile 
 ```
 
 If you leave out the profile name, the command lists available profiles and asks you to choose.
+
+---
+
+### LinkedIn Ingest — `/linkedin-ingest`
+
+Instead of Google Jobs, `/linkedin-ingest` reads directly from your LinkedIn feed or runs a keyword search for a specific profile:
+
+```
+/linkedin-ingest                       recommended feed
+/linkedin-ingest [profile]             keyword search for that profile
+```
+
+The command scrapes LinkedIn for job cards, deduplicates against jobs already seen, fetches each new job description, screens against your criteria, and saves fit jobs as application stubs — same output format as `/ingest`.
+
+**When to run:** Every few days. Deduplication makes re-running safe.
+
+**Requires:** Chrome or Firefox with an active LinkedIn session (see setup below). `/linkedin-ingest` must run on your local machine — it requires a real browser and cannot run in the cloud.
+
+**Note:** The login setup below applies to any site that requires a login, not just LinkedIn. If the assistant ever reports it cannot fetch a job posting, run the same setup command with that site's URL.
+
+#### One-time login setup
+
+**If you use Firefox:**
+
+```bash
+source "$APP_DIR/.env"
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" --setup 'https://www.linkedin.com/login'
+```
+
+If you're logged into LinkedIn in Firefox, this imports your session silently — no browser window opens. You'll see `Saved N cookies for linkedin.com.` If you see "0 cookies found," use the Chrome path below.
+
+**If you use Chrome:**
+
+Open `.env` and set `CHROME_PROFILE` to the path of the Chrome profile where you're logged into LinkedIn. Find it in Chrome: go to `chrome://version/` and look at "Profile Path". Make sure you're logged into LinkedIn in that profile.
+
+By default, Chrome opens briefly during each fetch and closes automatically. To reuse a single open Chrome window instead (faster):
+
+```bash
+bash "$APP_DIR/scripts/launch-chrome-debug.sh"
+```
+
+Chrome must NOT already be running when you run this — quit it first. A new Chrome window opens (separate Dock icon). Keep it open while running `/linkedin-ingest`.
+
+#### When sessions expire
+
+**Firefox:** sessions last weeks to months. When auth expires, re-run the `--setup` command above.
+
+**Chrome:** sessions persist in your Chrome profile and don't typically expire. If LinkedIn starts blocking fetches, log into LinkedIn in Chrome and try again.
+
+#### Options
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| `--max-pages N` | 4 (0 = unlimited) | Pages to fetch per sub-query |
+| `--page-delay N` | 20 sec | Pause between pages in the scraper |
+| `--jd-delay N` | 10 sec | Pause between job description fetches |
+| `[profile]` | (recommended feed) | Profile slug for keyword search mode |
+
+**Examples:**
+```
+/linkedin-ingest
+/linkedin-ingest --max-pages 10
+/linkedin-ingest presales-se
+/linkedin-ingest presales-se --max-pages 6 --page-delay 30
+```
+
+**After ingestion:** Review stubs in your applications folder. Say "generate a resume for [company]" to proceed with any job you want to pursue.
 
 ---
 
@@ -462,7 +544,7 @@ To reload context mid-conversation (for example, after a status change):
 | `/context` | none | Loads session context: identity, memory, and DEV_MODE status | Automatic at conversation start; use manually to refresh |
 | `/status` | none | Pipeline snapshot with overdue follow-ups | Weekly check-in |
 | `/ingest [profile] [--fits N] [--batch N]` | `profile` — profile slug (optional; lists profiles if omitted); `--fits N` — override target fit count; `--batch N` — override batch size | Search Google Jobs; screen and save fit jobs | Proactive discovery, ~every 3 days per profile |
-| `/linkedin-ingest [--max-pages N]` | `--max-pages N` — cap pages fetched (optional; default: all) | Fetch LinkedIn job recommendations; screen against all active profiles; save fit jobs | Complement to `/ingest`; use whenever LinkedIn has fresh recommendations |
+| `/linkedin-ingest [profile] [--max-pages N] [--page-delay N] [--jd-delay N]` | `profile` — slug (optional; uses recommended feed if omitted); `--max-pages N` — pages per sub-query (default 4; 0=unlimited); `--page-delay N` — seconds between pages (default 20); `--jd-delay N` — seconds between JD fetches (default 10) | Fetch LinkedIn jobs (recommended feed or keyword search); screen and save fit jobs | Complement to `/ingest`; use every few days. Local only — requires real Chrome or Firefox. |
 | `/audit [folder]` | `folder` — application folder name (optional; lists folders if omitted) | Confirms application is complete and ready to submit | Before submitting |
 | `/apply "Co" "Role" "date" [url?]` | `company`, `role`, `date` (YYYY-MM-DD) required; `url` — portal URL, optional | Records submission; sets 14-day follow-up reminder | Right after submitting |
 | `/interview [company] [stage?]` | `company` — partial name match required; `stage` — interview stage (optional; inferred from notes if omitted) | Interview brief: talking points, questions, positioning | Night before any call |

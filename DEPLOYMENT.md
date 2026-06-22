@@ -4,6 +4,22 @@ This guide covers all supported ways to run the job search system. The system ha
 
 For day-to-day usage after setup, see [USER-GUIDE.md](USER-GUIDE.md). For system internals and DEV_MODE, see [DEVELOPER-README.md](DEVELOPER-README.md).
 
+## Contents
+
+- [Deployment Dimensions](#deployment-dimensions)
+- [Decision Guide](#decision-guide)
+- [Authentication](#authentication)
+- [Environment Configuration](#environment-configuration)
+  - [Compose vs K8s env var differences](#compose-vs-k8s-env-var-differences)
+- [Tested Configurations](#tested-configurations)
+  - [Config 1: Local data + Claude Code](#config-1-local-data--claude-code)
+  - [Config 2: Local data + Webapp](#config-2-local-data--webapp)
+  - [Config 3: OB1 Docker Compose + Webapp Docker Compose](#config-3-ob1-docker-compose--webapp-docker-compose)
+  - [Config 4: OB1 Kubernetes + Webapp (same namespace)](#config-4-ob1-kubernetes--webapp-same-namespace)
+  - [Config 5: OB1 Default Deployment (experimental)](#config-5-ob1-default-deployment-experimental)
+- [Observability (Langfuse)](#observability-langfuse)
+- [Not Yet Documented](#not-yet-documented)
+
 ---
 
 ## Deployment Dimensions

@@ -235,3 +235,118 @@ describe('api.searchRuns', () => {
     expect(result.records[0].fetch_failed_count).toBe(1)
   })
 })
+
+describe('api.thoughts', () => {
+  it('calls GET /api/thoughts with no params → no query string', async () => {
+    vi.stubGlobal('fetch', mockFetch({ thoughts: [], total: 0 }))
+
+    await api.thoughts()
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts')
+  })
+
+  it('appends provided params to the query string', async () => {
+    vi.stubGlobal('fetch', mockFetch({ thoughts: [], total: 0 }))
+
+    await api.thoughts({ limit: 10, offset: 5, sort: 'asc', type: 'email' })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('limit=10')
+    expect(url).toContain('offset=5')
+    expect(url).toContain('sort=asc')
+    expect(url).toContain('type=email')
+  })
+
+  it('omits undefined params', async () => {
+    vi.stubGlobal('fetch', mockFetch({ thoughts: [], total: 0 }))
+
+    await api.thoughts({ sort: 'desc' })
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain('sort=desc')
+    expect(url).not.toContain('limit')
+    expect(url).not.toContain('offset')
+    expect(url).not.toContain('type')
+  })
+})
+
+describe('api.thoughtStats', () => {
+  it('calls GET /api/thoughts/stats', async () => {
+    vi.stubGlobal('fetch', mockFetch({ total: 12, by_type: { email: 5, note: 7 } }))
+
+    const result = await api.thoughtStats()
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts/stats')
+    expect(result.total).toBe(12)
+    expect(result.by_type['email']).toBe(5)
+  })
+})
+
+describe('api.thought', () => {
+  it('calls GET /api/thoughts/{id} with URL-encoded id', async () => {
+    const thought = { id: '101', content: '# Test', metadata: {}, created_at: '2026-01-01T00:00:00' }
+    vi.stubGlobal('fetch', mockFetch(thought))
+
+    const result = await api.thought('101')
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts/101')
+    expect(result.id).toBe('101')
+  })
+
+  it('URL-encodes special characters in thought id', async () => {
+    vi.stubGlobal('fetch', mockFetch({ id: 'a/b', content: '', metadata: {}, created_at: '' }))
+
+    await api.thought('a/b')
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toContain(encodeURIComponent('a/b'))
+  })
+})
+
+describe('api.thoughtConnections', () => {
+  it('calls GET /api/thoughts/{id}/connections', async () => {
+    vi.stubGlobal('fetch', mockFetch([]))
+
+    await api.thoughtConnections('101')
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts/101/connections')
+  })
+
+  it('appends ?limit when limit is provided', async () => {
+    vi.stubGlobal('fetch', mockFetch([]))
+
+    await api.thoughtConnections('101', 5)
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts/101/connections?limit=5')
+  })
+})
+
+describe('api.searchThoughts', () => {
+  it('sends POST /api/thoughts/search with query in body', async () => {
+    vi.stubGlobal('fetch', mockFetch({ results: [], total: 0 }))
+
+    await api.searchThoughts('hiring manager feedback')
+
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/thoughts/search')
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body)
+    expect(body.query).toBe('hiring manager feedback')
+  })
+
+  it('passes limit and mode when provided', async () => {
+    vi.stubGlobal('fetch', mockFetch({ results: [] }))
+
+    await api.searchThoughts('q', 10, 'keyword')
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.limit).toBe(10)
+    expect(body.mode).toBe('keyword')
+  })
+})

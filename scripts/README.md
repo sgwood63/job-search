@@ -1,5 +1,24 @@
 # Scripts
 
+## Contents
+
+- [setup.sh](#setupsh)
+- [fetch-jd.py](#fetch-jdpy)
+- [generate-pdf.py](#generate-pdfpy)
+- [search-jobs.py](#search-jobspy)
+- [check-md-hygiene.sh](#check-md-hygienesh)
+- [check-dev-mode.sh](#check-dev-modesh)
+- [install-hooks.sh](#install-hookssh)
+- [sync-memory.sh](#sync-memorysh)
+- [summarize-write.sh](#summarize-writesh)
+- [linkedin-job-url-collector-manual.js](#linkedin-job-url-collector-manualjs)
+- [k8s-apply-env.sh](#k8s-apply-envsh)
+- [migrate-to-ob1.py](#migrate-to-ob1py)
+- [generate-setup-status.sh](#generate-setup-statussh)
+- [langfuse_cc_hook.py](#langfuse_cc_hookpy)
+- [status-line.sh](#status-linesh)
+- [Environment Variables](#environment-variables)
+
 ## setup.sh
 
 One-time setup script. Run from the repo root before starting a job search.

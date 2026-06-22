@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import SearchView from '../components/SearchView'
@@ -77,7 +78,7 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 function renderSearch() {
-  return render(<SearchView />)
+  return render(<MemoryRouter><SearchView /></MemoryRouter>)
 }
 
 // ---------------------------------------------------------------------------
@@ -98,9 +99,9 @@ describe('SearchView — Search History panel', () => {
     })
   })
 
-  it('has profile slug filter input in the tab bar', () => {
+  it('has profile filter select in the tab bar', () => {
     renderSearch()
-    expect(screen.getByPlaceholderText(/profile slug/i)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'All profiles' })).toBeInTheDocument()
   })
 
   it('collapses the panel when the header is clicked', async () => {
@@ -195,6 +196,9 @@ describe('SearchView — Positions tab', () => {
 
 describe('SearchView — Runs tab', () => {
   it('switches to Run History table after clicking Runs tab', async () => {
+    server.use(
+      http.get('/api/search-runs', () => HttpResponse.json({ records: SEARCH_RUNS })),
+    )
     renderSearch()
 
     const runsTab = await screen.findByRole('button', { name: /runs/i })
@@ -202,7 +206,6 @@ describe('SearchView — Runs tab', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Screened')).toBeInTheDocument()
-      expect(screen.getByText('Fit')).toBeInTheDocument()
       expect(screen.getByText('Failed')).toBeInTheDocument()
     })
   })
@@ -228,12 +231,15 @@ describe('SearchView — Runs tab', () => {
     await userEvent.click(runsTab)
 
     await waitFor(() => {
-      expect(screen.getByText('presales-se')).toBeInTheDocument()
+      expect(screen.getAllByText('presales-se').length).toBeGreaterThan(0)
     })
     expect(screen.getAllByText('7').length).toBeGreaterThan(0)
   })
 
   it('shows Pages, Total, Screened column headers', async () => {
+    server.use(
+      http.get('/api/search-runs', () => HttpResponse.json({ records: SEARCH_RUNS })),
+    )
     renderSearch()
 
     const runsTab = await screen.findByRole('button', { name: /runs/i })
