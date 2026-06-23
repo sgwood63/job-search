@@ -10,6 +10,7 @@ Canonical single source for everything that happens after a JD is fetched. Calle
 All file access follows the storage-routing policy (`DATA_BACKEND` env var).
 
 **Changes from v4:**
+- Step 1: Screening context block is now explicit — the caller constructs a verbatim prompt block from `## Location Check` and `## Hard Stops` sections of `PROFILES-QUICK-REFERENCE.md` (pre-loaded by the caller). Output contract reference updated to `skills/jd-evaluation/draft.md` (19-field contract including `location_extracted`, `location_verdict`). `location_extracted` and `location_verdict` added to the `Set:` line.
 - New Step 2.5 (fit jobs only): 1–2 WebSearches before composing `job-description.md`. Search results feed a new combined section `## Company & Market Context` (replaces `## Company Overview`) and the **Role type** line in `## Role Summary`. No-fit jobs get the original thin 2–4 sentence overview — no search for jobs that don't pass screening.
 - `## Company Overview` renamed to `## Company & Market Context`: four-part structure — business overview, Division/Team, Products/Platform (with links), and a 150–250 word **Market & Strategic Context** narrative (why this company/space matters now, competitive dynamics, strategic direction). Both the structured reference and market analysis are in one section, available at Pending Review without opening notes.md.
 - `## Role Summary` rule: add **Role type** line — classify as BVC/value engineering, traditional SE, implementation consultant, etc., with 1–2 closest analogs.
@@ -42,12 +43,27 @@ If `get_entity_neighbors` returns empty or errors: set `kg_context = {}` and con
 
 ## Step 1 — Screen via jd-evaluation
 
-Spawn a **Haiku agent** with:
+Spawn a **Haiku agent** and follow `$APP_DIR/skills/jd-evaluation/draft.md` for the full extraction, location check, fit check, and output contract.
+
+**Construct the screening context block verbatim and include it in the Haiku prompt:**
+
+```
+**Location Check (from PROFILES-QUICK-REFERENCE.md ## Location Check):**
+<verbatim content of ## Location Check section>
+
+**Hard Stops (from PROFILES-QUICK-REFERENCE.md ## Hard Stops):**
+<verbatim content of ## Hard Stops section>
+
+**Compensation floor:** <extracted from applicant.md>
+```
+
+The caller must have pre-loaded these sections from `PROFILES-QUICK-REFERENCE.md`. Pass them verbatim into the Haiku prompt — do not summarize or paraphrase. This allows Haiku to classify location correctly against the actual applicant criteria without this workflow hardcoding any location names.
+
+Also include in the Haiku prompt:
 - The full `jd_content` text
-- Pre-extracted criteria from the caller (location, deal-breakers, comp from `applicant.md`; Hard Stops + profile slugs/summaries from `PROFILES-QUICK-REFERENCE.md`)
 - `profile_hint` if provided
-- The fit-check criteria follow skill `$APP_DIR/skills/jd-evaluation/v1.md` — extraction fields, hard-stop checks, profile match
-- `kg_context` (OB1 only): if non-empty, include the following section in the Haiku prompt:
+- Profile slugs and one-line summaries from `PROFILES-QUICK-REFERENCE.md`
+- `kg_context` (OB1 only): if non-empty, include the following section:
 
   ```
   **Known context for <company_name> from prior sessions:**
@@ -59,29 +75,11 @@ Spawn a **Haiku agent** with:
   exists with status 'applied' or later, flag it in fit_reasoning as a potential duplicate.
   ```
 
-Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return `fit=true` only if `score >= 7` and no Hard Stop applies.
+Instruction to Haiku: return the full 19-field JSON object defined in `skills/jd-evaluation/draft.md ## Output contract`.
 
-Instruction: return a single JSON object:
-```
-fit               — true/false
-profile_score     — 1–10
-profile_match     — best matching profile slug (override profile_hint if better match found)
-employment_type   — "Full-time" / "Contract" / "Part-time" / "Not listed"
-seniority         — level as written in JD, or inferred, or "Not listed"
-travel            — travel requirement as stated, or "Not listed"
-compensation      — comp range as stated, or "Not listed"
-role_summary      — 2–3 sentence paragraph: what the role does and who it serves
-responsibilities  — array of ALL distinct responsibilities stated in the JD (not a sample)
-must_have         — array of {text, gap} objects for ALL must-have/required qualifications; gap=true if applicant has a clear deficiency
-preferred         — array of ALL preferred/nice-to-have qualifications stated in JD (omit if none)
-fit_reasoning     — narrative paragraph explaining fit or no-fit
-coverage          — fit=true only: array of {requirement, status} where status ∈ ["✅ Strong", "⚠️ Partial", "❌ Gap"]; 3–8 key requirements; omit for no-fit
-hard_stops_hit    — array of Hard Stop labels that triggered (empty array if none)
-domain_tags       — array of 2–4 short domain/industry tags for this role, e.g. ["ai-governance","b2b-saas","fintech"] — lowercase, hyphen-separated, no spaces
-jd_requirements_structured — {required: [string, ...], preferred: [string, ...]} — flat text arrays extracted from must_have and preferred
-```
+Apply Hard Stops first — any Hard Stop hit = no-fit regardless of score. Return `fit=true` only if `profile_score >= 7` and no Hard Stop applies.
 
-Set: `verdict = screening.fit`, `score = screening.profile_score`, `profile_match = screening.profile_match`.
+Set: `verdict = screening.fit`, `score = screening.profile_score`, `profile_match = screening.profile_match`, `location_extracted = screening.location_extracted`, `location_verdict = screening.location_verdict`.
 
 ## Step 2 — Derive Folder Slug
 

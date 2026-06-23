@@ -109,11 +109,11 @@ def save_seen_jobs(seen_path: Path, seen: set):
     seen_path.write_text(json.dumps({"job_ids": sorted(seen)}, indent=2))
 
 
-def call_searchapi(query: str, api_key: str, page_token: str | None) -> dict:
+def call_searchapi(query: str, api_key: str, page_token: str | None, location: str = "United States") -> dict:
     params = {
         "engine": "google_jobs",
         "q": query,
-        "location": "United States",
+        "location": location,
         "gl": "us",
         "hl": "en",
         "api_key": api_key,
@@ -173,6 +173,8 @@ def main():
     parser.add_argument("--seen-jobs-path", default=None, metavar="FILE", help="Override path to seen-jobs.json (OB1 mode: pre-populated from object store)")
     parser.add_argument("--no-raw-save", action="store_true", help="Skip saving raw API response to disk (OB1 mode)")
     parser.add_argument("--no-dedup", action="store_true", help="Return all fetched jobs regardless of seen status (still updates seen list)")
+    parser.add_argument("--location", default="United States",
+                        help="Google Jobs location filter (default: United States)")
     args = parser.parse_args()
 
     api_key = get_env("SEARCHAPI_KEY")
@@ -217,7 +219,7 @@ def main():
             "params": {
                 "engine": "google_jobs",
                 "q": query,
-                "location": "United States",
+                "location": args.location,
                 "gl": "us",
                 "hl": "en",
                 "next_page_token": args.page_token,
@@ -226,7 +228,7 @@ def main():
         }, indent=2))
         return
 
-    response = call_searchapi(query, api_key, args.page_token)
+    response = call_searchapi(query, api_key, args.page_token, args.location)
 
     # Save raw response (skipped in OB1 mode)
     if not args.no_raw_save:

@@ -15,7 +15,7 @@ Applicant-specific context (identity, location, experience, job criteria) is in 
 
 ## APP_DIR File Authoring Rules
 
-Every `.md` file in `$APP_DIR` must use "the applicant" or "the user" (never the applicant's name) and must never contain hard-coded absolute paths. A pre-commit hook (`scripts/check-md-hygiene.sh`) enforces both rules at commit time.
+Every `.md` file in `$APP_DIR` must use "the applicant" or "the user" (never the applicant's name) and must never contain hard-coded absolute paths. A pre-commit hook (`scripts/check-md-hygiene.sh`) enforces both rules at commit time. APP_DIR files describe procedures, mechanisms, and triggers — not applicant-specific content decisions. Search term guidance, industry preferences, role level targets, company criteria, compensation thresholds, and similar context belong in `$APPLICANT_DIR` files and are read at runtime.
 
 ## Skills Are the Source of Truth
 
@@ -51,7 +51,7 @@ When the user provides new experience, achievements, preference changes, or care
 - Append a session entry to `$APPLICANT_DIR/applicant-maintenance.md`
 - Update `career-advice.md` Feedback Incorporated only when the change directly affects the advice; when a new profile is created, always update career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations)
 - Do not update `APPLICANT-MEMORY.md` for maintenance changes
-- When a profile's target roles or JD signal keywords change, also update the `## Search Queries` table row for that profile in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`. Queries use role/title terms only — no domain expertise appended. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms per query for broad market coverage. When a profile is removed, delete its row from the Search Queries table.
+- When a profile's target roles or JD signal keywords change, also update the `## Search Queries` table row for that profile in `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`. Include adjacent titles: names other companies use for the same function (e.g., "Solutions Architect" alongside "Solutions Engineer"). Aim for 8–14 terms per query for broad market coverage. When a profile is added or removed, also update the `## Location Modes` table in `PROFILES-QUICK-REFERENCE.md`. When a profile is removed, delete its Search Queries rows and Location Modes row.
 - **DATA_BACKEND=ob1:** All `$APPLICANT_DIR` reads and writes route through OB1 MCP tools per the policy `policies/storage-routing` (pinned version) — including the MCP-vs-REST upload routing for binary/large files.
 - **OB1 — `demonstrates` edges for new achievements:** After adding a new achievement and capturing its thought (see `applicant-setup.md` Phase F), create knowledge graph edges for each distinct skill or tool the achievement demonstrates (cap 8, OB1 mode only): `create_knowledge_edge(from_entity_type='project', from_entity_name=<achievement title — 1–5 word summary>, relation='demonstrates', to_entity_type=<'tool' for specific technologies | 'topic' for functional skills>, to_entity_name=<skill name>, metadata={source: 'job_search', profile_slug: <profile_slug>})`.
 

@@ -1,0 +1,415 @@
+---
+name: search-jobs-linkedin
+description: Fetch LinkedIn jobs (recommended feed or profile-specific keyword search); screen and save fit jobs as stubs
+---
+
+# search-jobs-linkedin Workflow (DRAFT — extends v3)
+
+Fetches LinkedIn jobs via Playwright in three sequential phases: (1) scrape all sub-queries for job IDs, (2) dedup and pre-fetch all JDs to temp files, (3) process from files. This separates slow Playwright I/O from OB1 write operations and prevents context growth from interleaved fetch + process output. Fit jobs are saved as application stubs — **no auto-generated resumes**. Triggered by `/linkedin-ingest`.
+
+**Changes from v3:**
+- Step 1 mode detection: When a `profile_slug` is provided, reads `## Location Modes` from `PROFILES-QUICK-REFERENCE.md` and builds two URL sets per Search Queries row for `bay-area-plus-remote` mode — one with onsite/hybrid location params, one remote-only. Location strings come from `## Location Check` at runtime; no hardcoded place names in this spec.
+- Step 6 snippet pre-screen: Before calling `process-jd` for each job in Phase C, check company name and job title for obvious non-tech signals. Skip `process-jd` for clear non-fits and log as `snippet-screened`.
+
+**Changes from v2 (carried from v3):**
+- Two-pass architecture: all JD fetches now happen in a dedicated Phase B before any `process-jd` calls begin (Phase C). Avoids interleaving Playwright blocking with OB1 writes.
+- Dedup is batched in Step 4 for all `raw_jobs` before fetching begins. OB1 `check_position_seen` calls may be parallelized within Step 4.
+- JD content targeting: `fetch-jd.py` now uses LinkedIn-specific CSS selectors to return only job description text (not nav/sidebar). Default char cap: 12,000.
+- Temp files: each fetched JD is saved to `/tmp/jd-<job_id>.md` in Phase B and cleaned up at the end of Phase C.
+- Auth failure during Phase B aborts before any processing — no partial runs where some jobs were processed with bad context.
+- Explicit prohibitions: no domain connection assertions during ingest; no TodoWrite calls.
+
+**Changes from v1 (carried from v3):**
+- Dedup moved from `linkedin-seen-jobs.json` to inline `check_position_seen` MCP tool (OB1) or CSV (local). No `linkedin-seen-jobs.json` file is read or written.
+- Every position encountered is logged to `js_ingested_positions` (OB1) or appended to `ingested-positions.csv` (local).
+- Repost detection: positions seen >60 days ago are flagged and included in run summary.
+- Profile-search mode: optional `[profile_slug]` argument runs one LinkedIn keyword-search URL per Search Queries row, with dedup shared across sub-queries.
+- Configurable rate-limit delays: `--page-delay` (scraper, between pages) and `--jd-delay` (workflow, between JD fetches).
+
+## LinkedIn URL Location Parameters
+
+Verified parameters (reverse-engineered from live URLs; LinkedIn does not publish official docs):
+- Base URL: `https://www.linkedin.com/jobs/search` (Playwright follows redirects from `/jobs/search-results/` anyway)
+- Location text param: `location=<url-encoded-location>` — e.g., `location=San+Francisco+Bay+Area`
+- Work type filter: `f_WT=1` (on-site), `f_WT=2` (remote), `f_WT=3` (hybrid); multiple values: `f_WT=1%2C3`
+- Onsite+hybrid pass: append `&location=<url-encoded-onsite-location>&f_WT=1%2C3`
+- Remote-only pass: append `&f_WT=2` (no location restriction needed)
+
+These `f_WT` constants are defined here as the LinkedIn-documented work-type filter values. The location string for the onsite pass is derived at runtime from `## Location Check` in `PROFILES-QUICK-REFERENCE.md`.
+
+## Step 1 — Load Context
+
+- Read `$APP_DIR/.env`; resolve `$APP_DIR`, `$APPLICANT_DIR`, `PLAYWRIGHT_PYTHON`, `DATA_BACKEND`, `CHROME_PROFILE` (optional), `LINKEDIN_CDP_PORT` (optional)
+- If `PLAYWRIGHT_PYTHON` is not set: tell the user to add it and stop
+- If `CHROME_PROFILE` is set: `use_real_chrome = true`; else `use_real_chrome = false`
+- Parse invocation arguments: `[profile_slug]` (optional positional), `--max-pages N` (default 4; 0 = unlimited), `--page-delay N` (default 20, seconds), `--jd-delay N` (default 10, seconds)
+- Load `applicant.md`:
+  - OB1: `get_file('applicant.md')`
+  - Local: read `$APPLICANT_DIR/applicant.md`
+- Load `PROFILES-QUICK-REFERENCE.md`:
+  - OB1: `get_file('profiles/PROFILES-QUICK-REFERENCE.md')`
+  - Local: read `$APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md`
+
+Pre-extract and cache for reuse across all jobs:
+- From `applicant.md`: "Location" section, "Deal-breakers (Hard No)" section, "Not interested in" from Role Preferences, compensation/target salary line
+- From `PROFILES-QUICK-REFERENCE.md`: `## Hard Stops` section, `## Location Check` section, profile overview table
+
+**Mode detection (immediately after loading PROFILES-QUICK-REFERENCE.md):**
+
+If `profile_slug` argument was provided:
+- Extract all `## Search Queries` rows where the Profile column matches `profile_slug` exactly (case-sensitive slug match).
+- If no rows found: stop immediately with error:
+  `"No Search Queries found for profile '<profile_slug>'. Check PROFILES-QUICK-REFERENCE.md."`
+- **Location mode detection:** Look up `profile_slug` in `## Location Modes`. If found, store `location_mode = <Mode value>`; else `location_mode = "us-only"`.
+- **For each matching Search Queries row:**
+  - URL-encode the Query value (percent-encode `"` as `%22`, space as `%20`; `OR` stays as literal text) and construct the base keyword URL:
+    `https://www.linkedin.com/jobs/search-results/?keywords=<encoded_query>`
+  - **If `location_mode = "bay-area-plus-remote"`:**
+    - Extract the hybrid/onsite-accepted location value from `## Location Check` (the location labeled `✅` under "Hybrid/Onsite in..."). URL-encode it (spaces as `+`). Store as `onsite_location_encoded`.
+    - Build two URLs per row:
+      - Onsite/hybrid URL: `<base_url>&location=<onsite_location_encoded>&f_WT=1%2C3`
+      - Remote URL: `<base_url>&f_WT=2`
+    - Interleave: for row 1, add onsite-1 then remote-1; for row 2, add onsite-2 then remote-2; etc.
+  - **If `location_mode = "us-only"`:** one URL per row (base URL only, no location or work-type params)
+- `sub_queries = [<all constructed URLs in interleaved order>]`
+- `source_name = "LinkedIn Search — <profile_slug>"`
+- `summary_profile_slug = <profile_slug>`
+
+Else (no `profile_slug`):
+- `sub_queries = ["https://www.linkedin.com/jobs/collections/recommended"]`
+- `source_name = "LinkedIn Recommendations"`
+- `summary_profile_slug = "linkedin-recommended"`
+- `location_mode = "n/a"` (recommended feed has no location mode)
+
+**Local mode only — load dedup table:**
+Read `$APPLICANT_DIR/search/ingested-positions.csv` into memory as a lookup set. If file does not exist, start with an empty set.
+
+## Step 2 — Initialize Counters
+
+```
+fit_count = 0
+no_fit_count = 0
+fetch_failed_count = 0
+duplicate_count = 0
+repost_count = 0
+closed_count = 0
+snippet_screened_count = 0
+pages_fetched = 0
+total_results = 0
+screened = 0
+repost_jobs = []     # {company, title, first_seen_at}
+fetch_failed_jobs = []   # {company, title, location, reason}
+fit_jobs_buffer = []     # OB1: {company, title, application_id} — accumulated for domain summary
+contact_jobs = []        # OB1: {company, title, contacts: [name,...]} — jobs with known contacts
+kg_context = null        # OB1: neighbors result from get_entity_neighbors (reset per job)
+known_contacts = []      # OB1: person entities at current job's company (reset per job)
+run_timestamp = <capture now as YYYYMMDD-HHMMSS>
+search_run_id = null  # set after log_search_run (OB1 only)
+in_run_seen_ids = set()       # cross-sub-query dedup (job_ids seen in this run)
+sub_query_results = []        # [{url, pages_fetched, total}] — per-sub-query stats for summary
+raw_jobs = []                 # accumulated across all sub-queries
+```
+
+## Step 3 — Fetch LinkedIn Jobs (one sub-query at a time)
+
+**For each index `i`, sub-query URL `sq` in `sub_queries`:**
+
+```
+tmp_file = /tmp/linkedin-<run_timestamp>-<i>.json
+```
+
+Run the scraper:
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-linkedin-recs.py" \
+  --url "<sq>" [--max-pages N] --page-delay <page_delay> --out "$tmp_file" \
+  [--use-real-chrome --chrome-profile "$CHROME_PROFILE" [--cdp-port "$LINKEDIN_CDP_PORT"]]
+```
+Include `--use-real-chrome --chrome-profile "$CHROME_PROFILE"` when `use_real_chrome=true`.
+Include `--cdp-port "$LINKEDIN_CDP_PORT"` only when `LINKEDIN_CDP_PORT` is also set.
+
+**Exit code 2 in real-Chrome mode:** "LinkedIn session expired in Chrome. Log into LinkedIn in Chrome and retry." (auth is global — stop entire workflow).
+
+- **Exit code 2** (auth expired): stop the entire workflow and tell the user:
+  ```
+  python3 scripts/fetch-jd.py --setup 'https://www.linkedin.com/login'
+  ```
+  (Auth is global — no point continuing other sub-queries.)
+- **Exit code 1** (error): output `[warn] Sub-query <sq> failed — skipping.`; continue to next sub-query.
+- **Exit code 0**: parse `$tmp_file` as JSON; extract `jobs` list, `pages_fetched` (call it `sq_pages`), `total` (call it `sq_total`).
+
+Filter: for each job in `jobs`, skip if `job.job_id` is in `in_run_seen_ids`.
+Add remaining job IDs to `in_run_seen_ids`.
+Append remaining jobs to `raw_jobs`.
+Append `{url: sq, pages_fetched: sq_pages, total: sq_total}` to `sub_query_results`.
+Update global counters: `pages_fetched += sq_pages`, `total_results += sq_total`.
+
+Clean up:
+```bash
+rm -f "$tmp_file"
+```
+
+**After the loop:** if `raw_jobs` is empty, output "No jobs returned from LinkedIn." and stop.
+
+## Step 4 — Dedup All Jobs
+
+Build apply links and dedup all `raw_jobs` before any JD fetching begins. This is Phase A of the two-pass architecture.
+
+**For each job in `raw_jobs`, build apply link:**
+- `apply_link = job.apply_link` (canonical LinkedIn job view URL)
+- If absent but `job.job_id` present: derive `apply_link = "https://www.linkedin.com/jobs/view/<job_id>"`
+- If neither: `apply_link = null`
+
+**OB1 — batch dedup (parallelizable):**
+
+All `check_position_seen` calls for this run may be issued in parallel — they have no write dependencies on each other. Call for each job:
+```
+check_position_seen(source_url=<apply_link or null>, company_name=<job.company or null>, role_title=<job.title or null>)
+```
+**Null-literal rule:** When `job.company` or `job.title` is absent, undefined, or empty, pass the JSON literal `null` — never omit the value or leave it blank.
+
+For each result:
+- `seen=true AND is_repost=false`: `log_ingested_position(..., outcome='duplicate', search_run_id=<search_run_id>)`, increment `duplicate_count`, output `= <Company> — <Title> [already seen]`
+- `seen=true AND is_repost=true`: `log_ingested_position(..., outcome='duplicate', is_repost=true, first_seen_at=<result.first_seen_at>, search_run_id=<search_run_id>)`, increment `duplicate_count` and `repost_count`, append to `repost_jobs`, output `~ <Company> — <Title> [repost — first seen <first_seen_at>]`
+- `seen=false`: add to `new_jobs[]`
+
+**KG Pre-check (OB1 only, for new jobs):**
+
+For each job in `new_jobs[]`, wrapped in try/catch (any error → silently skip, do not block):
+```
+neighbors = get_entity_neighbors(entity_name=<job.company>, entity_type="organization", direction="both", limit=20)
+```
+- `known_contacts` (per job) = names of any `person` entities in `neighbors`
+- `kg_context` (per job) = `neighbors` if non-empty, else `null`
+- If `known_contacts` non-empty: append `{company: job.company, title: job.title, contacts: known_contacts}` to `contact_jobs`
+
+Store `kg_context` and `known_contacts` in a per-job map keyed by `job_id` for use in Step 6.
+
+**Local — sequential dedup:**
+
+Check in-memory dedup set for each job: (1) `apply_link` URL match, (2) `lower(company):lower(title)` exact match.
+- Match found: append to CSV with `outcome=duplicate`, increment `duplicate_count`, output `= <Company> — <Title> [already seen]`
+- No match: add to `new_jobs[]`
+
+**After dedup:** if `new_jobs[]` is empty, output "All jobs already seen — nothing to process." and jump to Step 7.
+
+---
+
+## Step 5 — Pre-fetch All JDs (Phase B)
+
+Fetch all JD text files before any processing begins. For each job in `new_jobs[]`, in order with `jd_delay` seconds between calls:
+
+**5a. Fetch the JD:**
+
+If `apply_link` is null: mark `fetch_result = "no_url"` → jump to 5b (Failure).
+
+Try WebFetch first. If response contains login-wall signals or URL contains auth path segments: skip WebFetch, fall through to fetch-jd.py.
+If WebFetch succeeded: save content to `/tmp/jd-<job_id>.md`, mark `fetch_result = "success"` → continue to next job.
+
+Fall back to fetch-jd.py:
+```bash
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/fetch-jd.py" \
+  --md-out "/tmp/jd-<job_id>.md" "<apply_link>" \
+  [--use-real-chrome --chrome-profile "$CHROME_PROFILE" [--cdp-port "$LINKEDIN_CDP_PORT"]]
+```
+Include `--use-real-chrome --chrome-profile "$CHROME_PROFILE"` when `use_real_chrome=true`.
+Include `--cdp-port "$LINKEDIN_CDP_PORT"` only when `LINKEDIN_CDP_PORT` is also set.
+
+After fetch-jd.py returns (any exit code), sleep `<jd_delay>` seconds, then:
+- **Exit 0:** `fetch_result = "success"` — file is at `/tmp/jd-<job_id>.md` → continue to next job
+- **Exit 2 (auth failure):** Stop the entire Phase B immediately. Output: "LinkedIn auth expired during JD fetch — re-authenticate and retry. N jobs were fetched before failure; M remain unfetched." Log all already-fetched jobs' file paths to the run summary as `status=fetch-pending`. Do not call `process-jd` for any job. Jump to Step 7.
+- **Exit 3 (job closed):** Output `- <Company> — <Title> [skipped — job closed]`, increment `closed_count`, call `log_ingested_position(..., outcome='closed', ...)` → continue to next job (no file written)
+- **Exit 1 or other:** `fetch_result = "failed"` → jump to 5b
+
+**5b. Failure handling** (when `fetch_result != "success"`):
+
+Mark the job as `fetch_failed`. Do NOT call `process-jd` for it.
+
+**OB1:** `upsert_company(name=<job.company>, slug=<company-slug>)`, `create_application(..., status='pending-review', status_detail='Fetch failed — <fetch_result>')` → save `application_id`. Upload minimal fetch-failed stub files in one parallel turn: `notes-index.md`, `search-result.json`. Call `log_ingested_position(..., outcome='fetch-failed', no_fit_reason=<fetch_result>)`.
+
+**Local:** Write minimal fetch-failed folder, append to `application-tracker.md` and `ingested-positions.csv`.
+
+Increment `fetch_failed_count`, append to `fetch_failed_jobs`. Output: `! <Company> — <Title> [fetch failed — <fetch_result>]`; if `known_contacts` non-empty for this job, append ` ★ contact: <name>` for each.
+
+**After the loop:** `jd_files = {job_id: "/tmp/jd-<job_id>.md"}` for all successfully fetched jobs.
+
+---
+
+## Step 6 — Process Jobs from Files (Phase C)
+
+> ⚠️ **DOMAIN CONNECTION PROHIBITION:** Do NOT assert, infer, or write any domain connection text during this phase. Domain connection is populated by `create-application` only, after the full notes.md is expanded for a fit application. During ingest, `domain_connection` is left null in all OB1 records.
+
+> ⚠️ **NO TODOWRITE:** Do not call TodoWrite during this workflow. Progress is tracked via run counters and `log_ingested_position` calls.
+
+For each job in `new_jobs[]` where `jd_files[job_id]` exists:
+
+Retrieve `kg_context` and `known_contacts` from the per-job map built in Step 4.
+
+**Snippet pre-screen (before reading JD file):** Inspect `job.company` and `job.title` for obvious non-tech signals. If company name and job title together clearly indicate a non-tech industry with no plausible fit to any active profile, skip processing:
+- Call `log_ingested_position(source_url=<apply_link>, company_name=<job.company>, role_title=<job.title>, profile_slug=null, search_run_id=<search_run_id>, outcome='no-fit', no_fit_reason='snippet-screened: non-tech')`
+- Increment `snippet_screened_count`
+- Output: `✗ <Company> — <Title> [snippet-screened: non-tech]`; if `known_contacts` non-empty, append ` ★ contact: <name>` for each
+- Clean up temp file: `rm -f /tmp/jd-<job_id>.md`
+- Continue to next job
+
+**Judgment rule:** This is a high-confidence signal only — company + title must together give no plausible path to a fit. When in doubt, read the JD and call process-jd.
+
+Read `full_jd_content` from `/tmp/jd-<job_id>.md`.
+
+Increment `screened`. Call workflow `process-jd` with:
+- `jd_content = full_jd_content`
+- `source_url = apply_link`
+- `source_name = <source_name>` (set in Step 1 mode detection)
+- `profile_hint = null` (jd-evaluation picks best profile from all active profiles)
+- `source_metadata = {job_id: job.job_id, posted_at: job.posted_at, raw_source_json: json.dumps(job.raw, indent=2)}`
+- `kg_context = <kg_context>` (OB1 only — pass when non-null; omit or pass null in local mode)
+
+`process-jd` returns `{folder_slug, application_id, verdict, score, profile_match}`.
+
+After process-jd resolves:
+- **OB1:** `log_ingested_position(source_url=<apply_link>, company_name=<job.company>, role_title=<job.title>, profile_slug=<profile_match>, search_run_id=<search_run_id>, application_id=<application_id if fit else null>, outcome=<verdict>, no_fit_reason=<score+reason if no-fit>)`
+- **Local:** Append row to `ingested-positions.csv`; add to in-memory dedup set
+- **OB1, fit verdict only:** append `{company: job.company, title: job.title, application_id: <application_id>}` to `fit_jobs_buffer`
+
+Output one line: `+ <Company> — <Title> → applications/<folder_slug>/` (fit) or `- <Company> — <Title> [no fit — score N/10]` (no-fit); if `known_contacts` non-empty for this job, append ` ★ contact: <name>` for each. Increment `fit_count` or `no_fit_count`.
+
+**After the loop:** clean up temp files:
+```bash
+rm -f /tmp/jd-<job_id>.md  # for each job_id in jd_files
+```
+
+## Step 7 — Write Summary and Log Run Stats
+
+`summary_filename` = `YYYY-MM-DD-HHMMSS-<summary_profile_slug>-summary.md` (from run start time).
+
+**7a-pre — KG queries for summary enrichment (OB1 only, both wrapped in try/catch):**
+
+1. **Domain patterns** (Improvement 2): if `fit_jobs_buffer` is non-empty, build a query string by joining company + title for each fit job (`"<Company> <Title>, ..."`), then call:
+   ```
+   similar_apps = find_similar_applications(
+     query = <joined fit-job string>,
+     limit = 5
+   )
+   ```
+   Filter out any result whose `id` is already in this run's fit application IDs. Store as `domain_similar`.
+
+2. **Repost history** (Improvement 3): if `repost_jobs` is non-empty, call:
+   ```
+   history = get_ingestion_history(limit=200)
+   ```
+   For each entry in `repost_jobs`, count how many rows in `history` match `lower(company_name) == lower(repost.company) AND lower(role_title) == lower(repost.title)`. Build `persistent_reposts = [entries where count >= 3]`.
+
+**7a — Generate summary `.md`** (always, both OB1 and local):
+
+```markdown
+# Search Summary — <summary_profile_slug> — YYYY-MM-DD HH:MM:SS
+
+**Profile:** <summary_profile_slug>
+**Location mode:** <location_mode>
+**Date:** YYYY-MM-DD HH:MM:SS
+**Pages fetched:** <pages_fetched>
+**Total results:** <total_results>
+**New (deduped):** <screened+fetch_failed_count+snippet_screened_count>
+**Screened:** <screened>
+**Fit:** <fit_count>
+**No fit:** <no_fit_count>
+**Snippet-screened (non-tech):** <snippet_screened_count>
+**Fetch failed:** <fetch_failed_count>
+**Closed (job no longer available):** <closed_count>
+
+## Sub-queries
+
+<numbered list of all URLs in sub_queries, one per line. For bay-area-plus-remote mode, label each with its pass type: "(onsite+hybrid)" or "(remote-only)">
+
+## Fit Jobs (score >= 7)
+
+| Company | Role | Location | Score | Folder |
+|---------|------|----------|-------|--------|
+<one row per fit job; "_No fit jobs found._" if fit_count == 0>
+
+## No-Fit Jobs
+
+| Company | Role | Location | Score | Reason |
+|---------|------|----------|-------|--------|
+<one row per no-fit job>
+
+## Failed to Fetch
+
+| Company | Role | Location | Reason |
+|---------|------|----------|--------|
+<one row per job in fetch_failed_jobs; "_No fetch failures._" if none>
+
+## Reposts (<repost_count>)
+
+_Omit this section entirely if `repost_count == 0`._
+
+| Company | Role | First Seen | Days Since | Times Seen |
+|---------|------|-----------|-----------|-----------|
+<one row per entry in repost_jobs; "Times Seen" = count from history lookup (or "?" if history call failed)>
+
+<if persistent_reposts non-empty: "**Persistent reposts (seen 3+ times):** <Company — Title, ...>">
+
+## Domain Patterns This Run
+
+_OB1 only. Omit this section if `fit_jobs_buffer` is empty or if the `find_similar_applications` call failed/returned nothing._
+
+**Similar past applications:**
+
+| Company | Role | Status | Similarity |
+|---------|------|--------|-----------|
+<one row per entry in domain_similar (exclude current-run IDs); "_No similar past applications found._" if none>
+
+## Known Contacts
+
+_OB1 only. Omit this section entirely if `contact_jobs` is empty._
+
+| Company | Role | Contacts |
+|---------|------|---------|
+<one row per entry in contact_jobs>
+```
+
+- **OB1:** `upload_file('search/<summary_filename>', <content>, 'text/markdown')` → capture `storage_key`
+- **Local:** write to `$APPLICANT_DIR/search/<summary_filename>`; `storage_key = null`
+
+**7b — Log run stats:**
+
+**OB1:** `log_search_run(profile_slug=<summary_profile_slug>, query=<comma-joined sub_queries>, pages_fetched=<pages_fetched>, total_results=<total_results>, new_after_dedup=<screened+fetch_failed_count+snippet_screened_count>, screened=<screened>, fit_count=<fit_count>, summary_key=<storage_key>)` → capture returned `search_run_id`
+
+**Local:** Append to `$APPLICANT_DIR/search/search-log.csv` (create with header if missing):
+```
+date,time,profile,pages_fetched,total_results,screened,fit_count,fetch_failed,duplicate_count,query
+```
+
+## Step 8 — Report
+
+```
+LinkedIn ingestion complete
+  Location mode:     <location_mode>
+  Pages fetched:     <pages_fetched>
+  Jobs returned:     <total_results>
+  Screened:          <screened>
+  Fit:               <fit_count>
+  No fit:            <no_fit_count>
+  Snippet-screened:  <snippet_screened_count>
+  Duplicates:        <duplicate_count>
+  Fetch failed:      <fetch_failed_count>
+  Closed (skipped):  <closed_count>
+```
+
+If `repost_count > 0`: append "Reposts detected" list (company/role/first_seen_at) — user may want to re-evaluate.
+
+## Rules
+
+- Do not auto-generate resumes. Fit jobs are saved as stubs for the applicant to review.
+- Try WebFetch before fetch-jd.py on each apply_link — LinkedIn pages usually require auth; fall through immediately if WebFetch returns a login wall.
+- `search-result.json` is written for every job that gets a folder.
+- Call `log_ingested_position` for EVERY job processed (including duplicates, snippet-screened, and fetch-failed). This is the canonical audit trail.
+- Do not fabricate company, role, or location data.
+- Use `$PLAYWRIGHT_PYTHON` (not system python3) for all scripts.
+- Auth refresh: if exit code 2 from the scraper or fetch-jd.py:
+  - `use_real_chrome=false`: tell the user to run `python3 scripts/fetch-jd.py --setup 'https://www.linkedin.com/login'`
+  - `use_real_chrome=true`: tell the user "LinkedIn session expired in Chrome — log into LinkedIn in Chrome and retry."
+- After every JD fetch attempt in Step 5 (exit 0, exit 1, exit 3, or no_url path), sleep `<jd_delay>` seconds before proceeding to the next job. Do not sleep before dedup skips in Step 4.
+- `--max-pages` caps each sub-query independently; each scraper invocation is separately bounded.
+- `in_run_seen_ids` is shared across all sub-queries and is never reset between iterations. This handles cross-URL dedup when the same job appears in both the onsite and remote passes.
+- **Do NOT assert or infer domain connection during ingest.** This field is populated only by `create-application` after full notes.md expansion. During ingest, pass `domain_connection=null` to all OB1 calls.
+- **Do NOT use TodoWrite during this workflow.** Progress is tracked via run counters and `log_ingested_position` calls only.

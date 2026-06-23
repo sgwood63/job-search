@@ -124,6 +124,7 @@ Parameters:
 - `--page-token` — resume pagination from a prior `next_page_token`
 - `--batch-out` — append results as NDJSON to this file path
 - `--batch-size N` — max new jobs to return; overrides `SEARCH_BATCH_SIZE` env var for this call
+- `--location` — Google Jobs location filter (default: `"United States"`); set to a metro area name (e.g. `"San Francisco Bay Area"`) for onsite-pass filtering
 - `--dry-run` — inspect query without fetching
 
 Exit codes: `0` (success), `1` (missing env, profile not found, API error)
