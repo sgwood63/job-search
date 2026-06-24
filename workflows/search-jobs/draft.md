@@ -16,7 +16,7 @@ All file access follows the storage-routing policy (`DATA_BACKEND` env var).
 - Summary `## Sub-queries` section now lists location passes alongside sub-query terms.
 
 **Changes from v1 (carried from v3):**
-- Dedup moved from `seen-jobs.json` (Python script) to `check_position_seen` MCP tool (OB1) or `ingested-positions.csv` (local). Script called with `--no-dedup`.
+- Dedup moved from `seen-jobs.json` (Python script) to `check_position_seen` MCP tool (OB1) or `ingested-positions.csv` (local). Script no longer has file-based dedup or a `--no-dedup` flag.
 - Every position encountered is logged to `js_ingested_positions` (OB1) or appended to `ingested-positions.csv` (local).
 - Summary `.md` is still generated and uploaded to OB1 (`summary_key` is stored in `js_search_runs`). This enables human review and backfill.
 - Repost detection: positions seen >60 days ago are flagged and included in run summary.
@@ -119,9 +119,9 @@ If `pass.remote_suffix` is true: use `query_for_api = current_query + " remote"`
 
 **3b. Pagination loop** (repeat until no more pages for this sub-query):
 
-3b-i. Run the search script with `--no-dedup` to skip the script's own seen-jobs.json check:
+3b-i. Run the search script:
 ```bash
-"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<query_for_api>" --batch-out "$batch_file" --no-dedup --location "<pass.location>" [--page-token <token>] [--batch-size <SEARCH_BATCH_SIZE> if overridden]
+"$PLAYWRIGHT_PYTHON" "$APP_DIR/scripts/search-jobs.py" <profile> --query "<query_for_api>" --batch-out "$batch_file" --location "<pass.location>" [--page-token <token>] [--batch-size <SEARCH_BATCH_SIZE> if overridden]
 ```
 Parse stdout as JSON. On exit code 1: report the error and stop.
 
@@ -393,9 +393,9 @@ If `fit_count < SEARCH_TARGET_FITS`: append "Results exhausted — fewer than ta
 - Try WebFetch first on each apply URL before falling back to fetch-jd.py. Check for login-wall signals before accepting WebFetch output.
 - `search-result.json` is written for every job that gets a folder (fit, no-fit, and fetch-failed).
 - Call `log_ingested_position` for EVERY job processed (including duplicates, snippet-screened, and fetch-failed). This is the audit trail.
-- The Python script must be called with `--no-dedup` to prevent it from writing/reading `seen-jobs.json`. All dedup logic lives in this workflow.
+- The Python script performs only in-run in-memory dedup (duplicate IDs within a single API response). All persistent dedup logic lives in this workflow.
 - Do not fabricate company, role, or location data.
 - Always pass `--query "<query_for_api>"` to the script — never rely on the script's table-lookup.
-- The script auto-detects OB1 mode via `DATA_BACKEND=ob1` — no `--seen-jobs-path` flag needed; in OB1 mode the script skips local profile directory checks and seen-jobs.json I/O entirely.
+- The script auto-detects OB1 mode via `DATA_BACKEND=ob1`; in OB1 mode it skips local profile directory checks and raw-response saves.
 - Use `$PLAYWRIGHT_PYTHON` (not system python3) to run the scripts.
 - Cross-pass dedup: `check_position_seen` handles cross-pass duplicates automatically. A job that appears in both the onsite pass and the remote pass will be marked `seen=true` on the second encounter and skipped — this is the expected behavior.
