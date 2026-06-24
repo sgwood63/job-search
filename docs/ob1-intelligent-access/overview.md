@@ -99,7 +99,7 @@ Capture every piece of application knowledge as an OB1 thought. OB1's entity ext
 - **PDF** → `extractMarkdownViaHaiku()`: single Haiku call returns both markdown AND `thought_category` (one API call, not two); falls back to `unpdf` plain text when `ANTHROPIC_API_KEY` absent
 - **text/markdown, text/plain** → pass through
 
-The new `capture_thought` MCP tool (`mcp__job-search__capture_thought`) exposes the `captureThoughtFn` callback with structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`, etc.). Prefer it over `mcp__open-brain__capture_thought` in job-search sessions — it passes metadata as typed fields instead of YAML embedded in content.
+The new `capture_thought` MCP tool (`mcp__job-search__capture_thought`) exposes the `captureThoughtFn` callback with structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`, etc.). It passes metadata as typed fields instead of YAML embedded in content.
 
 Inferred category stored in `js_files.thought_category` and in the thought metadata. Chat panel file attachments use `useLocation()` to pass application folder as context.
 

@@ -17,7 +17,7 @@ changelog:
     date: 2026-06-18
     summary: >
       Knowledge map (feat/ob1-knowledge-map): primary retrieval uses thought IDs from
-      notes-index.md (mcp__open-brain__fetch by ID) instead of search_chunks_semantic on
+      notes-index.md (mcp__job_search__fetch by ID) instead of search_chunks_semantic on
       notes.md; legacy fallback to v2 chunk-based retrieval when notes-index.md is absent;
       after generating prep brief, captures it as interview_prep thought and updates
       notes-index.md with thought ID

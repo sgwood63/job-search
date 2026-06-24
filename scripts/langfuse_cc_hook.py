@@ -178,7 +178,7 @@ def _classify_tools(tools: List[dict]) -> Tuple[Optional[str], Optional[str]]:
             elif skill in DEVELOPMENT_SKILLS:
                 is_development = True
 
-        elif name.startswith("mcp__job-search__") or name.startswith("mcp__open-brain__"):
+        elif name.startswith("mcp__job-search__"):
             is_operational = True
 
         elif name == "Bash":

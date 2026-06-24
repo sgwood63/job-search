@@ -16,11 +16,6 @@ EOF
 cat > /app/.mcp.json << EOF
 {
   "mcpServers": {
-    "open-brain": {
-      "type": "http",
-      "url": "${OB1_MCP_URL:-http://localhost/ob1/mcp}",
-      "headers": { "x-brain-key": "${OB1_MCP_KEY:-}" }
-    },
     "job-search": {
       "type": "http",
       "url": "${JOB_SEARCH_MCP_URL:-http://localhost/job-search/mcp}",

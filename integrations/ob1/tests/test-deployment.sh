@@ -91,7 +91,7 @@ test_namespace() {
 test_secrets() {
   header "Secrets & ConfigMaps"
   local expected=("openbrain-secret" "job-search-secret" "minio-secret" "webapp-secret"
-                  "dashboard-secret" "openbrain-configmap" "job-search-llm-config")
+                  "openbrain-configmap" "job-search-llm-config")
   local missing=()
   local existing
   existing=$(kubectl get secret,configmap -n "$NAMESPACE" --no-headers 2>/dev/null || true)

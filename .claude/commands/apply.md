@@ -6,7 +6,7 @@ Record an application submission atomically — updates both tracker and notes.m
 **Steps:**
 1. Run `/audit` on the matching application folder first. If audit fails, stop and report — do not modify any files.
 2. **Update pipeline state** — use the first available method:
-   - **OB1 active** (open-brain MCP connected): call `update_application_status(id, 'applied', 'Applied [date] via [portal]', follow_up_date)` where follow_up_date = date + 14 days. Look up the application id via `get_application("[company]")` first.
+   - **OB1 active** (job-search MCP connected): call `update_application_status(id, 'applied', 'Applied [date] via [portal]', follow_up_date)` where follow_up_date = date + 14 days. Look up the application id via `get_application("[company]")` first.
    - **Fallback**: update `$APPLICANT_DIR/application-tracker.md` — set `Status` to `Applied`, `Status Detail` to `Applied [date]` (with portal name if known), `Next Action` to `Follow up [date + 14 days]`, confirm Priority is set.
 3. **Update notes.md** — use the first available method:
    - **OB1 active**: `get_file('applications/[folder]/notes.md')` → edit in memory → `upload_file('applications/[folder]/notes.md', updated, 'text/markdown')`.

@@ -139,7 +139,7 @@ Phase 2 chunks and Phase 4 thoughts are **complementary, not competing**:
 The chunk pipeline captures file content for profile retrieval. The thought pipeline captures application-event knowledge for interview prep and cross-app reasoning. They share OB1's embedding infrastructure but serve different query patterns.
 
 **When to use `search_chunks_semantic`:** Fuzzy content match — "find resume bullets similar to this JD requirement."  
-**When to use `mcp__open-brain__fetch`:** Known thought retrieval — "load the jd_analysis thought for this application (ID from notes-index.md)."
+**When to use `mcp__job-search__fetch`:** Known thought retrieval — "load the jd_analysis thought for this application (ID from notes-index.md)."
 
 ## Evaluation Results (to be filled after implementation)
 

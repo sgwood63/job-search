@@ -180,14 +180,24 @@ def main():
     api_key = get_env("SEARCHAPI_KEY")
     batch_size = args.batch_size if args.batch_size is not None else int(os.environ.get("SEARCH_BATCH_SIZE", "10"))
 
-    ob1_mode = args.seen_jobs_path is not None
+    data_backend = os.environ.get("DATA_BACKEND", "local")
+    ob1_mode = data_backend == "ob1" or args.seen_jobs_path is not None
 
-    if ob1_mode:
+    if ob1_mode and args.seen_jobs_path:
+        # Explicit path provided (backwards-compatible)
         if not args.query:
             print("Error: --seen-jobs-path requires --query (profile dir lookup is skipped in OB1 mode)", file=sys.stderr)
             sys.exit(1)
         seen_jobs_path = Path(args.seen_jobs_path)
         search_results_dir = seen_jobs_path.parent
+    elif ob1_mode:
+        # DATA_BACKEND=ob1: no local profile dir; no seen-jobs.json
+        if not args.query:
+            print("Error: DATA_BACKEND=ob1 requires --query (profile dir lookup is skipped in OB1 mode)", file=sys.stderr)
+            sys.exit(1)
+        batch_parent = Path(args.batch_out).parent if args.batch_out else Path("/tmp")
+        search_results_dir = batch_parent
+        seen_jobs_path = None
     else:
         applicant_dir = Path(get_env("APPLICANT_DIR"))
         profiles_dir = applicant_dir / "profiles"
@@ -206,7 +216,7 @@ def main():
         seen_jobs_path = search_results_dir / "seen-jobs.json"
 
     query = args.query if args.query else parse_query_for_profile(quick_ref, args.profile)
-    seen = load_seen_jobs(seen_jobs_path)
+    seen = load_seen_jobs(seen_jobs_path) if seen_jobs_path else set()
 
     if args.dry_run:
         print(json.dumps({
@@ -231,7 +241,7 @@ def main():
     response = call_searchapi(query, api_key, args.page_token, args.location)
 
     # Save raw response (skipped in OB1 mode)
-    if not args.no_raw_save:
+    if not args.no_raw_save and not ob1_mode:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         raw_file = search_results_dir / f"{timestamp}_page.json"
         raw_file.write_text(json.dumps(response, indent=2))
@@ -250,7 +260,8 @@ def main():
         if jid:
             seen.add(jid)
 
-    save_seen_jobs(seen_jobs_path, seen)
+    if seen_jobs_path:
+        save_seen_jobs(seen_jobs_path, seen)
 
     # Respect batch_size — caller can paginate for more
     new_jobs = new_jobs[:batch_size]

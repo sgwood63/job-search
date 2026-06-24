@@ -396,5 +396,6 @@ If `fit_count < SEARCH_TARGET_FITS`: append "Results exhausted — fewer than ta
 - The Python script must be called with `--no-dedup` to prevent it from writing/reading `seen-jobs.json`. All dedup logic lives in this workflow.
 - Do not fabricate company, role, or location data.
 - Always pass `--query "<query_for_api>"` to the script — never rely on the script's table-lookup.
+- The script auto-detects OB1 mode via `DATA_BACKEND=ob1` — no `--seen-jobs-path` flag needed; in OB1 mode the script skips local profile directory checks and seen-jobs.json I/O entirely.
 - Use `$PLAYWRIGHT_PYTHON` (not system python3) to run the scripts.
 - Cross-pass dedup: `check_position_seen` handles cross-pass duplicates automatically. A job that appears in both the onsite pass and the remote pass will be marked `seen=true` on the second encounter and skipped — this is the expected behavior.

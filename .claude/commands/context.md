@@ -14,7 +14,7 @@ Load the job search session context. Steps:
    - OB1 active or local fallback mode
    - $APPLICANT_DIR resolved correctly
    - DEV_MODE status
-   - **OB1 routing:** "All thought/knowledge-graph tools: use `mcp__job_search__*` only. `mcp__open_brain__*` does not exist — open-brain server has been removed."
+   - **OB1 routing:** "All tools: use `mcp__job_search__*` only — single MCP server for all operations."
    - End with: "Context loaded. Ready."
 
 **Pipeline state is not loaded here.** Run `/status` to see active applications, overdue follow-ups, and pipeline counts.

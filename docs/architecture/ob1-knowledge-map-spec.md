@@ -156,7 +156,7 @@ These mechanisms are **complementary, not competing**:
 
 ### Phase 1: Application Thought Capture (workflow/skill changes only)
 
-No OB1 or MCP server changes. Uses existing `mcp__open-brain__capture_thought` and `mcp__open-brain__fetch`.
+No OB1 or MCP server changes. Uses existing `mcp__job-search__capture_thought` and `mcp__job-search__fetch`.
 
 - `workflows/process-jd/v2.md` — new Step 5: capture jd_analysis + fit_assessment thoughts; create notes-index.md; update notes-index.md with thought IDs
 - `workflows/create-application/v4.md` — thought capture for domain_connection, company_research, resume_strategy; update notes-index.md; call application-summary to generate notes.md

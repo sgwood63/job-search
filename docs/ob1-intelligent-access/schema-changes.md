@@ -141,7 +141,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_relation_to   ON edges(relation, to_entity_
 
 ## Phase 4 — OB1 Thought Metadata Schema (Knowledge Map)
 
-No new Postgres tables or columns required. Phase 4 uses the existing `thoughts` table via `mcp__job-search__capture_thought` — the job-search MCP tool that accepts structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`) directly, rather than embedding them as YAML in content. Do not use `mcp__open-brain__capture_thought` for job-search thought capture.
+No new Postgres tables or columns required. Phase 4 uses the existing `thoughts` table via `mcp__job-search__capture_thought` — the job-search MCP tool that accepts structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`) directly, rather than embedding them as YAML in content. Always use `mcp__job-search__capture_thought` for job-search thought capture.
 
 **Thought metadata schema for job-search:**
 

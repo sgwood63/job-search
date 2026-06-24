@@ -346,8 +346,7 @@ bash scripts/start-ob1.sh up -d
 | Service | URL | Notes |
 |---|---|---|
 | job-search MCP | `http://localhost:8081/mcp` | Used by Claude Code `.mcp.json` |
-| OB1 REST API | `http://localhost:8081/ob1/rest/*` | Dashboard-compat REST routes (same server) |
-| OB1 Dashboard | `http://localhost:3000` | Next.js browser UI for OB1 thoughts |
+| OB1 REST API | `http://localhost:8081/ob1/rest/*` | OB1 REST routes (same server) |
 | MinIO S3 API | `http://localhost:9000` | S3 SDK access |
 | MinIO console | `http://localhost:9001` | Web UI — bucket management |
 | PostgreSQL | `localhost:5432` | Direct DB access (no port-forward needed) |
@@ -363,7 +362,7 @@ Most services are permanently accessible once the Ingress controller and manifes
 |---|---|---|
 | job-search MCP | `http://localhost/job-search/mcp` | Used by Claude Code `.mcp.json`; base path `/job-search` returns 401 |
 | job-search REST API | `http://localhost/job-search/api/v2/*` | Used by the webapp; auth via `x-brain-key` header |
-| OB1 REST API | `http://localhost/job-search/ob1/rest/*` | Dashboard-compat REST routes; auth via `x-brain-key` header |
+| OB1 REST API | `http://localhost/job-search/ob1/rest/*` | OB1 REST routes; auth via `x-brain-key` header |
 | MinIO console | `http://localhost/minio` | Web UI — bucket management |
 | MinIO S3 API | `localhost:9000` (port-forward) | `kubectl port-forward svc/minio -n openbrain 9000:9000` — for `mc` / S3 SDK admin access only |
 | PostgreSQL | `localhost:5432` | Requires port-forward — needed for `migrate-to-ob1.py` only |
@@ -490,5 +489,3 @@ Supabase alternative (if `OBJECT_STORE_BACKEND=supabase`): set `SUPABASE_URL`, `
 **`openbrain-secret`** — 1 key for the OB1 StatefulSet db container: `postgres-password` (`$DB_PASSWORD`). The MCP server and langfuse-proxy containers have been removed from `openbrain.yml` — no LLM keys or MCP access keys are stored here. Do not apply the OB1 repo's `secrets.yml`.
 
 **`openbrain-configmap`** — DB connection vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`) for the PostgreSQL db container in the openbrain StatefulSet.
-
-> **Note:** The `dashboard-secret` (SESSION_SECRET) has been removed. The ob1-dashboard standalone deployment has been retired and its functionality (thoughts search + stats) is now built into the webapp at `/thoughts`.
