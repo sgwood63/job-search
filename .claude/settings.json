@@ -21,6 +21,10 @@
           {
             "type": "command",
             "command": "bash scripts/check-dev-mode.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check-vn-immutable.sh"
           }
         ]
       },
@@ -30,6 +34,10 @@
           {
             "type": "command",
             "command": "bash scripts/check-dev-mode.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check-vn-immutable.sh"
           }
         ]
       }
