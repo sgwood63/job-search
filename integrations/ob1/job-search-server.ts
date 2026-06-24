@@ -180,6 +180,16 @@ async function captureThought(
   const embStr = `[${embedding.join(",")}]`;
   const client = await pool.connect();
   try {
+    const existing = await client.queryObject<{ id: string }>(
+      `SELECT id::text AS id FROM thoughts WHERE content = $1 LIMIT 1`, [content],
+    );
+    if (existing.rows[0]) {
+      await client.queryObject(
+        `UPDATE thoughts SET embedding = $1::vector, metadata = $2::jsonb WHERE id = $3`,
+        [embStr, JSON.stringify(meta), existing.rows[0].id],
+      );
+      return existing.rows[0].id;
+    }
     const result = await client.queryObject<{ id: string }>(
       `INSERT INTO thoughts (content, embedding, metadata)
        VALUES ($1, $2::vector, $3::jsonb) RETURNING id::text AS id`,
@@ -255,7 +265,11 @@ const chunkContent: ChunkContentFn = async (content: string, storageKey: string)
 
   const client = await pool.connect();
   try {
-    // Idempotent: remove stale chunks before re-inserting
+    // Idempotent: remove stale chunks and their orphaned thought rows before re-inserting
+    await client.queryObject(`
+      DELETE FROM thoughts WHERE id IN (
+        SELECT thought_id FROM js_chunks WHERE storage_key = $1 AND thought_id IS NOT NULL
+      )`, [storageKey]);
     await client.queryObject(`DELETE FROM js_chunks WHERE storage_key = $1`, [storageKey]);
 
     // Resolve file_id (js_files row was already upserted by uploadFileCore before this call)

@@ -2,7 +2,7 @@
 -- full-schema.sql — Authoritative three-layer schema for job-search + OB1
 --
 -- USAGE (fresh deploy):
---   kubectl exec -n openbrain openbrain-0 -c db -- \
+--   kubectl exec -n openbrain openbrain-0 -- \
 --     psql -U postgres -d openbrain < integrations/ob1/full-schema.sql
 --
 -- USAGE (existing deploy — idempotent, safe to re-run):
@@ -15,12 +15,12 @@
 --             first startup before this file can be applied). This layer is a no-op
 --             on existing deployments where the ConfigMap has already run.
 --
---   Layer 2 — Knowledge graph: entities + edges tables (minimal, no Supabase RLS)
+--   Layer 2 — Knowledge graph: entities + edges + thought_entities
 --             Derived from OB1/schemas/entity-extraction/schema.sql.
---             Includes ONLY entities + edges + their indexes — none of the Supabase-
---             specific tables (thought_entities, entity_extraction_queue,
---             consolidation_log), triggers, RLS policies, or GRANT statements.
---             The entity extraction worker is not deployed in this stack.
+--             Includes entities, edges, and thought_entities (used by create_knowledge_edge
+--             for evidence links). Omitted: consolidation_log, entity_extraction_queue,
+--             queue_entity_extraction trigger — those are Supabase-specific and the entity
+--             extraction worker is not deployed in this stack. No RLS or GRANT statements.
 --
 --   Layer 3 — Job search: js_* tables
 --             Source: job-search-schema.sql (unchanged; that file is still the
@@ -34,15 +34,24 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS thoughts (
-    id BIGSERIAL PRIMARY KEY,
-    content TEXT NOT NULL,
-    embedding vector(1536),
-    metadata JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    id                   BIGSERIAL PRIMARY KEY,
+    content              TEXT NOT NULL,
+    embedding            vector(1536),
+    metadata             JSONB DEFAULT '{}'::jsonb,
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    content_fingerprint  TEXT
 );
+-- existing deploy: add columns introduced after initial ConfigMap deploy
+ALTER TABLE thoughts ADD COLUMN IF NOT EXISTS updated_at          TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE thoughts ADD COLUMN IF NOT EXISTS content_fingerprint TEXT;
 
-CREATE INDEX IF NOT EXISTS idx_thoughts_created_at ON thoughts (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_thoughts_metadata ON thoughts USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_thoughts_created_at  ON thoughts (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_thoughts_updated_at  ON thoughts (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_thoughts_metadata    ON thoughts USING GIN (metadata);
+-- unique partial index: deduplicate thoughts by content hash
+CREATE UNIQUE INDEX IF NOT EXISTS idx_thoughts_fingerprint
+  ON thoughts (content_fingerprint) WHERE content_fingerprint IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION match_thoughts(
     query_embedding vector(1536),
@@ -75,60 +84,61 @@ END;
 $$;
 
 -- =============================================================================
--- LAYER 2 — Knowledge Graph (entities + edges, minimal — no Supabase RLS)
+-- LAYER 2 — Knowledge Graph (entities + edges + supporting tables)
 -- Derived from OB1/schemas/entity-extraction/schema.sql.
--- Omitted: prerequisite check, thought_entities, entity_extraction_queue,
---          consolidation_log, auto-queue trigger, RLS policies, GRANTs.
+-- No Supabase RLS policies or GRANT statements.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS public.entities (
-  id BIGSERIAL PRIMARY KEY,
-  entity_type TEXT NOT NULL,         -- person, project, topic, tool, organization, place
-  canonical_name TEXT NOT NULL,
-  normalized_name TEXT NOT NULL,     -- lowercase, trimmed, for dedup
-  aliases JSONB NOT NULL DEFAULT '[]'::jsonb,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id              BIGSERIAL PRIMARY KEY,
+  entity_type     TEXT NOT NULL,         -- person, project, topic, tool, organization, place
+  canonical_name  TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,         -- lowercase, trimmed, for dedup
+  aliases         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (entity_type, normalized_name)
 );
 
 CREATE TABLE IF NOT EXISTS public.edges (
-  id BIGSERIAL PRIMARY KEY,
-  from_entity_id BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
-  to_entity_id BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
-  relation TEXT NOT NULL,
-  support_count INT NOT NULL DEFAULT 1,
-  confidence NUMERIC(3,2),
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  thought_id TEXT,                   -- optional link to thoughts.id (stored as text to match id::text cast)
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id              BIGSERIAL PRIMARY KEY,
+  from_entity_id  BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
+  to_entity_id    BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
+  relation        TEXT NOT NULL,
+  support_count   INT NOT NULL DEFAULT 1,
+  confidence      NUMERIC(3,2),
+  metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  thought_id      TEXT,                  -- optional link to thoughts.id (stored as text to match id::text cast)
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (from_entity_id, to_entity_id, relation)
 );
 
 -- Thought-entity links: evidence-bearing links from thoughts to entities.
 -- Note: thought_id is BIGINT here (matching thoughts.id BIGSERIAL) — not UUID
 -- as in OB1's Supabase schema. The job-search stack uses BIGSERIAL thought ids.
+-- source default is 'entity_worker' (set by the extraction worker, not job-search code).
 CREATE TABLE IF NOT EXISTS public.thought_entities (
-  thought_id  BIGINT  NOT NULL REFERENCES thoughts(id) ON DELETE CASCADE,
-  entity_id   BIGINT  NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
+  thought_id   BIGINT NOT NULL REFERENCES thoughts(id) ON DELETE CASCADE,
+  entity_id    BIGINT NOT NULL REFERENCES public.entities(id) ON DELETE CASCADE,
   mention_role TEXT   NOT NULL DEFAULT 'mentioned',
-  confidence  NUMERIC(3,2),
-  source      TEXT    NOT NULL DEFAULT 'job_search',
-  evidence    JSONB   NOT NULL DEFAULT '{}'::jsonb,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  confidence   NUMERIC(3,2),
+  source       TEXT   NOT NULL DEFAULT 'entity_worker',
+  evidence     JSONB  NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (thought_id, entity_id, mention_role)
 );
 
-CREATE INDEX IF NOT EXISTS idx_entities_type       ON public.entities(entity_type);
-CREATE INDEX IF NOT EXISTS idx_entities_normalized ON public.entities(normalized_name);
-CREATE INDEX IF NOT EXISTS idx_edges_from          ON public.edges(from_entity_id);
-CREATE INDEX IF NOT EXISTS idx_edges_to            ON public.edges(to_entity_id);
-CREATE INDEX IF NOT EXISTS idx_edges_relation      ON public.edges(relation);
+
+CREATE INDEX IF NOT EXISTS idx_entities_type           ON public.entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_normalized     ON public.entities(normalized_name);
+CREATE INDEX IF NOT EXISTS idx_edges_from              ON public.edges(from_entity_id);
+CREATE INDEX IF NOT EXISTS idx_edges_to                ON public.edges(to_entity_id);
+CREATE INDEX IF NOT EXISTS idx_edges_relation          ON public.edges(relation);
 CREATE INDEX IF NOT EXISTS idx_thought_entities_entity ON public.thought_entities(entity_id);
 CREATE INDEX IF NOT EXISTS idx_thought_entities_thought ON public.thought_entities(thought_id);
 
@@ -157,6 +167,8 @@ CREATE INDEX IF NOT EXISTS js_files_key_idx      ON js_files(storage_key);
 CREATE INDEX IF NOT EXISTS js_files_prefix_idx   ON js_files(storage_key text_pattern_ops);
 CREATE INDEX IF NOT EXISTS js_files_thought_idx  ON js_files(thought_id) WHERE thought_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS js_files_category_idx ON js_files(thought_category) WHERE thought_category IS NOT NULL;
+-- Note: live DB also has js_files_thought_category_idx (identical partial index on thought_category,
+-- created as a duplicate during an earlier migration). Not recreated here; exists on deployed cluster.
 
 -- ---------------------------------------------------------------------------
 -- js_applicant: core applicant profile (one row)

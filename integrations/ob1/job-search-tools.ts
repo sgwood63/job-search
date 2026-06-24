@@ -548,6 +548,12 @@ export async function deleteFileCore(pool: unknown, key: string): Promise<{ dele
   const client = await (pool as any).connect();
   let thoughtId: string | null = null;
   try {
+    await client.queryObject(`
+      DELETE FROM thoughts WHERE id IN (
+        SELECT jc.thought_id FROM js_chunks jc
+        JOIN js_files jf ON jc.file_id = jf.id
+        WHERE jf.storage_key = $1 AND jc.thought_id IS NOT NULL
+      )`, [key]);
     const r = await client.queryObject(
       `DELETE FROM js_files WHERE storage_key = $1 RETURNING thought_id::text AS thought_id`, [key],
     );
