@@ -14,6 +14,8 @@
 - [linkedin-job-url-collector-manual.js](#linkedin-job-url-collector-manualjs)
 - [k8s-apply-env.sh](#k8s-apply-envsh)
 - [migrate-to-ob1.py](#migrate-to-ob1py)
+- [ob1-backup.sh](#ob1-backupsh)
+- [ob1-restore.sh](#ob1-restoresh)
 - [generate-setup-status.sh](#generate-setup-statussh)
 - [langfuse_cc_hook.py](#langfuse_cc_hookpy)
 - [status-line.sh](#status-linesh)
@@ -232,6 +234,51 @@ kill $PF_PID
 Exit codes: `0` (success), `1` (connection error, missing env, or parse failure).
 
 Required env: `APP_DIR`, `APPLICANT_DIR`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+---
+
+## ob1-backup.sh
+
+Point-in-time encrypted backup of OB1 data (PostgreSQL + MinIO) to the cloud sync directory. Targets the Kubernetes deployment only.
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-backup.sh
+```
+
+What it captures: `pg_dump` of the `openbrain` database (via `kubectl exec` — no local pg_dump needed), `mc mirror` of the `job-search` MinIO bucket (via `kubectl port-forward` to the ClusterIP service, killed after use), and `.env.services` + `.env`. Compresses to `.tar.gz`, then encrypts with AES-256-CBC (PBKDF2, 100k iterations). Moves the resulting `.tar.gz.enc` to `ob1-backups/` inside the cloud sync root (derived from `APPLICANT_DIR`).
+
+**Passphrase** — resolved in order, first match wins:
+- `BACKUP_PASSPHRASE` env var: `BACKUP_PASSPHRASE=secret bash scripts/ob1-backup.sh`
+- `BACKUP_PASSPHRASE_FILE` env var (path to a file): `BACKUP_PASSPHRASE_FILE=~/.ob1-pass bash scripts/ob1-backup.sh`
+- macOS Keychain (stored on a previous run): `security add-generic-password -a ob1-backup -s ob1-backup-passphrase -w`
+- Interactive prompt: type or paste, then press Enter — input is hidden
+
+**Override destination:**
+```bash
+OB1_BACKUP_DEST=/custom/path bash scripts/ob1-backup.sh
+```
+
+Required tools: `kubectl`, `mc` (`brew install minio/stable/mc`), `openssl`, `tar`.
+
+---
+
+## ob1-restore.sh
+
+Restore OB1 data from an encrypted backup archive. Drops and recreates the `openbrain` PostgreSQL database, wipes and re-mirrors the MinIO bucket, then runs a post-restore verification (row counts + object count vs. MANIFEST).
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-restore.sh "/path/to/ob1-backup-YYYY-MM-DD-HHMMSS.tar.gz.enc"
+```
+
+Requires K8s services (`openbrain-0`, `minio`) to be already Running — only data is restored. Shows MANIFEST contents and requires `YES` confirmation before any data is modified. After restore, verify end-to-end health:
+
+```bash
+source .env && bash integrations/ob1/tests/test-deployment.sh
+```
+
+Required tools: same as `ob1-backup.sh`.
 
 ---
 

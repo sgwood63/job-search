@@ -22,7 +22,7 @@ All file access follows the storage-routing policy (`DATA_BACKEND` env var).
 
 | Name | Required | Description |
 |---|---|---|
-| `jd_content` | Yes | Full JD text, already fetched by caller |
+| `jd_content` | Yes | **Raw, unmodified JD text as extracted from the source page** — do NOT summarize, reformat, or paraphrase before passing. Must be character-for-character what the fetch script or source API returned, minus UI chrome (navigation, sidebar, footer). Verbatim rule is enforced end-to-end: if the caller preprocesses jd_content, the jd-*.md file will be wrong. |
 | `source_url` | Yes | Apply URL or canonical source reference |
 | `source_name` | Yes | Human-readable source, e.g. `"SearchAPI / Google Jobs — /ingest presales-se"`, `"LinkedIn Recommendations"`, `"Manual"` |
 | `profile_hint` | No | Caller's best-guess profile slug; jd-evaluation may override |

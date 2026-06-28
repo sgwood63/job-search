@@ -5,6 +5,7 @@
 - [DEV_MODE — Modifying the System](#dev_mode--modifying-the-system)
 - [Two-Repo Architecture](#two-repo-architecture)
 - [OB1 Kubernetes Deployment](#ob1-kubernetes-deployment)
+- [Backup & Restore (OB1)](#backup--restore-ob1)
 - [Webapp](#webapp)
 - [Slash Command Architecture](#slash-command-architecture)
 - [Hook System](#hook-system)
@@ -110,6 +111,8 @@ $APP_DIR/
 │   ├── generate-pdf.py          # PDF generation via Playwright
 │   ├── k8s-apply-env.sh         # Creates k8s Secrets/ConfigMaps + generates .mcp.json (OB1)
 │   ├── migrate-to-ob1.py        # Migrates local APPLICANT_DIR to OB1 (MinIO + Postgres)
+│   ├── ob1-backup.sh            # Point-in-time encrypted backup of OB1 → cloud sync folder
+│   ├── ob1-restore.sh           # Restore OB1 from encrypted backup archive
 │   ├── check-md-hygiene.sh      # Pre-commit hook: no personal names or hard-coded paths
 │   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes (DEV_MODE) + APPLICANT_DIR writes (OB1)
 │   ├── install-hooks.sh         # Installs git hooks into .git/hooks/
@@ -221,7 +224,6 @@ The single server uses the **Streamable HTTP** transport. Claude Code requires:
 
 If nginx Ingress is not up, connect directly via port-forward:
 ```bash
-kubectl port-forward -n openbrain svc/openbrain 8000:8000 &
 kubectl port-forward -n openbrain svc/job-search-mcp 8001:8001 &
 ```
 
@@ -238,8 +240,10 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 | Script | Purpose |
 |---|---|
 | `scripts/start-ob1.sh` | Start OB1 docker-compose services (sources both `.env` and `.env.services`) |
-| `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json` |
+| `scripts/k8s-apply-env.sh` | Creates all k8s Secrets/ConfigMaps from `.env` + `.env.services`; generates `.mcp.json`; hardens ingress-nginx probe timeouts |
 | `scripts/migrate-to-ob1.py` | One-time migration of local APPLICANT_DIR to MinIO + Postgres |
+| `scripts/ob1-backup.sh` | Point-in-time encrypted backup of PostgreSQL + MinIO → cloud sync folder |
+| `scripts/ob1-restore.sh` | Restore PostgreSQL + MinIO from encrypted backup; requires K8s services Running |
 | `integrations/ob1/scripts/backfill_search_runs.py` | One-time backfill of search run history and ingested-position records from existing summary `.md` files into `js_search_runs` / `js_ingested_positions`; idempotent — safe to re-run |
 | `integrations/ob1/tests/test-deployment.sh` | Deployment verification suite — namespace, secrets, pods, PostgreSQL schema, MinIO bucket, Ingress, single MCP server (34 tools), OB1-compat tool checks, webapp health, and functional MCP round-trips. Run: `source .env && bash integrations/ob1/tests/test-deployment.sh` |
 | `integrations/ob1/tests/test-ob1-tools.ts` | 9 Deno unit tests for the absorbed OB1-compat tools (`registerSearchTool`, `registerFetchTool`, `registerThoughtStatsTool`) — verifies search/fetch shapes, BigInt safety (`id::text AS id`), and COUNT::int cast. All DB I/O mocked. Run: `cd integrations/ob1 && deno test --no-check --allow-env --allow-sys tests/test-ob1-tools.ts` |
@@ -250,6 +254,120 @@ Postgres data and MinIO objects are stored in hostPath volumes at `/var/openbrai
 **Full deployment guide:** [integrations/ob1/README.md](integrations/ob1/README.md)
 
 See also: [`docs/ob1-search-runs/`](docs/ob1-search-runs/) (API spec, deploy checklist, backfill procedure) and [`docs/ob1-intelligent-access/`](docs/ob1-intelligent-access/) (context-optimization roadmap — Phases 1–3 complete; Phase 4 (OB1 audit events + learning loop) deferred).
+
+---
+
+## Backup & Restore (OB1)
+
+`scripts/ob1-backup.sh` and `scripts/ob1-restore.sh` provide point-in-time snapshots of all OB1 state: the PostgreSQL database (`openbrain`) and the MinIO object store (`job-search` bucket). The backup archive also captures `.env.services` (credentials). Targets the Kubernetes deployment only.
+
+### What is backed up
+
+| Component | Tool | Method |
+|---|---|---|
+| PostgreSQL (`openbrain` DB) | `pg_dump` inside the pod | `kubectl exec` — no local `pg_dump` required |
+| MinIO bucket (`job-search`) | `mc mirror` | `kubectl port-forward` to ClusterIP service (killed after use) |
+| `.env.services` | `cp` | Included so a restore is self-contained |
+| `.env` | `cp` | Included for reference |
+
+### Prerequisites
+
+```bash
+brew install minio/stable/mc   # MinIO client — only new dependency
+# kubectl and openssl are pre-installed on macOS
+```
+
+### Passphrase
+
+Both scripts resolve the encryption passphrase in this order — the first match wins:
+
+| Source | How |
+|---|---|
+| `BACKUP_PASSPHRASE` env var | `BACKUP_PASSPHRASE=secret bash scripts/ob1-backup.sh` |
+| `BACKUP_PASSPHRASE_FILE` env var | `BACKUP_PASSPHRASE_FILE=~/.ob1-pass bash scripts/ob1-backup.sh` |
+| macOS Keychain | Stored by a previous interactive run (see below) |
+| Interactive prompt | Type or paste, then press Enter — input is hidden |
+
+**Store in Keychain (recommended — avoids typing it each run):**
+
+```bash
+security add-generic-password -a ob1-backup -s ob1-backup-passphrase -w
+# (prompted for the passphrase)
+```
+
+**Store in a file** (useful for scripts or 1Password CLI):
+
+```bash
+# Write passphrase to a file, lock it down
+echo "your-passphrase" > ~/.ob1-passphrase
+chmod 600 ~/.ob1-passphrase
+
+# Use it
+BACKUP_PASSPHRASE_FILE=~/.ob1-passphrase bash scripts/ob1-backup.sh
+
+# Or pipe from 1Password CLI
+BACKUP_PASSPHRASE=$(op read "op://Personal/ob1-backup/password") bash scripts/ob1-backup.sh
+```
+
+### Running a backup
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-backup.sh
+```
+
+Output: `<cloud-sync-dir>/ob1-backups/ob1-backup-YYYY-MM-DD-HHMMSS.tar.gz.enc`
+
+The destination is derived automatically from `APPLICANT_DIR` in `.env` — the `ob1-backups/` folder is created as a sibling of `job-applications/` inside your cloud sync root (Google Drive, OneDrive, etc.). Override with:
+
+```bash
+OB1_BACKUP_DEST=/custom/path bash scripts/ob1-backup.sh
+```
+
+### Restoring from a backup
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-restore.sh "/path/to/ob1-backup-YYYY-MM-DD-HHMMSS.tar.gz.enc"
+```
+
+The script decrypts the archive, shows the MANIFEST (timestamp, object counts), requires you to type `YES` to confirm, then:
+1. Drops and recreates the `openbrain` database
+2. Wipes and re-populates the MinIO bucket
+3. Runs a post-restore verification (row counts + MinIO object count vs. MANIFEST)
+
+**Assumption:** K8s services (`openbrain-0`, `minio`) are already deployed and Running. Only data is restored — manifests and container images are not touched.
+
+After restore, run the deployment test suite to confirm end-to-end health:
+
+```bash
+source .env && bash integrations/ob1/tests/test-deployment.sh
+```
+
+### Archive format
+
+```
+ob1-backup-YYYY-MM-DD-HHMMSS.tar.gz.enc
+└── ob1-backup-YYYY-MM-DD-HHMMSS/          (AES-256-CBC, PBKDF2, 100k iterations)
+    ├── MANIFEST.txt                        (counts for post-restore verification)
+    ├── postgres/
+    │   └── openbrain.sql                   (pg_dump plain-text format)
+    ├── minio/
+    │   └── job-search/                     (full bucket contents, mirrored)
+    │       ├── applicant.md
+    │       ├── applications/...
+    │       └── ...
+    └── config/
+        ├── env.services                    (storage credentials)
+        └── env                             (Claude Code session config)
+```
+
+### Key scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/ob1-backup.sh` | Create a timestamped encrypted backup and move it to the cloud sync folder |
+| `scripts/ob1-restore.sh` | Decrypt an archive, restore PostgreSQL + MinIO, verify counts |
 
 ---
 
@@ -320,7 +438,7 @@ Two compose files, combine with `-f` flags:
 | File | Contents |
 |------|---------|
 | `webapp/docker-compose.yml` | Webapp service only (needs `.env` only — no storage credentials required) |
-| `integrations/ob1/docker-compose.yml` | PostgreSQL + MinIO + openbrain MCP + job-search-mcp |
+| `integrations/ob1/docker-compose.yml` | PostgreSQL + MinIO + job-search-mcp (MCP + REST API) |
 
 ```bash
 # Webapp only (local mode)
@@ -329,7 +447,7 @@ docker compose -f webapp/docker-compose.yml up
 # OB1 infrastructure only (postgres + minio + mcp servers)
 bash scripts/start-ob1.sh up -d
 
-# Full OB1 stack (webapp + all 4 OB1 services)
+# Full OB1 stack (webapp + all 3 OB1 services)
 docker compose -f webapp/docker-compose.yml up &
 bash scripts/start-ob1.sh up -d
 ```

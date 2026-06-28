@@ -158,3 +158,31 @@ cat > "$MCP_JSON" <<EOF
 EOF
 
 echo ".mcp.json written with job-search access key (single server — no open-brain)."
+
+# ---------------------------------------------------------------------------
+# Harden ingress-nginx controller probe timeouts.
+#
+# Docker Desktop's ingress-nginx ships with 1s probe timeouts, which are too
+# tight for a shared-VM dev environment. Under CPU load (bulk ingestion, PDF
+# upload) the /healthz endpoint can take >1s to respond, causing Kubernetes
+# to kill and restart the controller — which takes NGINX offline and causes
+# 502/504 errors on all /job-search routes until the new pod is ready.
+#
+# This patch raises timeoutSeconds to 5s and periodSeconds to 15s on the
+# liveness probe, and timeoutSeconds to 5s on the readiness probe.
+# It is idempotent — safe to re-run on an already-patched cluster.
+# ---------------------------------------------------------------------------
+INGRESS_NS="ingress-nginx"
+INGRESS_DEPLOY="ingress-nginx-controller"
+
+if kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} get deployment "$INGRESS_DEPLOY" -n "$INGRESS_NS" &>/dev/null; then
+  kubectl ${KUBECTL_ARGS[@]:+"${KUBECTL_ARGS[@]}"} patch deployment "$INGRESS_DEPLOY" \
+    -n "$INGRESS_NS" --type='json' -p='[
+      {"op":"replace","path":"/spec/template/spec/containers/0/livenessProbe/timeoutSeconds","value":5},
+      {"op":"replace","path":"/spec/template/spec/containers/0/livenessProbe/periodSeconds","value":15},
+      {"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/timeoutSeconds","value":5}
+    ]'
+  echo "ingress-nginx-controller probe timeouts hardened (timeout 1s→5s, liveness period 10s→15s)."
+else
+  echo "ingress-nginx-controller not found in namespace $INGRESS_NS — skipping probe patch."
+fi
