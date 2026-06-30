@@ -1,0 +1,57 @@
+repo_evolution:
+  description: Changes to the repository, architecture, implementation, rules, skills, workflows, integrations, schemas, or deployment.
+  commands: [large-change-scoping, setup]
+  examples:
+    - refactor ingestion
+    - migrate applicant memory to OB1
+    - review APP_DIR vs APPLICANT_DIR violations
+    - update jd-evaluation skill
+    - change workflow architecture
+    - modify schema
+    - add MCP integration
+    - change Docker or Kubernetes deployment
+    - review the repo for violations
+    - audit APP_DIR vs APPLICANT_DIR separation
+    - analyze the hooks
+    - examine session logs
+    - check for compliance with rules
+
+business_operation:
+  description: Normal job-search usage that processes external job/candidate/application data without changing repo implementation.
+  commands: [ingest, linkedin-ingest, context, status, apply, audit, interview, memory]
+  examples:
+    - process this JD
+    - ingest this candidate
+    - evaluate this role
+    - generate a resume
+    - write a cover letter
+    - update applicant notes
+    - add this job to OB1
+    - run jd-evaluation
+    - screen this job
+    - summarize interview notes
+
+escape_hatch:
+  description: User explicitly acknowledging and bypassing the scoping gate for this message.
+  examples:
+    - skip scoping
+    - no scoping
+    - business operation
+
+intents:
+  repo_evolution:
+    description: Repository/tooling change session — APP_DIR writes expected after scoping.
+    allows_app_dir_writes: true
+    requires_scope_marker: true
+  business_operation:
+    description: Job-search operational session — APPLICANT_DIR writes expected; APP_DIR writes blocked.
+    allows_app_dir_writes: false
+    primary_write_target: applicant_dir
+  escape_hatch:
+    description: User bypassed the gate — no write restrictions for this message.
+    allows_app_dir_writes: true
+    requires_scope_marker: false
+  unknown:
+    description: Unclassified — no gate applied, pass through.
+    allows_app_dir_writes: false
+    requires_scope_marker: false

@@ -45,3 +45,7 @@ Job-Search-2026.code-workspace
 
 # Test output — generated fixtures, not checked in
 scripts/tests/test-output/
+
+# large-change scoping: old shared marker (transition fallback — safe to delete)
+.claude/.large-change-scoped
+# Per-session markers live in ~/.claude/session-env/<session_id>/ (outside repo, no entry needed)
