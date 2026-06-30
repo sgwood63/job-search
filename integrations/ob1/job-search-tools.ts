@@ -419,6 +419,14 @@ export async function uploadFileCore(
     ? Uint8Array.from(atob(args.content), c => c.charCodeAt(0))
     : new TextEncoder().encode(args.content);
 
+  // Reject 0-byte binary uploads — empty content field causes silent corrupt js_files metadata.
+  if (args.binary && bytes.length === 0) {
+    throw new Error(
+      `Binary upload decoded to 0 bytes — content field is empty or contains invalid base64. ` +
+      `PDF/binary files must be uploaded via REST API with a correctly base64-encoded content field.`,
+    );
+  }
+
   let oldThoughtId: string | null = null;
   {
     const c = await (pool as any).connect();
