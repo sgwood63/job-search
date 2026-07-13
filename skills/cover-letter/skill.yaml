@@ -2,8 +2,8 @@ name: cover-letter
 kind: skill
 description: Cover letter policy and generation — not recommended by default; personal/life domain connections belong here, not in resume bullets
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 policies:
   - factuality
   - evidence-grounding
@@ -15,6 +15,13 @@ inputs:
 outputs:
   - cover_letter_md
 changelog:
+  - version: v2
+    date: 2026-07-13
+    summary: >
+      Context Loading — Session Reuse section added: do-not-re-read guard for this skill
+      and its companion policies across repeated invocations, with reuse when
+      resume-generation already loaded the same companion policies earlier in the session.
+      Extends the pattern from workflows/search-jobs/v3.md.
   - version: v1
     date: 2026-06-12
     summary: Migrated from cover-letter rules in memory/feedback_resume_generation.md and the cover-letter-only clause of memory/feedback_domain_connection.md

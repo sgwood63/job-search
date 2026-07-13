@@ -5,8 +5,8 @@ description: >
   (Haiku via process-jd); deduplicate against seen-jobs.json; save fit jobs as
   application stubs for review. Reports a per-run summary file and CSV log entry.
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 policies:
   - storage-routing
   - factuality
@@ -18,6 +18,16 @@ outputs:
   - summary_file    # $APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md
   - search_log_entry # OB1: update_search_run call; local: appended to search-log.csv
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Two-pass location support: Step 1 looks up the profile's location_mode from
+      PROFILES-QUICK-REFERENCE.md ## Location Modes (default us-only); Step 3 adds an outer
+      loop over location passes (onsite + remote for bay-area-plus-remote mode) with
+      cross-pass dedup via check_position_seen (OB1) or an in-memory set (local). New Step
+      3c-pre snippet pre-screen: skip JD fetch for obvious non-tech signals in
+      company/title/description snippet before fetching. Summary output now lists location
+      passes alongside sub-queries.
   - version: v3
     date: 2026-06-21
     summary: >

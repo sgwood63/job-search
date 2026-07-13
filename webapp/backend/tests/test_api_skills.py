@@ -54,7 +54,7 @@ def test_list_skills(skills_client):
     names = {r['name'] for r in rows}
     assert {'jd-evaluation', 'resume-generation', 'storage-routing', 'create-application'} <= names
     rg = next(r for r in rows if r['name'] == 'resume-generation')
-    assert rg['kind'] == 'skill' and rg['pinned'] == 'v4' and rg['has_draft'] is False
+    assert rg['kind'] == 'skill' and rg['pinned'] == 'v5' and rg['has_draft'] is False
     assert 'factuality' in rg['policies']
 
 
@@ -72,7 +72,7 @@ def test_run_skill_forces_webapp_mode(skills_client):
                        json={'task': {'instructions': 'screen this', 'jd_content': 'x'}})
     assert resp.status_code == 200
     body = resp.json()
-    assert body['status'] == 'ok' and body['version'] == 'v1' and body['adapter'] == 'fake'
+    assert body['status'] == 'ok' and body['version'] == 'v2' and body['adapter'] == 'fake'
     req, prompt = fake.calls[0]
     assert req.mode == 'webapp'
     assert prompt.mode == 'webapp'

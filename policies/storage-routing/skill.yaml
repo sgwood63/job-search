@@ -2,9 +2,17 @@ name: storage-routing
 kind: policy
 description: Canonical DATA_BACKEND routing — when OB1 is configured, all APPLICANT file reads/writes go through OB1 MCP tools; MCP not connected = hard stop; upload routing MCP vs REST
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Upload routing tightened — binary files and text > ~50KB must go directly to REST API
+      with no MCP-then-fallback-on-size-error path; upload_file MCP tool is reserved for
+      small text files only. Adds an explicit warning against ever attempting MCP for
+      binary/large files, and clarifies that hitting an MCP size error on such a file means
+      the routing rule was not followed (fix the routing, do not retry via MCP).
   - version: v3
     date: 2026-06-24
     summary: >

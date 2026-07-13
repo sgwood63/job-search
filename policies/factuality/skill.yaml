@@ -2,9 +2,19 @@ name: factuality
 kind: policy
 description: No fabrication of any kind; no unverified percentage metrics; all claims must be supportable with real evidence
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 changelog:
+  - version: v2
+    date: 2026-07-13
+    summary: >
+      New "External company facts" section — company facts (acquisitions, ownership,
+      product lineage, competitive positioning) are held to the same no-fabrication standard
+      as applicant facts. Source company research from JD text and freshly fetched web
+      content only (never model training knowledge as a final source); tag unverified
+      acquisition/ownership claims [UNVERIFIED]; do not chain partial acquisition/ownership
+      knowledge into an unverified conclusion. Applies to company_research thoughts,
+      job-description.md Company Overview, cover letters, and interview prep.
   - version: v1
     date: 2026-06-12
     summary: Migrated from CLAUDE.md No-fabrication + No-unverified-percentage-metrics rules and memory/MEMORY.md Critical Rules

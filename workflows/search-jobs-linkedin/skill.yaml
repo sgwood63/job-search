@@ -5,8 +5,8 @@ description: >
   with jd-evaluation (Haiku via process-jd) against all active profiles; save fit
   jobs as application stubs for review. Reports a per-run summary file and log entry.
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 policies:
   - storage-routing
   - factuality
@@ -19,6 +19,15 @@ outputs:
   - summary_file
   - search_log_entry
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Step 1 mode detection now builds two URL sets per Search Queries row for
+      bay-area-plus-remote profiles (onsite/hybrid + remote-only; location strings read at
+      runtime from PROFILES-QUICK-REFERENCE.md ## Location Check, no hardcoded place names)
+      using documented LinkedIn URL location parameters (location=, f_WT= work-type filter).
+      Step 6 snippet pre-screen: skip process-jd for obvious non-tech company/title matches
+      before reading the JD file, logged as snippet-screened.
   - version: v3
     date: 2026-06-21
     summary: >

@@ -2,8 +2,8 @@ name: interview-prep
 kind: skill
 description: Generate an interview prep brief for a specific application and stage — required reading, output structure, stage inference, warm connections
 status: active
-pinned: v3
-latest: v3
+pinned: v4
+latest: v4
 policies:
   - factuality
   - storage-routing
@@ -13,6 +13,13 @@ inputs:
 outputs:
   - prep_brief
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Context Loading — Session Reuse section added: do-not-re-read guard for this skill
+      and its companion policies (factuality, storage-routing) across repeated invocations
+      in one session, plus compact guidance (run /compact every 5 preps) for prepping
+      several interviews back-to-back. Extends the pattern from workflows/search-jobs/v3.md.
   - version: v3
     date: 2026-06-18
     summary: >

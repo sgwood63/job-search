@@ -6,15 +6,15 @@ description: >
   save per storage-routing, capture OB1 thoughts, write knowledge graph edges, and register
   in tracker. Called by create-application, search-jobs, and search-jobs-linkedin.
 status: active
-pinned: v4
-latest: v4
+pinned: v5
+latest: v5
 policies:
   - storage-routing
   - factuality
   - evidence-grounding
   - company-descriptors
 inputs:
-  - jd_content          # full JD text, already fetched by caller
+  - jd_content          # full JD text, already fetched by caller — verbatim, unmodified
   - source_url          # apply URL or canonical source reference
   - source_name         # e.g. "SearchAPI / Google Jobs", "LinkedIn Recommendations", "Manual"
   - profile_hint        # optional profile slug; jd-evaluation may override
@@ -27,6 +27,17 @@ outputs:
   - score               # 1-10
   - profile_match       # profile slug selected by jd-evaluation
 changelog:
+  - version: v5
+    date: 2026-07-13
+    summary: >
+      Step 1: screening context is now explicit — caller constructs a verbatim prompt block
+      from PROFILES-QUICK-REFERENCE.md ## Location Check and ## Hard Stops sections; output
+      contract reference updated to jd-evaluation's new 19-field contract (adds
+      location_extracted, location_verdict). New Step 2.5 (fit jobs only): 1-2 WebSearches
+      feed a combined ## Company & Market Context section (replaces ## Company Overview)
+      plus a Role type line in ## Role Summary; no-fit jobs keep the thin overview.
+      company_research OB1 thought eliminated from create-application — company context now
+      fully covered here. jd_content input documented as verbatim/unmodified end-to-end.
   - version: v4
     date: 2026-06-21
     summary: >
