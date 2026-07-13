@@ -1186,9 +1186,11 @@ async def test_get_thoughts_passes_params():
 
     _, kwargs = http_mock.get.call_args
     params = kwargs['params']
-    assert params['limit'] == 10
-    assert params['offset'] == 20
-    assert params['sort'] == 'asc'
+    # get_thoughts translates limit/offset/sort to the /ob1/rest/thoughts
+    # query contract (per_page/page/order) — see job-search-server.ts.
+    assert params['per_page'] == 10
+    assert params['page'] == 3
+    assert params['order'] == 'asc'
     assert params['type'] == 'email'
 
 
@@ -1237,7 +1239,9 @@ async def test_search_thoughts_posts_correct_body():
 async def test_get_thought_stats_hits_ob1_rest_stats():
     client = make_client()
     http_mock = MagicMock()
-    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"total": 5, "by_type": {"email": 2}}))
+    # /ob1/rest/stats returns total_thoughts/types (see job-search-server.ts);
+    # get_thought_stats translates these to total/by_type.
+    http_mock.get = AsyncMock(return_value=FakeResponse(200, {"total_thoughts": 5, "types": {"email": 2}}))
     client._client = http_mock
 
     result = await client.get_thought_stats()
@@ -1245,6 +1249,7 @@ async def test_get_thought_stats_hits_ob1_rest_stats():
     url_called = http_mock.get.call_args[0][0]
     assert url_called == '/ob1/rest/stats'
     assert result["total"] == 5
+    assert result["by_type"] == {"email": 2}
 
 
 @pytest.mark.asyncio
