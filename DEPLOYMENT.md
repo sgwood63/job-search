@@ -2,7 +2,7 @@
 
 This guide covers all supported ways to run the job search system. The system has five independently-variable deployment dimensions — understanding them lets the user pick the right combination rather than guessing from a flat list of "configurations."
 
-For day-to-day usage after setup, see [USER-GUIDE.md](USER-GUIDE.md). For system internals and DEV_MODE, see [DEVELOPER-README.md](DEVELOPER-README.md).
+For day-to-day usage after setup, see [USER-GUIDE.md](USER-GUIDE.md). For system internals and APP_DIR write gating, see [DEVELOPER-README.md](DEVELOPER-README.md).
 
 ## Contents
 

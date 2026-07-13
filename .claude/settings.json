@@ -21,10 +21,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/check-dev-mode.sh"
-          },
-          {
-            "type": "command",
             "command": "bash scripts/check-vn-immutable.sh"
           }
         ]
@@ -34,10 +30,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/check-dev-mode.sh"
-          },
-          {
-            "type": "command",
             "command": "bash scripts/check-vn-immutable.sh"
           }
         ]
@@ -45,6 +37,10 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check-app-dir-writes.sh"
+          },
           {
             "type": "command",
             "command": "python3 .claude/hooks/scope-before-write.py"
@@ -78,6 +74,10 @@
           {
             "type": "command",
             "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && python3 scripts/langfuse_cc_hook.py'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/sync-codebase-index.sh'"
           }
         ]
       }

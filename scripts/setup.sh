@@ -326,7 +326,7 @@ ENVEOF
 refresh_env() {
     # Surgically update only the three vars setup.sh manages (APPLICANT_NAME,
     # APP_DIR, PLAYWRIGHT_PYTHON). All other content — OB1 config, DATA_BACKEND,
-    # DEV_MODE, SEARCHAPI_KEY, CLAUDE_BINARY, custom keys, etc. — is preserved.
+    # READONLY_DEPLOYMENT, SEARCHAPI_KEY, CLAUDE_BINARY, custom keys, etc. — is preserved.
     local tmp
     tmp="$(mktemp)"
 

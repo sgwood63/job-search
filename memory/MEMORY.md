@@ -26,7 +26,7 @@ When a JD is provided, execute the workflow `$APP_DIR/workflows/create-applicati
 - `$APP_DIR/policies/company-descriptors/` — domain connection (four sources) + company descriptions in role entries
 
 ## Session Start (DO WITHOUT BEING ASKED)
-At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, then in parallel load `applicant.md` + `APPLICANT-MEMORY.md` (via OB1 MCP if configured, else direct reads). Output a briefing confirming identity, OB1/local mode, and DEV_MODE. End with "Context loaded. Ready." **Do not load pipeline or application-tracker.md at session start** — those are deferred to `/status`. Skip if the user's first message makes clear context is already loaded.
+At the start of every session, automatically run the `/context` workflow once before responding to the first user request: read `.env`, then in parallel load `applicant.md` + `APPLICANT-MEMORY.md` (via OB1 MCP if configured, else direct reads). Output a briefing confirming identity, OB1/local mode, and APP_DIR write status. End with "Context loaded. Ready." **Do not load pipeline or application-tracker.md at session start** — those are deferred to `/status`. Skip if the user's first message makes clear context is already loaded.
 
 ## Applicant Memory — Update in Real-Time (DO WITHOUT BEING ASKED)
 When the user states a clear preference, fact, constraint, or rule about themselves, immediately update the relevant file in `$APPLICANT_DIR/memory/`. No sync step needed — `$APPLICANT_DIR` is plain local storage.
@@ -77,7 +77,6 @@ Procedural rules below were migrated to `$APP_DIR/skills/`, `policies/`, `workfl
 - See `feedback_session_strategy.md` — use short, task-scoped sessions; long sessions degrade through context compression
 - See `feedback_doc_maintenance.md` — after editing any $APP_DIR source file, use the lookup table to identify which human-facing docs reference the changed area and update only those passages
 - See `feedback_profile_maintenance.md` — when adding a new achievement or creating a new profile, run the explicit 4-step or 6-step checklist; do not rely on registry reasoning alone for these two operations
-- See `feedback_dev_mode.md` — never auto-toggle DEV_MODE; always prompt user to enable/disable manually and wait
 - See `feedback_commits.md` — multi-file changes must be committed together; commit all APP_DIR files manually before response ends to prevent Stop hook splitting the commit
 - See `feedback_model_selection.md` — when to use Opus vs Sonnet; no auto-routing in Claude Code; opusplan alias for planning sessions
 

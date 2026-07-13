@@ -527,7 +527,7 @@ A full snapshot: active applications by status, overdue follow-ups, priority com
 
 ## Starting a Conversation
 
-Context loads automatically at the start of every conversation — you'll see a brief confirmation of your identity, OB1/local mode, and DEV_MODE status. No command needed — just start talking. Run `/status` to see your active pipeline and overdue follow-ups.
+Context loads automatically at the start of every conversation — you'll see a brief confirmation of your identity, OB1/local mode, and APP_DIR write status. No command needed — just start talking. Run `/status` to see your active pipeline and overdue follow-ups.
 
 To reload context mid-conversation (for example, after a status change):
 
@@ -541,7 +541,7 @@ To reload context mid-conversation (for example, after a status change):
 
 | Command | Parameters | What it does | When to use |
 |---------|-----------|--------------|-------------|
-| `/context` | none | Loads session context: identity, memory, and DEV_MODE status | Automatic at conversation start; use manually to refresh |
+| `/context` | none | Loads session context: identity, memory, and APP_DIR write status | Automatic at conversation start; use manually to refresh |
 | `/status` | none | Pipeline snapshot with overdue follow-ups | Weekly check-in |
 | `/ingest [profile] [--fits N] [--batch N]` | `profile` — profile slug (optional; lists profiles if omitted); `--fits N` — override target fit count; `--batch N` — override batch size | Search Google Jobs; screen and save fit jobs | Proactive discovery, ~every 3 days per profile |
 | `/linkedin-ingest [profile] [--max-pages N] [--page-delay N] [--jd-delay N]` | `profile` — slug (optional; uses recommended feed if omitted); `--max-pages N` — pages per sub-query (default 4; 0=unlimited); `--page-delay N` — seconds between pages (default 20); `--jd-delay N` — seconds between JD fetches (default 10) | Fetch LinkedIn jobs (recommended feed or keyword search); screen and save fit jobs | Complement to `/ingest`; use every few days. Local only — requires real Chrome or Firefox. |

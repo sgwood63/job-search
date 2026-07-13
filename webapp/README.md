@@ -42,7 +42,7 @@ The backend loads all configuration from the `.env` file at the project root.
 | `DATA_BACKEND` | `local` (default) or `ob1` |
 | `APP_DIR` | Path to this repo |
 | `APPLICANT_DIR` | Path to applicant data directory (required for local mode) |
-| `DEV_MODE` | `true` = APP_DIR file edits allowed; `false` (default) = read-only |
+| `READONLY_DEPLOYMENT` | `true` = APP_DIR unconditionally read-only (set in container/K8s deployments); unset/`false` = local dev, gated by session intent classification instead |
 | `CLAUDE_BINARY` | Path to the Claude Code binary for chat sessions (default: `claude` in PATH). Must be 2.1.152+. |
 | `RUNTIME_ADAPTER` | Skill runtime adapter: `claude-runner` (default) or `hermes` (experimental) |
 | `RUNTIME_ALLOW_DRAFT` | `true` allows running `draft` skill versions via `/api/skills/{name}/run` (dev escape hatch; default `false`) |

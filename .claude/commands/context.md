@@ -1,6 +1,6 @@
 Load the job search session context. Steps:
 
-1. `$APP_DIR/.env` — resolve $APP_DIR, $APPLICANT_DIR, DATA_BACKEND, DEV_MODE.
+1. `$APP_DIR/.env` — resolve $APP_DIR, $APPLICANT_DIR, DATA_BACKEND.
 2. **OB1 check** (if DATA_BACKEND=ob1): verify `mcp__job_search__*` tools appear in the deferred tool list. If absent → **hard stop**: tell the user "OB1 is configured but job-search MCP tools are not connected. Please restart Claude Code, then re-run `/context`." Do not proceed.
 2.5. **Pre-load MCP tool schemas** (OB1 only, immediately after step 2 passes): call ToolSearch with query:
    `"select:mcp__job-search__upload_file,mcp__job-search__create_knowledge_edge,mcp__job-search__check_position_seen,mcp__job-search__log_ingested_position,mcp__job-search__upsert_company,mcp__job-search__create_application,mcp__job-search__capture_thought,mcp__job-search__update_application_fields,mcp__job-search__log_search_run,mcp__job-search__get_file,mcp__job-search__list_thoughts,mcp__job-search__search_thoughts"`
@@ -13,7 +13,7 @@ Load the job search session context. Steps:
    - Applicant identity confirmed (name, active profiles)
    - OB1 active or local fallback mode
    - $APPLICANT_DIR resolved correctly
-   - DEV_MODE status
+   - APP_DIR write status (gated by session intent classification — see CLAUDE.md Critical Rules)
    - **OB1 routing:** "All tools: use `mcp__job_search__*` only — single MCP server for all operations."
    - End with: "Context loaded. Ready."
 

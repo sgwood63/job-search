@@ -71,16 +71,14 @@ After editing any `$APP_DIR` source file (CLAUDE.md, workflow.md, applicant-setu
 
 ## Critical Rules
 
-**APP_DIR is read-only by default (DEV_MODE).** A PreToolUse hook blocks Write and Edit calls to any file inside `$APP_DIR` when `DEV_MODE=false` (the default). To modify tooling, scripts, memory, or any other `$APP_DIR` file, set `DEV_MODE=true` in `.env` first — no restart required. Set it back to `false` when done. This is a hard technical block enforced by `scripts/check-dev-mode.sh`.
+**APP_DIR write access is gated automatically — two independent mechanisms:**
 
-When the hook blocks a write, **always inform the user and pause** — they may not know their request triggered an APP_DIR edit. Tell them:
-- Which file was blocked and what change was about to be made
-- That DEV_MODE is off: `DEV_MODE=false` in `.env`
-- How to resume: they should set `DEV_MODE=true` in `.env` manually, then reply "continue"
+1. **Interactive sessions:** a `UserPromptSubmit` hook (`.claude/hooks/classify-intent-before-plan.py`, using `.claude/skills/classify-intent/` + `.claude/intent-policy.yml`) classifies each prompt as `repo_evolution`, `business_operation`, or `escape_hatch`. A `PreToolUse` hook (`.claude/hooks/scope-before-write.py`) then enforces it: `repo_evolution` requires a session-scoped scope marker before any APP_DIR write is allowed; `business_operation` blocks APP_DIR writes outright; `escape_hatch` (user says "skip scoping — …") allows all writes for that message.
+2. **Deployed/headless contexts:** `scripts/check-app-dir-writes.sh` unconditionally blocks all APP_DIR writes when `READONLY_DEPLOYMENT=true` — set in the webapp's container/K8s config, where no human is present to confirm scoping.
 
-**Never set or unset DEV_MODE yourself.** The user must toggle it manually — this is an intentional safety boundary. Offer three paths: (a) enable DEV_MODE and reply "continue", (b) skip this step, (c) cancel. Wait for their choice.
+When `scope-before-write.py` blocks a write because the session is classified `repo_evolution` with no scope marker yet, **run `/large-change-scoping` immediately** — it maps the change with `codebase-memory-mcp`, presents a scoping summary, asks the user to confirm, and then writes the session marker (`scripts/write-scope-marker.sh`) that unblocks APP_DIR writes for the rest of the session. If scoping was already done outside this flow, the user can say "skip scoping — [request]" instead.
 
-When the user replies "continue" (or equivalent), **retry the blocked operation immediately** without re-explaining context. Once all APP_DIR edits for the task are done, remind the user to set `DEV_MODE=false` again.
+When `check-app-dir-writes.sh` blocks a write (i.e. `READONLY_DEPLOYMENT=true`), that is a hard deployment-level guarantee, not a per-session toggle — inform the user and stop; this is not something to work around within the session.
 
 **Communication level.** During multi-step workflows (JD processing, resume generation, profile maintenance), report at the impact level when a logical step completes — not at the file level. Do not narrate individual Write or Edit calls. Report: "JD screened — fit confirmed, folder created." or "Resume draft complete — 2-page, 7/9 JD requirements covered." Name a file only if a specific write fails.
 
@@ -125,16 +123,16 @@ Short, task-scoped sessions (one application, one interview prep, one memory upd
 **Session start — DO NOT ASK, JUST DO:**
 
 At the start of every session, automatically run the `/context` workflow once before responding to the first user request:
-1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, `DEV_MODE`, and whether OB1 is configured (`DATA_BACKEND=ob1`)
+1. Read `$APP_DIR/.env` — resolve `$APP_DIR`, `$APPLICANT_DIR`, and whether OB1 is configured (`DATA_BACKEND=ob1`)
 2. If OB1 is configured: verify `mcp__job_search__*` tools appear in the deferred tool list. If absent → **hard stop**: "OB1 is configured but job-search MCP tools are not connected. Please restart Claude Code, then re-run `/context`."
 3. In parallel, load: `applicant.md` + `memory/APPLICANT-MEMORY.md` — via `get_file()` if OB1, else direct reads from `$APPLICANT_DIR`
-4. Output a session briefing (10 lines max): applicant identity confirmed, OB1/local mode, `$APPLICANT_DIR` resolved, DEV_MODE status. End with: "Context loaded. Ready."
+4. Output a session briefing (10 lines max): applicant identity confirmed, OB1/local mode, `$APPLICANT_DIR` resolved, APP_DIR write status (gated by session intent — see Critical Rules). End with: "Context loaded. Ready."
 
 **Pipeline is not loaded at session start.** Run `/status` to see active applications, overdue follow-ups, and pipeline counts.
 
-**DEV_MODE=false (default):** State: "DEV_MODE=false — APP_DIR is read-only." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules.
+**No session intent classified yet, or `business_operation`:** State: "APP_DIR is read-only for this session." If a write to APP_DIR is attempted, the hook blocks it — follow the blocking protocol in Critical Rules (run `/large-change-scoping`).
 
-**DEV_MODE=true (dev session):** State: "⚠️ DEV_MODE=true — APP_DIR is WRITABLE." Proceed with all APP_DIR writes without pausing or re-explaining the gate. After each logical set of changes, output one impact summary: what changed and what it fixes or enables. Remind the user to set `DEV_MODE=false` when the dev session is complete.
+**Session classified `repo_evolution` with an active scope marker:** State: "⚠️ APP_DIR is writable for this session (scoped via /large-change-scoping)." Proceed with all APP_DIR writes without pausing or re-explaining the gate. After each logical set of changes, output one impact summary: what changed and what it fixes or enables. The scope marker is session-scoped and does not need to be manually cleared.
 
 Exception: skip if the user's first message makes clear context is already loaded (e.g., "continuing from before", mid-task handoff).
 

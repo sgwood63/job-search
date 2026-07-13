@@ -21,7 +21,7 @@ All registered human-facing docs. Use this to quickly identify which docs exist 
 | `README.md` | First-time reader / overview | High-level system overview, requirements, two-repo structure, links to other docs |
 | `QUICK-START.md` | New user setting up for the first time | Step-by-step bootstrap (setup script + applicant setup) |
 | `USER-GUIDE.md` | End user — non-technical | Day-to-day workflow: commands, web app views, interview prep, profile updates |
-| `DEVELOPER-README.md` | Developer / maintainer | Architecture, hooks, scripts, settings, DEV_MODE, slash command internals |
+| `DEVELOPER-README.md` | Developer / maintainer | Architecture, hooks, scripts, settings, APP_DIR write gating, slash command internals |
 | `DEPLOYMENT.md` | Developer / operator | All deployment options (local, Docker Compose, K8s, OB1 default), decision guide, env config |
 | `scripts/README.md` | Developer / maintainer | Per-script command reference, flags, exit codes, direct-invocation notes |
 | `scripts/README-linkedin-extractors.md` | Developer / user | LinkedIn URL extraction tools, browser console script, workflow |
@@ -89,7 +89,7 @@ When updating a doc, match the register of the surrounding content. Each doc has
 | Doc | Audience | Include | Never include | Notes |
 |-----|----------|---------|---------------|-------|
 | `USER-GUIDE.md` | End user — non-technical | What a feature does for the user, when to use it, how to invoke it, plain-English examples with fictitious names | File paths, internal file names (notes.md, tracker, memory/), "session"/"sync"/"memory" jargon, implementation mechanics, what files are updated | Has `## Contents` TOC — update when headings change |
-| `DEVELOPER-README.md` | Developer / maintainer | Architecture, file trees, DEV_MODE operation, hooks, scripts, settings, command file locations, full technical detail | End-user workflow narrative — link to USER-GUIDE instead | Has `## Contents` TOC — update when headings change |
+| `DEVELOPER-README.md` | Developer / maintainer | Architecture, file trees, APP_DIR write gating, hooks, scripts, settings, command file locations, full technical detail | End-user workflow narrative — link to USER-GUIDE instead | Has `## Contents` TOC — update when headings change |
 | `README.md` | First-time reader / overview | High-level pipeline, requirements, two-repo structure (brief), links to the other docs | Deep technical detail (belongs in DEVELOPER-README), step-by-step how-to (belongs in QUICK-START or USER-GUIDE) | Has `## Contents` TOC — update when headings change |
 | `QUICK-START.md` | New user setting up for the first time | Step-by-step bootstrap instructions, setup commands, what each phase produces | Internal architecture detail (belongs in DEVELOPER-README), day-to-day workflow detail (belongs in USER-GUIDE) | Has `## Contents` TOC — update when headings change |
 | `scripts/README.md` | Developer / maintainer | Per-script command reference, flags, exit codes, exact shell invocations | End-user narrative — scripts are called automatically; this doc is for direct invocation and troubleshooting | Has `## Contents` TOC — update when headings change |

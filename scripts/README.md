@@ -147,14 +147,22 @@ Install once with `bash scripts/install-hooks.sh`. Runs automatically on every `
 
 ---
 
-## check-dev-mode.sh
+## check-app-dir-writes.sh
 
-PreToolUse hook that enforces two write-protection rules on every Write and Edit tool call:
+PreToolUse hook that enforces two write-protection rules on every Write, Edit, and MultiEdit tool call:
 
-1. **APP_DIR protection:** Blocks writes to `$APP_DIR` when `DEV_MODE=false`. To enable: set `DEV_MODE="true"` in `.env`, proceed, then set it back to `"false"`.
+1. **APP_DIR protection (deployment):** Blocks all writes to `$APP_DIR` unconditionally when `READONLY_DEPLOYMENT=true`. Deployment-only flag — leave unset for interactive sessions, where APP_DIR writes are instead gated by session intent classification (see `check-app-dir-writes.sh`'s sibling hook, `.claude/hooks/scope-before-write.py`, below).
 2. **APPLICANT_DIR protection (OB1 mode):** Blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`. Use `upload_file()` MCP tool instead.
 
-Registered in `.claude/settings.json` under `PreToolUse` for the `Write` and `Edit` tool matchers. Reads `.env` on every call — no session restart needed when toggling.
+Registered in `.claude/settings.json` under `PreToolUse` for the `Write|Edit|MultiEdit` tool matcher. Reads `.env` on every call — no session restart needed when toggling.
+
+---
+
+## classify-intent (`.claude/skills/classify-intent/`) + scope-before-write.py
+
+`.claude/hooks/classify-intent-before-plan.py` runs on `UserPromptSubmit` and classifies each prompt's intent — `repo_evolution`, `business_operation`, or `escape_hatch` — using the deterministic slash-command lookup and category examples in `.claude/intent-policy.yml`, falling back to a Haiku call for free-form prompts. It writes the classification to session state.
+
+`.claude/hooks/scope-before-write.py` runs on `PreToolUse` for `Write|Edit|MultiEdit` and enforces it: `repo_evolution` requires a session-scoped scope marker (written by `/large-change-scoping` via `scripts/write-scope-marker.sh`) before any APP_DIR write is allowed; `business_operation` blocks APP_DIR writes outright; `escape_hatch` allows all writes for that message.
 
 ---
 
@@ -317,7 +325,7 @@ Generates the dynamic status bar displayed in the Claude Code VS Code extension.
 | `APPLICANT_DIR` | fetch-jd.py, search-jobs.py, check-md-hygiene.sh, summarize-write.sh, sync-memory.sh | Yes | Set by setup.sh | Path to applicant data directory |
 | `APPLICANT_NAME` | check-md-hygiene.sh | Yes | Set by setup.sh | Used to detect name leaks in commits |
 | `PLAYWRIGHT_PYTHON` | fetch-jd.py, generate-pdf.py, search-jobs.py | Yes | Set by setup.sh | Python interpreter with Playwright installed |
-| `DEV_MODE` | check-dev-mode.sh | No | `"false"` | `"true"` enables APP_DIR writes |
+| `READONLY_DEPLOYMENT` | check-app-dir-writes.sh | No (deployment only) | unset | `"true"` unconditionally blocks APP_DIR writes; interactive sessions are gated by session intent classification instead |
 | `SEARCHAPI_KEY` | search-jobs.py | Yes (for /ingest) | — | SearchAPI authentication key |
 | `SEARCH_BATCH_SIZE` | search-jobs.py | No | 10 | Max new jobs per API call |
 | `OB1_REPO_PATH` | k8s-apply-env.sh (image build) | Yes (OB1 k8s) | — | Path to local OB1 repo clone; image built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/` |

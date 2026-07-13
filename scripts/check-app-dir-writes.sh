@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# PreToolUse hook:
-#   Rule 1: Block Write/Edit to $APP_DIR when DEV_MODE != true.
-#   Rule 2: Block Write/Edit to $APPLICANT_DIR when DATA_BACKEND=ob1.
+# PreToolUse hook (matcher: Write|Edit|MultiEdit):
+#   Rule 1: Block all APP_DIR writes unconditionally when READONLY_DEPLOYMENT=true.
+#           This is the explicit, auditable guard for headless/containerized
+#           deployments (webapp skill-runner) where no human is present to
+#           answer /large-change-scoping's confirmation prompt. Interactive
+#           local sessions leave this unset/false and are gated instead by
+#           .claude/hooks/scope-before-write.py's intent classification.
+#   Rule 2: Block Write/Edit/MultiEdit to $APPLICANT_DIR when DATA_BACKEND=ob1.
 # Exit 0 = allow. Exit 2 = block (stderr message shown to Claude).
 
 set -uo pipefail
@@ -10,15 +15,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$APP_DIR/.env"
 
-DEV_MODE="false"
+READONLY_DEPLOYMENT="false"
 DATA_BACKEND="local"
 APPLICANT_DIR=""
 
 if [ -f "$ENV_FILE" ]; then
-  raw=$(grep '^export DEV_MODE=' "$ENV_FILE" \
-    | sed "s/^export DEV_MODE=['\"]*//" \
+  raw=$(grep '^export READONLY_DEPLOYMENT=' "$ENV_FILE" \
+    | sed "s/^export READONLY_DEPLOYMENT=['\"]*//" \
     | sed "s/['\"]* *$//")
-  [ -n "$raw" ] && DEV_MODE="$raw"
+  [ -n "$raw" ] && READONLY_DEPLOYMENT="$raw"
 
   raw=$(grep '^export DATA_BACKEND=' "$ENV_FILE" \
     | sed "s/^export DATA_BACKEND=['\"]*//" \
@@ -32,7 +37,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # Fast-path: nothing to enforce
-if [ "$DEV_MODE" = "true" ] && [ "$DATA_BACKEND" != "ob1" ]; then
+if [ "$READONLY_DEPLOYMENT" != "true" ] && [ "$DATA_BACKEND" != "ob1" ]; then
   exit 0
 fi
 
@@ -44,10 +49,10 @@ file_path=$(printf '%s' "$input" \
 
 [ -z "$file_path" ] && exit 0
 
-# Rule 1: APP_DIR is read-only when DEV_MODE=false
-if [ "$DEV_MODE" != "true" ]; then
+# Rule 1: APP_DIR is unconditionally read-only in READONLY_DEPLOYMENT contexts
+if [ "$READONLY_DEPLOYMENT" = "true" ]; then
   if [[ "$file_path" == "$APP_DIR" || "$file_path" == "$APP_DIR/"* ]]; then
-    echo "DEV_MODE is disabled. APP_DIR is read-only. Set DEV_MODE=true in .env to allow editing files in $APP_DIR." >&2
+    echo "READONLY_DEPLOYMENT is enabled. APP_DIR is unconditionally read-only in this deployment." >&2
     exit 2
   fi
 fi

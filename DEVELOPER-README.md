@@ -2,7 +2,7 @@
 
 ## Contents
 
-- [DEV_MODE — Modifying the System](#dev_mode--modifying-the-system)
+- [APP_DIR Write Gating — Modifying the System](#app_dir-write-gating--modifying-the-system)
 - [Two-Repo Architecture](#two-repo-architecture)
 - [OB1 Kubernetes Deployment](#ob1-kubernetes-deployment)
 - [Backup & Restore (OB1)](#backup--restore-ob1)
@@ -19,22 +19,22 @@
 
 ---
 
-This document covers system architecture, DEV_MODE operation, hook configuration, and command implementation details. For end-user workflows and command usage, see [USER-GUIDE.md](USER-GUIDE.md).
+This document covers system architecture, APP_DIR write gating, hook configuration, and command implementation details. For end-user workflows and command usage, see [USER-GUIDE.md](USER-GUIDE.md).
 
 ---
 
-## DEV_MODE — Modifying the System
+## APP_DIR Write Gating — Modifying the System
 
-`$APP_DIR` is read-only by default. A `PreToolUse` hook (`scripts/check-dev-mode.sh`) intercepts every `Write` and `Edit` call to files inside `$APP_DIR` and blocks them when `DEV_MODE=false`. The same hook also blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`, enforcing MCP-only access to applicant data.
+`$APP_DIR` is read-only by default, gated by two independent mechanisms:
 
-**To enable APP_DIR editing:**
-1. Open `.env` and set `DEV_MODE="true"` — no restart needed
-2. Proceed with edits (if Claude is paused waiting, reply "continue")
-3. When done, set `DEV_MODE="false"`
+1. **Interactive sessions:** a `UserPromptSubmit` hook classifies each prompt's intent (`repo_evolution` / `business_operation` / `escape_hatch`, via `.claude/skills/classify-intent/` + `.claude/intent-policy.yml`). A `PreToolUse` hook (`.claude/hooks/scope-before-write.py`) then blocks APP_DIR writes unless the session is classified `repo_evolution` **and** has run `/large-change-scoping` (which writes a session-scoped marker via `scripts/write-scope-marker.sh`), or the user said "skip scoping — …" (`escape_hatch`).
+2. **Deployed/headless contexts:** `scripts/check-app-dir-writes.sh` unconditionally blocks APP_DIR writes when `READONLY_DEPLOYMENT=true` — set in the webapp's container/K8s config, where no human can confirm scoping. The same script also blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`, enforcing MCP-only access to applicant data.
 
-`DEV_MODE` is read on every tool call, so toggling it mid-session takes effect immediately.
+**To enable APP_DIR editing in an interactive session:**
+1. Run `/large-change-scoping` — it maps the change with `codebase-memory-mcp`, presents a scoping summary, and asks you to confirm
+2. On confirmation it writes the session marker and unblocks APP_DIR writes for the rest of the session — no `.env` edit or restart needed
 
-If the hook blocks a write mid-session, Claude pauses and reports: which file was blocked, that DEV_MODE is off, and how to resume. Reply "continue" after enabling DEV_MODE and it retries.
+If a write is blocked mid-session because the session wasn't classified `repo_evolution` or hasn't run `/large-change-scoping` yet, Claude reports which file was blocked and runs `/large-change-scoping` (or asks you to say "skip scoping — …" if scoping was already done elsewhere).
 
 ---
 
@@ -42,7 +42,7 @@ If the hook blocks a write mid-session, Claude pauses and reports: which file wa
 
 | Directory | Purpose | Git-tracked | Writable by default |
 |---|---|---|---|
-| `$APP_DIR` (this repo) | Process, tooling, templates, memory | Yes | No (DEV_MODE gate) |
+| `$APP_DIR` (this repo) | Process, tooling, templates, memory | Yes | No (intent-classification gate) |
 | `$APPLICANT_DIR` | Applicant data, applications, profiles, tracker | No | Yes |
 
 Paths are defined in `.env` (gitignored). `$APPLICANT_DIR` is set during `bash scripts/setup.sh` to a local directory or a cloud sync service's managed folder (Google Drive, OneDrive, iCloud, Dropbox, or Box). The OS syncs automatically when a cloud service is chosen.
@@ -114,7 +114,8 @@ $APP_DIR/
 │   ├── ob1-backup.sh            # Point-in-time encrypted backup of OB1 → cloud sync folder
 │   ├── ob1-restore.sh           # Restore OB1 from encrypted backup archive
 │   ├── check-md-hygiene.sh      # Pre-commit hook: no personal names or hard-coded paths
-│   ├── check-dev-mode.sh        # PreToolUse hook: blocks APP_DIR writes (DEV_MODE) + APPLICANT_DIR writes (OB1)
+│   ├── check-app-dir-writes.sh  # PreToolUse hook: blocks APP_DIR writes (READONLY_DEPLOYMENT) + APPLICANT_DIR writes (OB1)
+│   ├── sync-codebase-index.sh   # Stop hook: reindexes codebase-memory-mcp when the repo has changed
 │   ├── install-hooks.sh         # Installs git hooks into .git/hooks/
 │   ├── sync-memory.sh           # Commits memory/ and copies to ~/.claude/
 │   ├── status-line.sh           # Dynamic status bar for Claude Code VS Code extension
@@ -419,7 +420,7 @@ Two files, both gitignored, serve different audiences:
 
 | File | Contents | Who sources it |
 |------|----------|----------------|
-| `.env` | Claude CLI config: paths, MCP keys, search API, `DEV_MODE` | Claude Code shell session |
+| `.env` | Claude CLI config: paths, MCP keys, search API, `READONLY_DEPLOYMENT` | Claude Code shell session |
 | `.env.services` | Storage credentials: MinIO, Postgres, LLM API keys, `ANTHROPIC_API_DEPLOYMENT_KEY` | `scripts/start-ob1.sh`, `scripts/k8s-apply-env.sh` |
 
 **Why the split:** Claude's shell inherits every exported var. Keeping storage credentials out of `.env` means Claude (and any Bash tool calls it makes) cannot reach MinIO, Postgres, or LLM APIs directly — all applicant data must flow through the OB1 MCP tools. See [policies/storage-routing/](policies/storage-routing/) (pinned version).
@@ -487,7 +488,7 @@ Commands are defined as Markdown files in `$APP_DIR/.claude/commands/`. Claude C
 
 **To add a command:** Create a new `.md` file in `.claude/commands/`. The file's content is the instruction Claude receives when the command is invoked. Takes effect at the next session — no restart needed.
 
-**To modify a command:** Edit the `.md` file directly (requires `DEV_MODE=true`). Same timing.
+**To modify a command:** Edit the `.md` file directly (requires an active `/large-change-scoping` session marker — see [APP_DIR Write Gating](#app_dir-write-gating--modifying-the-system)). Same timing.
 
 Commands are git-tracked and contain no PII — available on any machine that clones this repo.
 
@@ -497,13 +498,13 @@ Commands are git-tracked and contain no PII — available on any machine that cl
 
 Hooks are configured in `.claude/settings.json` under the `hooks` key.
 
-### PreToolUse — DEV_MODE gate
+### PreToolUse — APP_DIR write gating
 
-Runs `scripts/check-dev-mode.sh` before every `Write` or `Edit` tool call. Two rules enforced:
-- If target path is inside `$APP_DIR` and `DEV_MODE=false` → blocked (set `DEV_MODE=true` to enable)
-- If target path is inside `$APPLICANT_DIR` and `DATA_BACKEND=ob1` → blocked (use `upload_file()` MCP tool instead)
+Two hooks run before every `Write`, `Edit`, or `MultiEdit` tool call:
+- `scripts/check-app-dir-writes.sh` — if target path is inside `$APP_DIR` and `READONLY_DEPLOYMENT=true` → blocked unconditionally (deployment-only flag); if target path is inside `$APPLICANT_DIR` and `DATA_BACKEND=ob1` → blocked (use `upload_file()` MCP tool instead)
+- `.claude/hooks/scope-before-write.py` — if target path is inside `$APP_DIR` and the session isn't classified `repo_evolution` with an active `/large-change-scoping` marker (or `escape_hatch`) → blocked
 
-The script reads `DEV_MODE` from `.env` on every invocation — toggling the value mid-session takes effect immediately.
+Both scripts read `.env`/session state on every invocation — no restart needed when the session's intent or scope-marker status changes.
 
 ### Stop — memory sync
 
@@ -526,7 +527,7 @@ See [docs/observability/langfuse-integration.md](docs/observability/langfuse-int
 
 Runs `scripts/summarize-write.sh` after every `Write` tool call. Outputs a one-line impact summary for significant file writes (e.g., resume written, notes updated). Suppresses output for routine or system files.
 
-To add or modify hooks, edit the `hooks` section in `.claude/settings.json` (requires `DEV_MODE=true`).
+To add or modify hooks, edit the `hooks` section in `.claude/settings.json` (requires an active `/large-change-scoping` session marker).
 
 ---
 
@@ -571,13 +572,13 @@ Process rules live in four locations with different scopes:
 |---|---|---|
 | `skills/`, `policies/`, `workflows/` | Versioned procedures; resolved per mode (interactive: draft-first; webapp: pinned-only) | **Preferred for procedural rules** — JD screening, resume generation, interview prep, storage routing, domain connection. Change via the draft → promote flow (tell Claude "draft skill <name>" / "promote skill <name>") |
 | `CLAUDE.md` | Always-loaded; applies every session | Critical rules and workflow triggers that must be visible at session start |
-| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Session/tooling mechanics (DEV_MODE, commits, model selection, doc maintenance). Migrated procedural entries are pointer stubs — do not add rules to them |
+| `memory/feedback_*.md` | Loaded on demand; indexed via `MEMORY.md` | Session/tooling mechanics (commits, model selection, doc maintenance). Migrated procedural entries are pointer stubs — do not add rules to them |
 | `$APPLICANT_DIR/memory/` | Applicant-specific; local only | Role preferences, deal-breakers, search state |
 
-**To add or update a procedural rule:** tell Claude "draft skill <name>", edit `draft.md`, exercise it on real work, then tell Claude "promote skill <name> [--pin]" (test-gated; `--pin` moves the version the webapp executes). Requires `DEV_MODE=true`.
+**To add or update a procedural rule:** tell Claude "draft skill <name>", edit `draft.md`, exercise it on real work, then tell Claude "promote skill <name> [--pin]" (test-gated; `--pin` moves the version the webapp executes). Requires an active `/large-change-scoping` session marker.
 
 **To add or update a session/tooling rule:**
-1. Edit the relevant `memory/feedback_*.md` file (or `CLAUDE.md` for session-critical rules). Requires `DEV_MODE=true`.
+1. Edit the relevant `memory/feedback_*.md` file (or `CLAUDE.md` for session-critical rules). Requires an active `/large-change-scoping` session marker.
 2. If you edited `CLAUDE.md` or a `memory/` file, run the sync script so the live session picks up the change:
    ```bash
    bash "$APP_DIR/scripts/sync-memory.sh"
@@ -711,7 +712,7 @@ Enforced by `scripts/check-md-hygiene.sh` (pre-commit hook). The hook reads `APP
 | `APPLICANT_DIR` | `setup.sh` | Absolute path to applicant data directory |
 | `APPLICANT_NAME` | `setup.sh` | Used by `check-md-hygiene.sh` for name-leak detection |
 | `PLAYWRIGHT_PYTHON` | `setup.sh` | Python interpreter with Playwright installed |
-| `DEV_MODE` | Manual | `"true"` to allow APP_DIR writes; `"false"` to block |
+| `READONLY_DEPLOYMENT` | Manual (deployment only) | `"true"` unconditionally blocks APP_DIR writes; unset/`"false"` for interactive sessions, which are gated by session intent classification instead |
 | `SEARCHAPI_KEY` | Manual | SearchAPI key required for `/ingest` |
 | `SEARCH_TARGET_FITS` | Manual | Target fit count per `/ingest` run (default 10) |
 | `SEARCH_BATCH_SIZE` | Manual | Max new jobs per API call in `/ingest` (default 10) |

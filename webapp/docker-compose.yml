@@ -33,7 +33,7 @@ services:
       # Override path-dependent vars that differ between host and container
       APP_DIR: /app
       APPLICANT_DIR: /applicant   # ignored when DATA_BACKEND=ob1
-      DEV_MODE: "false"           # APP_DIR is always read-only in container
+      READONLY_DEPLOYMENT: "true" # APP_DIR is always read-only in container
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_DEPLOYMENT_KEY:-}  # use deployment key, not personal OAuth key
       # OB1 mode: webapp REST client — must match job-search-mcp service name in combined compose
       JOB_SEARCH_REST_URL: ${JOB_SEARCH_REST_URL:-http://job-search-mcp:8001}

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook: Block Write/Edit to committed vN.md files in $APP_DIR.
 # vN.md files are immutable after promotion. Use draft.md → promote instead.
-# DEV_MODE=true allows editing other APP_DIR files but does NOT unlock vN.md.
+# An active large-change-scoping session marker allows editing other APP_DIR
+# files but does NOT unlock vN.md.
 # Exit 0 = allow. Exit 2 = block (stderr message shown to Claude).
 
 set -uo pipefail
