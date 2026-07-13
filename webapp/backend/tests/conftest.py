@@ -13,6 +13,29 @@ os.environ.setdefault("DATA_BACKEND", "local")
 os.environ.setdefault("APPLICANT_DIR", "/tmp/test-applicant")
 os.environ.setdefault("APP_DIR", str(Path(__file__).parent.parent.parent.parent))
 
+from runtime import build_version_map, load_registry, load_version_map, merge_version_map
+
+
+@pytest.fixture(scope='session')
+def real_registry():
+    """The live repo registry — session-scoped since it's read-only and
+    reloading per-test buys nothing (resolve() always re-reads version files
+    fresh regardless)."""
+    return load_registry(Path(os.environ['APP_DIR']))
+
+
+@pytest.fixture(scope='session')
+def version_map(real_registry) -> dict:
+    """name -> version to use in tests. Defaults to live pinned state; if
+    SKILL_VERSION_MAP points at a JSON file, its entries override the default
+    for a specific, opt-in coherent combination (frozen baseline or candidate
+    version test) — everything not mentioned stays at current pinned."""
+    default = build_version_map(real_registry, mode='pinned')
+    override_path = os.environ.get('SKILL_VERSION_MAP')
+    if override_path:
+        default = merge_version_map(default, load_version_map(override_path))
+    return default
+
 
 @pytest.fixture
 def tmp_applicant(tmp_path: Path) -> Path:
@@ -68,6 +91,11 @@ def mock_ob_rest():
     m.find_similar_applications = AsyncMock(return_value=[])
     m.get_ingestion_history = AsyncMock(return_value=[])
     m.get_search_runs = AsyncMock(return_value=[])
+    m.get_thoughts = AsyncMock(return_value={"thoughts": [], "total": 0})
+    m.get_thought = AsyncMock(return_value={"id": "1", "content": "# Test", "metadata": {}, "created_at": "2026-01-01T00:00:00"})
+    m.search_thoughts = AsyncMock(return_value={"results": [], "total": 0})
+    m.get_thought_stats = AsyncMock(return_value={"total": 0, "by_type": {}})
+    m.get_thought_connections = AsyncMock(return_value=[])
     m.ping = AsyncMock(return_value=True)
     m.close = AsyncMock(return_value=None)
     return m

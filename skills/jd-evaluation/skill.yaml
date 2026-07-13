@@ -2,8 +2,8 @@ name: jd-evaluation
 kind: skill
 description: Screen a job description for fit — extract key facts, check against applicant criteria, match to the best profile, return fit/no-fit with reasoning
 status: active
-pinned: v1
-latest: v1
+pinned: v2
+latest: v2
 policies:
   - storage-routing
 inputs:
@@ -14,6 +14,18 @@ outputs:
   - extracted_facts     # company, role, location, travel, comp, requirements
   - matched_profile     # best profile name
 changelog:
+  - version: v2
+    date: 2026-07-13
+    summary: >
+      Output contract expanded from 3 fields to the full 19-field contract expected by
+      workflows/process-jd/. New Location check section (generic rubric reading criteria
+      from the caller's screening context, no hardcoded place names) with structured
+      hard_stops_hit array. New Role-level buyer and company-type analysis section — hard
+      stops for developer-tools/infrastructure/hardware companies now evaluated at role
+      level (economic buyer, user community, technical floor), not company level. New
+      Multi-profile evaluation for hybrid roles section — scores both presales-se and
+      post-sales-se when a JD spans both. New Gap calibration section — gaps inferred from
+      applicant's documented experience, not company-type assumptions.
   - version: v1
     date: 2026-06-12
     summary: Migrated from workflow.md Step 2 (Haiku screen), memory/MEMORY.md screening section, and memory/feedback_unknown_company_research.md

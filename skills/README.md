@@ -29,7 +29,7 @@ Each entry is a directory containing:
 
 All changes go through draft → promote (never edit a committed `vN.md`):
 
-1. `/skill draft <name>` — copies the pinned version to `draft.md` (requires `DEV_MODE=true`)
+1. `/skill draft <name>` — copies the pinned version to `draft.md` (requires an active `/large-change-scoping` session marker)
 2. Edit `draft.md`; interactive sessions exercise it on real work
 3. `/skill promote <name> [--pin]` — runs the runtime test gate, renames `draft.md` → `v(N+1).md`, updates `skill.yaml` `latest` + changelog (`pinned` only moves with `--pin`), and commits everything in one commit
 

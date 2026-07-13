@@ -9,6 +9,20 @@ The backend supports two data modes, selected by `DATA_BACKEND` in `.env`:
 | **Local** (default) | `local` | Files read directly from `APPLICANT_DIR` on the local filesystem |
 | **OB1** | `ob1` | PostgreSQL (`js_*` tables) for pipeline state + MinIO or Supabase for file content |
 
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+- [Install Dependencies](#install-dependencies)
+- [Launch — Recommended (single script)](#launch--recommended-single-script)
+- [Launch — Development (Vite dev server)](#launch--development-vite-dev-server)
+- [Launch — One-time build only](#launch--one-time-build-only)
+- [Launch — Docker](#launch--docker)
+- [Features](#features)
+- [API Endpoints](#api-endpoints)
+- [Verifying Connectivity](#verifying-connectivity)
+- [Testing](#testing)
+
 ## Prerequisites
 
 - Python 3.8+ and Node.js + npm
@@ -28,7 +42,7 @@ The backend loads all configuration from the `.env` file at the project root.
 | `DATA_BACKEND` | `local` (default) or `ob1` |
 | `APP_DIR` | Path to this repo |
 | `APPLICANT_DIR` | Path to applicant data directory (required for local mode) |
-| `DEV_MODE` | `true` = APP_DIR file edits allowed; `false` (default) = read-only |
+| `READONLY_DEPLOYMENT` | `true` = APP_DIR unconditionally read-only (set in container/K8s deployments); unset/`false` = local dev, gated by session intent classification instead |
 | `CLAUDE_BINARY` | Path to the Claude Code binary for chat sessions (default: `claude` in PATH). Must be 2.1.152+. |
 | `RUNTIME_ADAPTER` | Skill runtime adapter: `claude-runner` (default) or `hermes` (experimental) |
 | `RUNTIME_ALLOW_DRAFT` | `true` allows running `draft` skill versions via `/api/skills/{name}/run` (dev escape hatch; default `false`) |
@@ -277,15 +291,26 @@ pytest tests/test_api.py::test_health_ok
 pytest -v   # verbose output
 ```
 
+**Testing against a specific version combination:**
+Skill/policy/workflow tests default to whatever is currently `pinned` in the
+real registry (`skills/registry.yaml` + each `skill.yaml`) — no hardcoded
+version literals. To test a frozen baseline or a candidate version override:
+```bash
+python -m runtime.version_map --mode pinned --out /tmp/baseline.json
+# edit /tmp/baseline.json, e.g. change "jd-evaluation": "v2" -> "v3"
+SKILL_VERSION_MAP=/tmp/baseline.json pytest
+```
+
 What's covered:
 
 | File | Tests | Covers |
 |------|-------|--------|
 | `test_api.py` | 30+ | Path validation helpers, all REST endpoints (health, tracker, file CRUD, applications, setup-status, docs allowlist) |
+| `test_ob1.py` | 85 | `ObRestClient` unit tests (all HTTP methods, binary/text upload, thought_category, Phase 2+3 methods) + FastAPI endpoint tests in OB1 mode (file CRUD, tracker domain fields, contacts, search, chunk-search, similar-applications, ingestion history, search runs) |
 | `test_storage.py` | 12 | LocalStore async CRUD, list, delete, presigned URLs, factory singleton |
 | `test_tracker.py` | 20+ | `slugify()`, `parse_table()`, `match_folder()`, `parse_tracker()` (full markdown pipeline) |
 
-Tests use a temporary directory for `APPLICANT_DIR` — no real applicant data is touched. `DATA_BACKEND=local` is set automatically by test fixtures; no OB1 services are needed.
+Tests use a temporary directory for `APPLICANT_DIR` — no real applicant data is touched. `DATA_BACKEND=local` is set automatically by test fixtures; no OB1 services are needed. `test_ob1.py` mocks all HTTP calls — OB1 services are not required.
 
 ### Frontend (Vitest)
 

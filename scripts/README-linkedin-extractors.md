@@ -2,6 +2,14 @@
 
 One tool for extracting job URLs from LinkedIn search results.
 
+## Contents
+
+- [Browser Console Script (RECOMMENDED)](#browser-console-script-recommended)
+- [Recommended Workflow](#recommended-workflow)
+- [Processing Multiple URLs](#processing-multiple-urls)
+- [Privacy & Security Notes](#privacy--security-notes)
+- [Troubleshooting](#troubleshooting)
+
 ---
 
 ## ⚡ Browser Console Script (RECOMMENDED)

@@ -17,3 +17,7 @@ data:
   MINIO_SECURE: "false"
 
   PORT: "8001"
+
+  # Base URL for thought citation links in the search/fetch OB1-compat tools.
+  # After ingress path rewriting, /job-search/ob1/rest/ routes to /ob1/rest/ on this server.
+  CITATION_BASE_URL: "http://localhost/job-search/ob1/rest/thought"

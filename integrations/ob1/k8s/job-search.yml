@@ -8,6 +8,10 @@
 #   2. openbrain-db-service.yml has been applied (exposes port 5432)
 #   3. minio.yml has been applied and the job-search bucket created
 #   4. job-search-schema.sql has been applied to the openbrain database
+#      Phase 3 graph indexes (run before deploying Phase 3 image):
+#        kubectl exec -n openbrain openbrain-0 -c postgres -- psql -U postgres -d openbrain \
+#          -c "CREATE INDEX IF NOT EXISTS idx_edges_relation_from ON public.edges(relation, from_entity_id); \
+#              CREATE INDEX IF NOT EXISTS idx_edges_relation_to   ON public.edges(relation, to_entity_id);"
 #   5. Docker image job-search-mcp:latest is available on the cluster
 #   6. bash scripts/k8s-apply-env.sh has been run (creates job-search-secret and job-search-llm-config from .env)
 #   7. job-search-configmap.yml has been applied
@@ -19,6 +23,7 @@ metadata:
   namespace: openbrain
   labels:
     app: job-search-mcp
+    app.kubernetes.io/version: "0.5.0"
 spec:
   replicas: 1
   selector:
@@ -45,8 +50,8 @@ spec:
             - configMapRef:
                 name: job-search-llm-config
             # Sensitive credentials: DB_PASSWORD, MCP_ACCESS_KEY, MINIO_ACCESS_KEY,
-            # MINIO_SECRET_KEY, EMBEDDING_API_KEY, CHAT_API_KEY
-            # Created by: bash scripts/k8s-apply-env.sh
+            # MINIO_SECRET_KEY, EMBEDDING_API_KEY, CHAT_API_KEY, ANTHROPIC_API_KEY
+            # Created by: bash scripts/k8s-apply-env.sh (add ANTHROPIC_API_KEY to .env first)
             - secretRef:
                 name: job-search-secret
 

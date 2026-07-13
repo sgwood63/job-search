@@ -2,7 +2,23 @@
 
 This guide covers all supported ways to run the job search system. The system has five independently-variable deployment dimensions — understanding them lets the user pick the right combination rather than guessing from a flat list of "configurations."
 
-For day-to-day usage after setup, see [USER-GUIDE.md](USER-GUIDE.md). For system internals and DEV_MODE, see [DEVELOPER-README.md](DEVELOPER-README.md).
+For day-to-day usage after setup, see [USER-GUIDE.md](USER-GUIDE.md). For system internals and APP_DIR write gating, see [DEVELOPER-README.md](DEVELOPER-README.md).
+
+## Contents
+
+- [Deployment Dimensions](#deployment-dimensions)
+- [Decision Guide](#decision-guide)
+- [Authentication](#authentication)
+- [Environment Configuration](#environment-configuration)
+  - [Compose vs K8s env var differences](#compose-vs-k8s-env-var-differences)
+- [Tested Configurations](#tested-configurations)
+  - [Config 1: Local data + Claude Code](#config-1-local-data--claude-code)
+  - [Config 2: Local data + Webapp](#config-2-local-data--webapp)
+  - [Config 3: OB1 Docker Compose + Webapp Docker Compose](#config-3-ob1-docker-compose--webapp-docker-compose)
+  - [Config 4: OB1 Kubernetes + Webapp (same namespace)](#config-4-ob1-kubernetes--webapp-same-namespace)
+  - [Config 5: OB1 Default Deployment (experimental)](#config-5-ob1-default-deployment-experimental)
+- [Observability (Langfuse)](#observability-langfuse)
+- [Not Yet Documented](#not-yet-documented)
 
 ---
 
@@ -259,7 +275,6 @@ Requires `OB1_BASE_URL` and `OB1_API_KEY` in the environment. Safe to re-run —
 | OB1 MCP | `http://localhost:8080/mcp` |
 | job-search MCP | `http://localhost:8081/mcp` |
 | OB1 REST API | `http://localhost:8002` |
-| OB1 Dashboard | [http://localhost:3000](http://localhost:3000) |
 | MinIO S3 API | `http://localhost:9000` |
 | MinIO console | [http://localhost:9001](http://localhost:9001) |
 | PostgreSQL | `localhost:5432` |
@@ -304,7 +319,7 @@ Fill in all credential vars from `.env.services.example`.
 bash scripts/k8s-apply-env.sh
 ```
 
-Reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, `webapp-secret`, and `dashboard-secret` in the `openbrain` namespace.
+Reads from both `.env` and `.env.services` to create `openbrain-secret`, `openbrain-configmap`, `minio-secret`, `job-search-secret`, `job-search-llm-config`, and `webapp-secret` in the `openbrain` namespace.
 
 **Step 3 — Deploy OB1 services**
 
@@ -317,8 +332,7 @@ Follow [integrations/ob1/README.md](integrations/ob1/README.md) steps 2–11:
 6. Deploy MinIO (`k8s/minio-configmap.yml`, `k8s/minio.yml`, `k8s/minio-s3-nodeport.yml`)
 7. Deploy job-search-mcp (`k8s/job-search-configmap.yml`, build image, apply `k8s/job-search.yml`)
 8. Create MinIO bucket
-9. Deploy ob1-rest-pg REST API (`docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/`, apply `k8s/ob1-rest-pg.yml`) — PostgreSQL-backed REST layer required by the dashboard
-10. Deploy OB1 Dashboard (build `ob1-dashboard:latest` with `DASHBOARD_OB1_URL=http://ob1-rest-pg.openbrain.svc.cluster.local:8002`, apply `k8s/dashboard.yml`, `k8s/dashboard-nodeport.yml`) — access at `http://localhost:30303`
+9. Deploy ob1-rest-pg REST API (`docker build -t ob1-rest-pg:latest integrations/ob1/ob1-rest-pg/`, apply `k8s/ob1-rest-pg.yml`) — PostgreSQL-backed REST layer used by the webapp and MCP server
 
 > **Schema note (step 5 above):** The schema is cumulative and idempotent — it includes `js_search_runs` and `js_ingested_positions` (ingestion audit trail). For existing deployments upgrading, re-apply the schema via `kubectl port-forward svc/openbrain-db -n openbrain 5432:5432` then `psql -h localhost -U postgres -d openbrain < integrations/ob1/job-search-schema.sql`. Safe to run multiple times.
 

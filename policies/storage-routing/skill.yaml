@@ -2,9 +2,32 @@ name: storage-routing
 kind: policy
 description: Canonical DATA_BACKEND routing — when OB1 is configured, all APPLICANT file reads/writes go through OB1 MCP tools; MCP not connected = hard stop; upload routing MCP vs REST
 status: active
-pinned: v1
-latest: v1
+pinned: v4
+latest: v4
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Upload routing tightened — binary files and text > ~50KB must go directly to REST API
+      with no MCP-then-fallback-on-size-error path; upload_file MCP tool is reserved for
+      small text files only. Adds an explicit warning against ever attempting MCP for
+      binary/large files, and clarifies that hitting an MCP size error on such a file means
+      the routing rule was not followed (fix the routing, do not retry via MCP).
+  - version: v3
+    date: 2026-06-24
+    summary: >
+      Consolidate to single MCP server — mcp__open_brain__* retired; mcp__job_search__*
+      now owns all operations including thought capture, thought search, and file I/O.
+      Session start check simplified to verify mcp__job_search__* only.
+  - version: v2
+    date: 2026-06-21
+    summary: >
+      Ingest dedup tool mapping (check_position_seen, log_ingested_position, get_ingestion_history,
+      log_search_run→UUID, get_search_runs); local dedup CSV (search/ingested-positions.csv) replaces
+      seen-jobs.json + linkedin-seen-jobs.json; two-MCP-server disambiguation (job-search owns all
+      file I/O; thought queries must use job-search variants); session start check for both servers;
+      REST API upload path for binary/large files with curl template; PDF generation workflow for
+      OB1 mode; stale content debugging guidance; scope override note for get_file/upload_file.
   - version: v1
     date: 2026-06-12
     summary: Migrated verbatim from memory/feedback_ob1_integration.md plus the DATA_BACKEND bullet from CLAUDE.md Profile Maintenance

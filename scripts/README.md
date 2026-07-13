@@ -1,5 +1,26 @@
 # Scripts
 
+## Contents
+
+- [setup.sh](#setupsh)
+- [fetch-jd.py](#fetch-jdpy)
+- [generate-pdf.py](#generate-pdfpy)
+- [search-jobs.py](#search-jobspy)
+- [check-md-hygiene.sh](#check-md-hygienesh)
+- [check-dev-mode.sh](#check-dev-modesh)
+- [install-hooks.sh](#install-hookssh)
+- [sync-memory.sh](#sync-memorysh)
+- [summarize-write.sh](#summarize-writesh)
+- [linkedin-job-url-collector-manual.js](#linkedin-job-url-collector-manualjs)
+- [k8s-apply-env.sh](#k8s-apply-envsh)
+- [migrate-to-ob1.py](#migrate-to-ob1py)
+- [ob1-backup.sh](#ob1-backupsh)
+- [ob1-restore.sh](#ob1-restoresh)
+- [generate-setup-status.sh](#generate-setup-statussh)
+- [langfuse_cc_hook.py](#langfuse_cc_hookpy)
+- [status-line.sh](#status-linesh)
+- [Environment Variables](#environment-variables)
+
 ## setup.sh
 
 One-time setup script. Run from the repo root before starting a job search.
@@ -105,6 +126,7 @@ Parameters:
 - `--page-token` — resume pagination from a prior `next_page_token`
 - `--batch-out` — append results as NDJSON to this file path
 - `--batch-size N` — max new jobs to return; overrides `SEARCH_BATCH_SIZE` env var for this call
+- `--location` — Google Jobs location filter (default: `"United States"`); set to a metro area name (e.g. `"San Francisco Bay Area"`) for onsite-pass filtering
 - `--dry-run` — inspect query without fetching
 
 Exit codes: `0` (success), `1` (missing env, profile not found, API error)
@@ -125,14 +147,22 @@ Install once with `bash scripts/install-hooks.sh`. Runs automatically on every `
 
 ---
 
-## check-dev-mode.sh
+## check-app-dir-writes.sh
 
-PreToolUse hook that enforces two write-protection rules on every Write and Edit tool call:
+PreToolUse hook that enforces two write-protection rules on every Write, Edit, and MultiEdit tool call:
 
-1. **APP_DIR protection:** Blocks writes to `$APP_DIR` when `DEV_MODE=false`. To enable: set `DEV_MODE="true"` in `.env`, proceed, then set it back to `"false"`.
+1. **APP_DIR protection (deployment):** Blocks all writes to `$APP_DIR` unconditionally when `READONLY_DEPLOYMENT=true`. Deployment-only flag — leave unset for interactive sessions, where APP_DIR writes are instead gated by session intent classification (see `check-app-dir-writes.sh`'s sibling hook, `.claude/hooks/scope-before-write.py`, below).
 2. **APPLICANT_DIR protection (OB1 mode):** Blocks direct writes to `$APPLICANT_DIR` when `DATA_BACKEND=ob1`. Use `upload_file()` MCP tool instead.
 
-Registered in `.claude/settings.json` under `PreToolUse` for the `Write` and `Edit` tool matchers. Reads `.env` on every call — no session restart needed when toggling.
+Registered in `.claude/settings.json` under `PreToolUse` for the `Write|Edit|MultiEdit` tool matcher. Reads `.env` on every call — no session restart needed when toggling.
+
+---
+
+## classify-intent (`.claude/skills/classify-intent/`) + scope-before-write.py
+
+`.claude/hooks/classify-intent-before-plan.py` runs on `UserPromptSubmit` and classifies each prompt's intent — `repo_evolution`, `business_operation`, or `escape_hatch` — using the deterministic slash-command lookup and category examples in `.claude/intent-policy.yml`, falling back to a Haiku call for free-form prompts. It writes the classification to session state.
+
+`.claude/hooks/scope-before-write.py` runs on `PreToolUse` for `Write|Edit|MultiEdit` and enforces it: `repo_evolution` requires a session-scoped scope marker (written by `/large-change-scoping` via `scripts/write-scope-marker.sh`) before any APP_DIR write is allowed; `business_operation` blocks APP_DIR writes outright; `escape_hatch` allows all writes for that message.
 
 ---
 
@@ -215,6 +245,51 @@ Required env: `APP_DIR`, `APPLICANT_DIR`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, 
 
 ---
 
+## ob1-backup.sh
+
+Point-in-time encrypted backup of OB1 data (PostgreSQL + MinIO) to the cloud sync directory. Targets the Kubernetes deployment only.
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-backup.sh
+```
+
+What it captures: `pg_dump` of the `openbrain` database (via `kubectl exec` — no local pg_dump needed), `mc mirror` of the `job-search` MinIO bucket (via `kubectl port-forward` to the ClusterIP service, killed after use), and `.env.services` + `.env`. Compresses to `.tar.gz`, then encrypts with AES-256-CBC (PBKDF2, 100k iterations). Moves the resulting `.tar.gz.enc` to `ob1-backups/` inside the cloud sync root (derived from `APPLICANT_DIR`).
+
+**Passphrase** — resolved in order, first match wins:
+- `BACKUP_PASSPHRASE` env var: `BACKUP_PASSPHRASE=secret bash scripts/ob1-backup.sh`
+- `BACKUP_PASSPHRASE_FILE` env var (path to a file): `BACKUP_PASSPHRASE_FILE=~/.ob1-pass bash scripts/ob1-backup.sh`
+- macOS Keychain (stored on a previous run): `security add-generic-password -a ob1-backup -s ob1-backup-passphrase -w`
+- Interactive prompt: type or paste, then press Enter — input is hidden
+
+**Override destination:**
+```bash
+OB1_BACKUP_DEST=/custom/path bash scripts/ob1-backup.sh
+```
+
+Required tools: `kubectl`, `mc` (`brew install minio/stable/mc`), `openssl`, `tar`.
+
+---
+
+## ob1-restore.sh
+
+Restore OB1 data from an encrypted backup archive. Drops and recreates the `openbrain` PostgreSQL database, wipes and re-mirrors the MinIO bucket, then runs a post-restore verification (row counts + object count vs. MANIFEST).
+
+```bash
+source "$APP_DIR/.env"
+bash scripts/ob1-restore.sh "/path/to/ob1-backup-YYYY-MM-DD-HHMMSS.tar.gz.enc"
+```
+
+Requires K8s services (`openbrain-0`, `minio`) to be already Running — only data is restored. Shows MANIFEST contents and requires `YES` confirmation before any data is modified. After restore, verify end-to-end health:
+
+```bash
+source .env && bash integrations/ob1/tests/test-deployment.sh
+```
+
+Required tools: same as `ob1-backup.sh`.
+
+---
+
 ## generate-setup-status.sh
 
 Auto-generates `$APPLICANT_DIR/memory/applicant-setup-status.md` from the current state of `$APPLICANT_DIR`. Captures which onboarding phases are complete, active profiles, and recent maintenance. Run automatically by the Stop hook after every Claude response. Not intended to be run manually.
@@ -250,7 +325,7 @@ Generates the dynamic status bar displayed in the Claude Code VS Code extension.
 | `APPLICANT_DIR` | fetch-jd.py, search-jobs.py, check-md-hygiene.sh, summarize-write.sh, sync-memory.sh | Yes | Set by setup.sh | Path to applicant data directory |
 | `APPLICANT_NAME` | check-md-hygiene.sh | Yes | Set by setup.sh | Used to detect name leaks in commits |
 | `PLAYWRIGHT_PYTHON` | fetch-jd.py, generate-pdf.py, search-jobs.py | Yes | Set by setup.sh | Python interpreter with Playwright installed |
-| `DEV_MODE` | check-dev-mode.sh | No | `"false"` | `"true"` enables APP_DIR writes |
+| `READONLY_DEPLOYMENT` | check-app-dir-writes.sh | No (deployment only) | unset | `"true"` unconditionally blocks APP_DIR writes; interactive sessions are gated by session intent classification instead |
 | `SEARCHAPI_KEY` | search-jobs.py | Yes (for /ingest) | — | SearchAPI authentication key |
 | `SEARCH_BATCH_SIZE` | search-jobs.py | No | 10 | Max new jobs per API call |
 | `OB1_REPO_PATH` | k8s-apply-env.sh (image build) | Yes (OB1 k8s) | — | Path to local OB1 repo clone; image built from `$OB1_REPO_PATH/integrations/kubernetes-deployment/` |

@@ -1,0 +1,10 @@
+name: no-ob1-edits
+kind: policy
+description: The local OB1 checkout must never be modified for job-search purposes; all job-search functionality must live in the job-search repo
+status: active
+pinned: v1
+latest: v1
+changelog:
+  - version: v1
+    date: 2026-06-19
+    summary: Established after commit 67537a1 incorrectly added thought ID output to OB1 server; that change was reverted and re-implemented in job-search-tools.ts instead

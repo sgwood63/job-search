@@ -4,23 +4,18 @@
 # Falls back to localhost URLs from .mcp.json.example if vars are unset.
 set -e
 
-# Write .env so Claude's /context workflow can resolve APP_DIR, DATA_BACKEND, DEV_MODE.
+# Write .env so Claude's /context workflow can resolve APP_DIR, DATA_BACKEND, READONLY_DEPLOYMENT.
 # Sensitive credentials are already env vars; only the path/mode variables go here.
 cat > /app/.env << EOF
 export APP_DIR="${APP_DIR:-/app}"
 export DATA_BACKEND="${DATA_BACKEND:-ob1}"
-export DEV_MODE="${DEV_MODE:-false}"
+export READONLY_DEPLOYMENT="${READONLY_DEPLOYMENT:-true}"
 export PLAYWRIGHT_PYTHON="${PLAYWRIGHT_PYTHON:-python3}"
 EOF
 
 cat > /app/.mcp.json << EOF
 {
   "mcpServers": {
-    "open-brain": {
-      "type": "http",
-      "url": "${OB1_MCP_URL:-http://localhost/ob1/mcp}",
-      "headers": { "x-brain-key": "${OB1_MCP_KEY:-}" }
-    },
     "job-search": {
       "type": "http",
       "url": "${JOB_SEARCH_MCP_URL:-http://localhost/job-search/mcp}",

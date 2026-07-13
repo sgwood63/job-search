@@ -2,7 +2,7 @@
 
 **Goal:** Reduce context window usage (cost + compression risk) by replacing full-file context loads with targeted semantic retrieval and table-based queries.
 
-**Status:** Phase 1 complete (drafts). Phases 2–3 in progress.
+**Status:** Phases 1–3 complete (promoted). Phase 4 (Knowledge Map) in implementation on `feat/ob1-knowledge-map`.
 
 ## Background
 
@@ -78,9 +78,47 @@ Surface relevant past applications during new JD processing and resume generatio
 | role-achievements.md in resume | Not a chunking target | Upstream maintenance source; not read during resume generation |
 | `js_ingested_positions` PK | UUID (matches all other js_* tables) | Consistency; no bigserial special cases |
 
+### Phase 4 — Knowledge Map via OB1 Thoughts (implemented on `feat/ob1-knowledge-map`)
+
+Capture every piece of application knowledge as an OB1 thought. OB1's entity extraction worker automatically builds a graph of skills, companies, people, and requirement themes. `notes.md` becomes a generated view from those thoughts rather than the authoritative document.
+
+**What changed:**
+- `notes-index.md` replaces `notes.md` as the primary per-application file — lightweight header block + OB1 thought ID registry (~20 lines)
+- `notes.md` becomes a generated view rendered on demand by the new `skills/application-summary/v1` skill
+- `workflows/process-jd/v3` adds Steps 5–6: capture `jd_analysis` + `fit_assessment` thoughts; create `company→requires→skill` edges for each JD requirement
+- `workflows/create-application/v4` captures `domain_connection`, `company_research`, and `resume_strategy` thoughts
+- `skills/interview-prep/v3` retrieves thoughts by ID instead of loading notes.md wholesale
+- `skills/resume-generation/v4` adds Phase 0.25: graph traversal enrichment before content retrieval
+- Profile maintenance: when adding an achievement, `capture_thought` with `thought_category: achievement`; create `achievement→demonstrates→skill` edges
+
+**New MCP tools (Phase 4 explicit edges):** `create_knowledge_edge`, `get_entity_neighbors`, `traverse_knowledge_graph` — registered in job-search-mcp server; no OB1 source changes required.
+
+**Automatic thought_category inference + binary file extraction:** Every file upload goes through `extractAsMarkdown()` before thought capture and chunking. Type-specific converters produce best-effort markdown with headings preserved:
+- **HTML** → `domToMarkdown()` DOM walk (H1/H2 → `## `, H3/H4 → `### `, LI → `- `)
+- **DOCX** → `mammoth.convert()` with Word heading style map (Heading 1/2 → `## `)
+- **PDF** → `extractMarkdownViaHaiku()`: single Haiku call returns both markdown AND `thought_category` (one API call, not two); falls back to `unpdf` plain text when `ANTHROPIC_API_KEY` absent
+- **text/markdown, text/plain** → pass through
+
+The new `capture_thought` MCP tool (`mcp__job-search__capture_thought`) exposes the `captureThoughtFn` callback with structured metadata fields (`application_id`, `thought_category`, `company`, `profile_slug`, etc.). It passes metadata as typed fields instead of YAML embedded in content.
+
+Inferred category stored in `js_files.thought_category` and in the thought metadata. Chat panel file attachments use `useLocation()` to pass application folder as context.
+
+**Context impact:** Significant for interview-prep — replaces full notes.md load with targeted thought fetches by ID. Upload pipeline now produces fully indexed, classified thoughts for all file types including PDFs and DOCX, with section-level chunks that carry `section_title` from headings in DOCX, HTML, and PDF content.
+
+**Files changed:**
+- `workflows/process-jd/v2.md` — new Step 5 (thought capture + notes-index.md)
+- `workflows/create-application/v4.md` — thought capture + application-summary call
+- `skills/interview-prep/v3.md` — thought-based retrieval
+- `skills/application-summary/` — new skill
+- `docs/architecture/ob1-knowledge-map-spec.md` — full design spec
+
+**Related:** `docs/ob1-intelligent-access/chunking-design.md` §Relationship to Phase 4
+
 ## Related Files
 
-- Plan: `$APP_DIR/.claude/plans/now-we-have-ob1-mossy-quiche.md`
+- Plan (Phases 1–3): `$APP_DIR/.claude/plans/now-we-have-ob1-mossy-quiche.md`
+- Plan (Phase 4): `$APP_DIR/.claude/plans/ob1-enhancements-and-use-floating-crown.md`
+- Spec (Phase 4): `$APP_DIR/docs/architecture/ob1-knowledge-map-spec.md`
 - Schema: `integrations/ob1/job-search-schema.sql`
 - Tools: `integrations/ob1/job-search-tools.ts`
 - Server: `integrations/ob1/job-search-server.ts`

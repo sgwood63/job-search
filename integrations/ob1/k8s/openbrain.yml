@@ -1,9 +1,13 @@
 ---
-# Job-search-managed copy of the OB1 StatefulSet manifest.
-# Sources all non-sensitive config from openbrain-configmap and sensitive values
-# from openbrain-secret — both created/updated by: bash scripts/k8s-apply-env.sh
+# Job-search-managed OB1 StatefulSet manifest.
+# After the OB1 MCP + ob1-rest-pg merge, this pod runs ONE container only: db.
+# The MCP server and LLM observability proxy (langfuse-proxy) have been removed;
+# those capabilities now live in the job-search-mcp Deployment.
 #
-# Deploy this instead of the manifest in the OB1 repo.
+# Non-sensitive config from openbrain-configmap (DB_USER, DB_NAME only after merge).
+# Sensitive values from openbrain-secret (postgres-password only after merge).
+# Both are created/updated by: bash scripts/k8s-apply-env.sh
+#
 # Do NOT apply OB1's openbrain.yml or secrets.yml alongside this.
 ---
 apiVersion: v1
@@ -80,7 +84,7 @@ spec:
         app: openbrain
     spec:
       containers:
-        # Container 1: PostgreSQL + pgvector
+        # Container 1 (only): PostgreSQL + pgvector
         - name: db
           image: ankane/pgvector:v0.5.1
           env:
@@ -119,103 +123,6 @@ spec:
             limits:
               memory: 1Gi
 
-        # Container 2: Open Brain MCP Server (Deno)
-        - name: mcp-server
-          image: openbrain-mcp-server:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8000
-              name: http
-          envFrom:
-            # Non-sensitive config: DB_HOST, DB_PORT, DB_NAME, DB_USER,
-            # EMBEDDING_API_BASE, EMBEDDING_MODEL, CHAT_API_BASE, CHAT_MODEL
-            # Created/updated by: bash scripts/k8s-apply-env.sh
-            - configMapRef:
-                name: openbrain-configmap
-          env:
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: postgres-password
-            - name: MCP_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: mcp-access-key
-            - name: EMBEDDING_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: embedding-api-key
-            - name: CHAT_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: chat-api-key
-            - name: PORT
-              value: "8000"
-          readinessProbe:
-            tcpSocket:
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              memory: 512Mi
-
-        # Container 3: Langfuse observability proxy (sidecar)
-        # openbrain-mcp routes its EMBEDDING_API_BASE and CHAT_API_BASE here
-        # (http://localhost:8080); this proxy forwards to the real upstream and
-        # logs each LLM call to Langfuse.
-        - name: langfuse-proxy
-          image: langfuse-proxy:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8080
-              name: proxy
-          env:
-            - name: UPSTREAM_EMBEDDING_API_BASE
-              valueFrom:
-                configMapKeyRef:
-                  name: openbrain-configmap
-                  key: UPSTREAM_EMBEDDING_API_BASE
-            - name: UPSTREAM_CHAT_API_BASE
-              valueFrom:
-                configMapKeyRef:
-                  name: openbrain-configmap
-                  key: UPSTREAM_CHAT_API_BASE
-            - name: LANGFUSE_HOST
-              valueFrom:
-                configMapKeyRef:
-                  name: openbrain-configmap
-                  key: LANGFUSE_HOST
-            - name: LANGFUSE_PUBLIC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: langfuse-public-key
-            - name: LANGFUSE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openbrain-secret
-                  key: langfuse-secret-key
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 15
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
-
       volumes:
         - name: init-sql
           configMap:
@@ -231,18 +138,5 @@ spec:
           requests:
             storage: 5Gi
 
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: openbrain
-  namespace: openbrain
-spec:
-  selector:
-    app: openbrain
-  ports:
-    - protocol: TCP
-      port: 8000
-      targetPort: http
-      name: mcp
-  type: ClusterIP
+# The openbrain Service (port 8000, MCP) has been removed.
+# Database access is provided by the separate openbrain-db Service (openbrain-db-service.yml).

@@ -147,16 +147,28 @@ class ObRestClient:
         r.raise_for_status()
         return r.json()
 
-    async def put_file(self, key: str, content: bytes | str, content_type: str = 'text/markdown') -> dict:
+    async def put_file(
+        self,
+        key: str,
+        content: bytes | str,
+        content_type: str = 'text/markdown',
+        thought_category: str | None = None,
+        application_folder: str | None = None,
+    ) -> dict:
         if isinstance(content, bytes):
-            payload = {
+            payload: dict = {
                 'content': base64.b64encode(content).decode('ascii'),
                 'content_type': content_type,
                 'binary': True,
             }
         else:
             payload = {'content': content, 'content_type': content_type, 'binary': False}
-        r = await self._http.put(f'/api/v2/files/{key}', json=payload)
+        if application_folder:
+            payload['application_folder'] = application_folder
+        url = f'/api/v2/files/{key}'
+        if thought_category:
+            url += f'?thought_category={thought_category}'
+        r = await self._http.put(url, json=payload)
         r.raise_for_status()
         return r.json()
 
@@ -212,6 +224,37 @@ class ObRestClient:
         if exclude_id:
             body['exclude_id'] = exclude_id
         r = await self._http.post('/api/v2/search/similar-applications', json=body)
+        r.raise_for_status()
+        return r.json()
+
+    async def get_thoughts(self, limit: int = 50, offset: int = 0, sort: str = 'desc', filter_type: str | None = None) -> dict:
+        page = (offset // limit) + 1 if limit > 0 else 1
+        params: dict = {'per_page': limit, 'page': page, 'order': sort}
+        if filter_type:
+            params['type'] = filter_type
+        r = await self._http.get('/ob1/rest/thoughts', params=params)
+        r.raise_for_status()
+        data = r.json()
+        return {'thoughts': data.get('data', [])}
+
+    async def get_thought(self, thought_id: str) -> dict:
+        r = await self._http.get(f'/ob1/rest/thought/{thought_id}')
+        r.raise_for_status()
+        return r.json()
+
+    async def search_thoughts(self, query: str, limit: int = 20, mode: str = 'semantic') -> dict:
+        r = await self._http.post('/ob1/rest/search', json={'query': query, 'limit': limit, 'mode': mode})
+        r.raise_for_status()
+        return r.json()
+
+    async def get_thought_stats(self) -> dict:
+        r = await self._http.get('/ob1/rest/stats')
+        r.raise_for_status()
+        data = r.json()
+        return {'total': data.get('total_thoughts', 0), 'by_type': data.get('types', {})}
+
+    async def get_thought_connections(self, thought_id: str, limit: int = 10) -> list:
+        r = await self._http.get(f'/ob1/rest/thought/{thought_id}/connections', params={'limit': limit})
         r.raise_for_status()
         return r.json()
 
@@ -657,15 +700,25 @@ async def put_file(path: str = Query(...), body: FileBody = None):
 
 
 @app.post('/api/upload')
-async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
+async def upload_file(
+    dir: str = Query(...),
+    file: UploadFile = File(...),
+    thought_category: str | None = Query(None),
+    application_folder: str | None = Query(None),
+):
     key = _validate_upload_key(f"{dir.rstrip('/')}/{file.filename}")
     data = await file.read()
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail='File too large (max 50 MB)')
     mime = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
     _t0 = time.monotonic()
+    ob_result: dict = {}
     if DATA_BACKEND == 'ob1':
-        await _ob_rest.put_file(key, data, mime)
+        ob_result = await _ob_rest.put_file(
+            key, data, mime,
+            thought_category=thought_category,
+            application_folder=application_folder,
+        )
     else:
         await _get_local_store().put(key, data, mime)
     _dur = int((time.monotonic() - _t0) * 1000)
@@ -674,7 +727,13 @@ async def upload_file(dir: str = Query(...), file: UploadFile = File(...)):
                    duration_ms=_dur,
                    input_data={'key': key, 'bytes': len(data), 'content_type': mime},
                    output_data={'ok': True})
-    return {'ok': True, 'path': key, 'name': file.filename}
+    return {
+        'ok': True,
+        'path': key,
+        'name': file.filename,
+        **({'thought_id': ob_result['thought_id']} if ob_result.get('thought_id') else {}),
+        **({'thought_category': ob_result['thought_category']} if ob_result.get('thought_category') else {}),
+    }
 
 
 # ── Docs endpoints ────────────────────────────────────────────────────────────
@@ -883,6 +942,52 @@ async def search_runs(
         profile_slug=profile_slug, since=since, limit=min(limit, 200)
     )
     return {'records': records}
+
+
+# ── Thoughts browser (OB1-compat routes) ─────────────────────────────────────
+
+@app.get('/api/thoughts/stats')
+async def thoughts_stats():
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought_stats()
+
+
+@app.get('/api/thoughts/{thought_id}/connections')
+async def thought_connections(thought_id: str, limit: int = Query(10)):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought_connections(thought_id, limit=limit)
+
+
+@app.get('/api/thoughts/{thought_id}')
+async def get_thought(thought_id: str):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thought(thought_id)
+
+
+@app.get('/api/thoughts')
+async def list_thoughts(
+    limit: int = Query(50),
+    offset: int = Query(0),
+    sort: str = Query('desc'),
+    type: Optional[str] = Query(None),
+):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.get_thoughts(limit=min(limit, 200), offset=offset, sort=sort, filter_type=type)
+
+
+@app.post('/api/thoughts/search')
+async def search_thoughts(body: dict):
+    if not _ob_rest:
+        raise HTTPException(status_code=503, detail='OB1 not configured')
+    return await _ob_rest.search_thoughts(
+        query=body.get('query', ''),
+        limit=min(int(body.get('limit', 20)), 100),
+        mode=body.get('mode', 'semantic'),
+    )
 
 
 # ── Delete file ───────────────────────────────────────────────────────────────

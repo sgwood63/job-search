@@ -10,7 +10,8 @@
       "Bash(.venv/bin/pytest tests/test_api.py::test_health_ok -x -q)",
       "Bash(.venv/bin/pytest tests/ -q --ignore=tests/test_api.py)",
       "Skill(run)",
-      "Skill(run:*)"
+      "Skill(run:*)",
+      "Bash(bash scripts/write-scope-marker.sh)"
     ]
   },
   "hooks": {
@@ -20,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/check-dev-mode.sh"
+            "command": "bash scripts/check-vn-immutable.sh"
           }
         ]
       },
@@ -29,7 +30,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/check-dev-mode.sh"
+            "command": "bash scripts/check-vn-immutable.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check-app-dir-writes.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/scope-before-write.py"
           }
         ]
       }
@@ -60,6 +74,21 @@
           {
             "type": "command",
             "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && python3 scripts/langfuse_cc_hook.py'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && bash scripts/sync-codebase-index.sh'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/classify-intent-before-plan.py"
           }
         ]
       }

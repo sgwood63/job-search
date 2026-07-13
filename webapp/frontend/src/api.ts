@@ -97,6 +97,19 @@ export type SearchRun = {
   run_at: string
 }
 
+export type Thought = {
+  id: string
+  content: string
+  metadata: Record<string, unknown>
+  created_at: string
+  similarity?: number
+}
+
+export type ThoughtStats = {
+  total: number
+  by_type: Record<string, number>
+}
+
 function ok(r: Response) {
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   return r
@@ -142,10 +155,13 @@ export const api = {
   upload: (
     dir: string,
     file: File,
-  ): Promise<{ ok: boolean; path: string; name: string }> => {
+    options?: { applicationFolder?: string },
+  ): Promise<{ ok: boolean; path: string; name: string; thought_id?: string; thought_category?: string }> => {
     const form = new FormData()
     form.append('file', file)
-    return apiFetch(`${BASE}/upload?dir=${encodeURIComponent(dir)}`, {
+    const qs = new URLSearchParams({ dir })
+    if (options?.applicationFolder) qs.set('application_folder', options.applicationFolder)
+    return apiFetch(`${BASE}/upload?${qs}`, {
       method: 'POST',
       body: form,
     }).then(r => r.json())
@@ -193,6 +209,34 @@ export const api = {
     const q = qs.toString()
     return apiFetch(`${BASE}/search-runs${q ? '?' + q : ''}`).then(r => r.json())
   },
+
+  thoughts: (params?: { limit?: number; offset?: number; sort?: string; type?: string }): Promise<{ thoughts: Thought[] }> => {
+    const qs = new URLSearchParams()
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    if (params?.sort) qs.set('sort', params.sort)
+    if (params?.type) qs.set('type', params.type)
+    const q = qs.toString()
+    return apiFetch(`${BASE}/thoughts${q ? '?' + q : ''}`).then(r => r.json())
+  },
+
+  thoughtStats: (): Promise<ThoughtStats> =>
+    apiFetch(`${BASE}/thoughts/stats`).then(r => r.json()),
+
+  thought: (id: string): Promise<Thought> =>
+    apiFetch(`${BASE}/thoughts/${encodeURIComponent(id)}`).then(r => r.json()),
+
+  thoughtConnections: (id: string, limit?: number): Promise<Thought[]> => {
+    const qs = limit != null ? `?limit=${limit}` : ''
+    return apiFetch(`${BASE}/thoughts/${encodeURIComponent(id)}/connections${qs}`).then(r => r.json())
+  },
+
+  searchThoughts: (query: string, limit?: number, mode?: string): Promise<{ results: Thought[] }> =>
+    apiFetch(`${BASE}/thoughts/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit, mode }),
+    }).then(r => r.json()),
 
   docs: (): Promise<Array<{ name: string; size: number }>> =>
     apiFetch(`${BASE}/docs`).then(r => r.json()),

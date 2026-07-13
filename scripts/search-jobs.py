@@ -6,12 +6,11 @@ USAGE
     python3 scripts/search-jobs.py <profile-name>
     python3 scripts/search-jobs.py <profile-name> --page-token <token>
     python3 scripts/search-jobs.py <profile-name> --dry-run
-    python3 scripts/search-jobs.py <profile-name> --no-dedup
 
     Reads the OR-query for <profile-name> from $APPLICANT_DIR/profiles/PROFILES-QUICK-REFERENCE.md
-    Deduplicates against $APPLICANT_DIR/profiles/<profile-name>/search-results/seen-jobs.json
     Saves raw API response to $APPLICANT_DIR/profiles/<profile-name>/search-results/
     Prints JSON result to stdout; errors to stderr
+    Persistent dedup is handled by the calling workflow (MCP check_position_seen or ingested-positions.csv)
 
 OUTPUT (stdout)
     {
@@ -98,22 +97,12 @@ def parse_query_for_profile(quick_ref_path: Path, profile: str) -> str:
     return row_match.group(1).strip()
 
 
-def load_seen_jobs(seen_path: Path) -> set:
-    if not seen_path.exists():
-        return set()
-    data = json.loads(seen_path.read_text())
-    return set(data.get("job_ids", []))
 
-
-def save_seen_jobs(seen_path: Path, seen: set):
-    seen_path.write_text(json.dumps({"job_ids": sorted(seen)}, indent=2))
-
-
-def call_searchapi(query: str, api_key: str, page_token: str | None) -> dict:
+def call_searchapi(query: str, api_key: str, page_token: str | None, location: str = "United States") -> dict:
     params = {
         "engine": "google_jobs",
         "q": query,
-        "location": "United States",
+        "location": location,
         "gl": "us",
         "hl": "en",
         "api_key": api_key,
@@ -170,22 +159,22 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print params, skip API call")
     parser.add_argument("--batch-out", default=None, metavar="FILE", help="Append new jobs as NDJSON to FILE; omit new_jobs from stdout")
     parser.add_argument("--batch-size", default=None, type=int, metavar="N", help="Max new jobs to return (overrides SEARCH_BATCH_SIZE env var)")
-    parser.add_argument("--seen-jobs-path", default=None, metavar="FILE", help="Override path to seen-jobs.json (OB1 mode: pre-populated from object store)")
     parser.add_argument("--no-raw-save", action="store_true", help="Skip saving raw API response to disk (OB1 mode)")
-    parser.add_argument("--no-dedup", action="store_true", help="Return all fetched jobs regardless of seen status (still updates seen list)")
+    parser.add_argument("--location", default="United States",
+                        help="Google Jobs location filter (default: United States)")
     args = parser.parse_args()
 
     api_key = get_env("SEARCHAPI_KEY")
     batch_size = args.batch_size if args.batch_size is not None else int(os.environ.get("SEARCH_BATCH_SIZE", "10"))
 
-    ob1_mode = args.seen_jobs_path is not None
+    data_backend = os.environ.get("DATA_BACKEND", "local")
+    ob1_mode = data_backend == "ob1"
 
     if ob1_mode:
         if not args.query:
-            print("Error: --seen-jobs-path requires --query (profile dir lookup is skipped in OB1 mode)", file=sys.stderr)
+            print("Error: DATA_BACKEND=ob1 requires --query (profile dir lookup is skipped in OB1 mode)", file=sys.stderr)
             sys.exit(1)
-        seen_jobs_path = Path(args.seen_jobs_path)
-        search_results_dir = seen_jobs_path.parent
+        search_results_dir = Path(args.batch_out).parent if args.batch_out else Path("/tmp")
     else:
         applicant_dir = Path(get_env("APPLICANT_DIR"))
         profiles_dir = applicant_dir / "profiles"
@@ -201,10 +190,8 @@ def main():
             sys.exit(1)
 
         search_results_dir.mkdir(parents=True, exist_ok=True)
-        seen_jobs_path = search_results_dir / "seen-jobs.json"
 
     query = args.query if args.query else parse_query_for_profile(quick_ref, args.profile)
-    seen = load_seen_jobs(seen_jobs_path)
 
     if args.dry_run:
         print(json.dumps({
@@ -213,23 +200,21 @@ def main():
             "query": query,
             "query_source": "flag" if args.query else "table",
             "page_token": args.page_token,
-            "no_dedup": args.no_dedup,
             "params": {
                 "engine": "google_jobs",
                 "q": query,
-                "location": "United States",
+                "location": args.location,
                 "gl": "us",
                 "hl": "en",
                 "next_page_token": args.page_token,
             },
-            "seen_jobs_count": len(seen),
         }, indent=2))
         return
 
-    response = call_searchapi(query, api_key, args.page_token)
+    response = call_searchapi(query, api_key, args.page_token, args.location)
 
     # Save raw response (skipped in OB1 mode)
-    if not args.no_raw_save:
+    if not args.no_raw_save and not ob1_mode:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         raw_file = search_results_dir / f"{timestamp}_page.json"
         raw_file.write_text(json.dumps(response, indent=2))
@@ -238,17 +223,16 @@ def main():
     total_fetched = len(raw_jobs)
     next_page_token = response.get("pagination", {}).get("next_page_token")
 
-    # Deduplicate: update seen with ALL fetched job IDs
+    # Deduplicate within this run (in-memory only; persistent dedup is the workflow's job)
+    seen_ids: set[str] = set()
     new_jobs = []
     for job in raw_jobs:
         normalized = normalize_job(job)
         jid = normalized["job_id"]
-        if args.no_dedup or (jid and jid not in seen):
+        if not jid or jid not in seen_ids:
             new_jobs.append(normalized)
         if jid:
-            seen.add(jid)
-
-    save_seen_jobs(seen_jobs_path, seen)
+            seen_ids.add(jid)
 
     # Respect batch_size — caller can paginate for more
     new_jobs = new_jobs[:batch_size]

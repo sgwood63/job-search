@@ -4,6 +4,13 @@ This document describes how the profiles directory works and how to author profi
 
 All profile files live in `$APPLICANT_DIR/profiles/` — not in this repo. This repo contains scaffold stubs (in `templates/scaffold/profiles/`) that are seeded into `$APPLICANT_DIR/profiles/` during `scripts/setup.sh`.
 
+## Contents
+
+- [Directory Structure](#directory-structure)
+- [File Roles](#file-roles)
+- [Authoring Rules](#authoring-rules)
+- [Resume Format](#resume-format)
+
 ---
 
 ## Directory Structure

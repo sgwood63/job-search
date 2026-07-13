@@ -1,0 +1,3 @@
+name: classify-intent
+description: Classifies a user prompt into an intent category using the intent-policy.
+pinned: v1

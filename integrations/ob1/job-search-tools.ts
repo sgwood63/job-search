@@ -19,6 +19,8 @@ import { S3Client, PutObjectCommand, GetObjectCommand,
          ListObjectsV2Command, DeleteObjectCommand,
          GetObjectCommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { extractText as extractPdfText } from "unpdf";
+import mammoth from "mammoth";
 
 // ---------------------------------------------------------------------------
 // Object store client (MinIO or Supabase Storage, configured by env)
@@ -26,6 +28,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const OBJECT_STORE_BACKEND = Deno.env.get("OBJECT_STORE_BACKEND") ?? "minio";
 const BUCKET = Deno.env.get("MINIO_BUCKET") ?? Deno.env.get("SUPABASE_BUCKET") ?? "job-search";
+const CITATION_BASE_URL =
+  Deno.env.get("CITATION_BASE_URL") ?? "http://localhost/job-search/thoughts";
 
 function makeS3Client(): S3Client {
   if (OBJECT_STORE_BACKEND === "supabase") {
@@ -78,7 +82,242 @@ async function streamToBytes(stream: unknown): Promise<Uint8Array> {
 }
 
 function isTextType(contentType: string): boolean {
-  return contentType.startsWith("text/") || contentType === "application/json";
+  return contentType.startsWith("text/")
+    || contentType === "application/json"
+    || contentType === "application/xhtml+xml";
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: text extraction, context derivation, and category inference
+// ---------------------------------------------------------------------------
+
+// Walk a DOM element and emit best-effort markdown, preserving heading structure.
+function domToMarkdown(el: Element | null): string {
+  if (!el) return "";
+  const lines: string[] = [];
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = (node as Text).textContent?.trim();
+      if (t) lines.push(t);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = (node as Element).tagName;
+      const inner = domToMarkdown(node as Element).trim();
+      if (!inner) continue;
+      if (tag === "H1" || tag === "H2") lines.push(`## ${inner}`);
+      else if (tag === "H3" || tag === "H4") lines.push(`### ${inner}`);
+      else if (tag === "LI") lines.push(`- ${inner}`);
+      else if (["P", "DIV", "SECTION", "ARTICLE"].includes(tag)) {
+        lines.push(inner);
+        lines.push("");
+      } else {
+        lines.push(inner);
+      }
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+// Send a PDF to Haiku as a document block and get back markdown + thought_category in one call.
+// Returns null if the API key is absent or the call fails — caller should fall back to unpdf.
+async function extractMarkdownViaHaiku(
+  bytes: Uint8Array,
+  filename: string,
+  ctx: UploadContext,
+): Promise<{ markdown: string; thought_category: string } | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const prompt = [
+    "You are processing a document for a job search knowledge system.",
+    "",
+    "Output format (two sections, required):",
+    "Line 1: exactly one thought_category label (snake_case only)",
+    "Line 2: ---",
+    "Lines 3+: the full document converted to well-structured markdown",
+    "",
+    "Category options: jd_analysis, fit_assessment, domain_connection, company_research,",
+    "resume_strategy, interview_prep, meeting_notes, email, exercise, application_event, achievement",
+    "",
+    "Markdown rules:",
+    "- Preserve ALL content verbatim; do not summarize or omit anything",
+    "- Use ## for major sections (Requirements, Responsibilities, About the Role, etc.)",
+    "- Use ### for subsections; bullet lists for requirement/responsibility lists",
+    "- Separate paragraphs with blank lines",
+    "",
+    `Context: ${ctx.directoryType} directory, company: ${ctx.company ?? "unknown"}, filename: ${filename}`,
+    "Default category: jd_analysis for JDs, exercise for exercise docs, interview_prep for interview materials.",
+  ].join("\n");
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: INFERENCE_MODEL,
+        max_tokens: 4096,
+        temperature: 0,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) } },
+            { type: "text", text: prompt },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const output = (data?.content?.[0]?.text ?? "").trim();
+    const sepIdx = output.indexOf("\n---\n");
+    if (sepIdx === -1) return null;
+    const thought_category = output.slice(0, sepIdx).trim().replace(/[^a-z_]/g, "");
+    const markdown = output.slice(sepIdx + 5).trim();
+    return markdown ? { markdown, thought_category } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Convert uploaded file bytes to best-effort markdown for thought capture and chunking.
+// HTML → DOM walk; DOCX → mammoth heading style map; PDF → unpdf plain text (Haiku handles PDF upstream);
+// text/* → pass through; other binary → null.
+async function extractAsMarkdown(
+  bytes: Uint8Array,
+  contentType: string,
+  rawText?: string,
+): Promise<string | null> {
+  try {
+    if (contentType === "text/html" || contentType === "application/xhtml+xml") {
+      const html = rawText ?? new TextDecoder().decode(bytes);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return domToMarkdown(doc.body);
+    }
+    if (contentType === "application/pdf") {
+      // Fallback path (used when ANTHROPIC_API_KEY is absent or Haiku call fails).
+      const { text } = await extractPdfText(bytes, { mergePages: true });
+      return text ?? null;
+    }
+    if (
+      contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      || contentType === "application/msword"
+    ) {
+      const result = await mammoth.convert(
+        { buffer: bytes.buffer as unknown as any },
+        { styleMap: [
+          "p[style-name='Heading 1'] => ## $1",
+          "p[style-name='Heading 2'] => ## $1",
+          "p[style-name='Heading 3'] => ### $1",
+        ]},
+      );
+      return result.value?.trim() || null;
+    }
+    if (isTextType(contentType)) {
+      return rawText ?? new TextDecoder().decode(bytes);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface UploadContext {
+  directoryType: "application" | "profile" | "search" | "docs" | "unknown";
+  applicationStatus?: string;
+  company?: string;
+  profileSlug?: string;
+}
+
+async function deriveUploadContext(key: string, pool: unknown): Promise<UploadContext> {
+  const parts = key.split("/");
+  if (parts[0] === "applications" && parts[1]) {
+    const folder = parts[1];
+    try {
+      const c = await (pool as any).connect();
+      try {
+        const r = await c.queryObject(
+          `SELECT status, company_id FROM js_applications WHERE folder_prefix = $1 LIMIT 1`,
+          [folder],
+        );
+        if (r.rows[0]) {
+          const row = r.rows[0] as any;
+          let company: string | undefined;
+          if (row.company_id) {
+            const cr = await c.queryObject(
+              `SELECT name FROM js_companies WHERE id = $1 LIMIT 1`, [row.company_id],
+            );
+            company = (cr.rows[0] as any)?.name;
+          }
+          return { directoryType: "application", applicationStatus: row.status, company };
+        }
+      } finally { c.release(); }
+    } catch { /* best-effort */ }
+    return { directoryType: "application" };
+  }
+  if (parts[0] === "profiles" && parts[1]) {
+    return { directoryType: "profile", profileSlug: parts[1] };
+  }
+  if (parts[0] === "search") return { directoryType: "search" };
+  if (parts[0] === "docs") return { directoryType: "docs" };
+  return { directoryType: "unknown" };
+}
+
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const INFERENCE_MODEL = "claude-haiku-4-5-20251001";
+
+async function inferThoughtCategory(
+  text: string,
+  filename: string,
+  ctx: UploadContext,
+): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const snippet = text.slice(0, 2000);
+  const prompt = [
+    "You classify documents uploaded to a job search knowledge system.",
+    "Output exactly one thought_category label for the file below.",
+    "",
+    `Directory context: ${ctx.directoryType}`,
+    `Application status: ${ctx.applicationStatus ?? "unknown"}`,
+    `Company: ${ctx.company ?? "unknown"}`,
+    `Profile slug: ${ctx.profileSlug ?? "unknown"}`,
+    `Filename: ${filename}`,
+    "",
+    "Suggested categories: jd_analysis, fit_assessment, domain_connection, company_research,",
+    "resume_strategy, interview_prep, meeting_notes, email, exercise, application_event, achievement",
+    "",
+    `Content (first 2000 chars):\n${snippet}`,
+    "",
+    "Output one snake_case label only. If ambiguous and context is an application, output \"application_event\".",
+  ].join("\n");
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: INFERENCE_MODEL,
+        max_tokens: 20,
+        temperature: 0,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const category = (data?.content?.[0]?.text ?? "").trim().replace(/[^a-z_]/g, "");
+    return category || null;
+  } catch {
+    return null;
+  }
 }
 
 export type CaptureThoughtFn = (content: string, metadata: Record<string, unknown>) => Promise<string>;
@@ -87,11 +326,19 @@ export type SearchThoughtsFn = (
   limit: number,
   filter: Record<string, unknown>,
 ) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; similarity: number; created_at: string }>>;
+export type ListThoughtsFn = (
+  limit: number,
+  type?: string,
+  topic?: string,
+  person?: string,
+  days?: number,
+) => Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; created_at: string }>>;
 export type EmbedQueryFn = (query: string) => Promise<number[]>;
 export type ChunkContentFn = (content: string, storageKey: string) => Promise<void>;
 export type JobSearchCallbacks = {
   captureThought?: CaptureThoughtFn;
   searchThoughts?: SearchThoughtsFn;
+  listThoughts?: ListThoughtsFn;
   embedQuery?: EmbedQueryFn;
   chunkContent?: ChunkContentFn;
 };
@@ -109,6 +356,9 @@ export interface MarkdownChunk {
 export function chunkMarkdown(text: string): MarkdownChunk[] {
   const MAX_CHUNK = 8000;
   const MIN_CHUNK = 30;
+  // Headerless sections larger than this get paragraph-split even if under MAX_CHUNK.
+  // Catches verbatim JD files (no ## headers) that would otherwise become one giant blob.
+  const PARA_SPLIT_SIZE = 1500;
   const chunks: MarkdownChunk[] = [];
   // Split on H2 boundaries; keep the ## header with its section
   const parts = text.split(/(?=\n## )/);
@@ -118,15 +368,20 @@ export function chunkMarkdown(text: string): MarkdownChunk[] {
     if (trimmed.length < MIN_CHUNK) continue;
     const headerMatch = trimmed.match(/^## (.+)/);
     const title = headerMatch ? headerMatch[1].trim() : null;
-    // If this chunk is oversized, split at paragraph boundaries
-    if (trimmed.length <= MAX_CHUNK) {
+    // Paragraph-split when: (a) oversized, or (b) no H2 header and exceeds PARA_SPLIT_SIZE
+    if (trimmed.length <= MAX_CHUNK && !(title === null && trimmed.length > PARA_SPLIT_SIZE)) {
       chunks.push({ title, index: chunks.length, content: trimmed });
     } else {
-      const paras = trimmed.split(/\n\n+/);
+      // Use PARA_SPLIT_SIZE as target when splitting a headerless section; MAX_CHUNK otherwise.
+      const splitTarget = title === null ? PARA_SPLIT_SIZE : MAX_CHUNK;
+      // Fall back to single-newline splitting for flat PDFs with no paragraph breaks.
+      const paras = trimmed.includes("\n\n")
+        ? trimmed.split(/\n\n+/)
+        : trimmed.split(/\n/).filter(l => l.trim().length > 0);
       let buf = "";
       let subIdx = 0;
       for (const para of paras) {
-        if (buf.length + para.length + 2 > MAX_CHUNK && buf.length >= MIN_CHUNK) {
+        if (buf.length + para.length + 2 > splitTarget && buf.length >= MIN_CHUNK) {
           chunks.push({
             title: subIdx === 0 ? title : `${title ?? "…"} (continued ${subIdx})`,
             index: chunks.length,
@@ -157,12 +412,20 @@ export function chunkMarkdown(text: string): MarkdownChunk[] {
 export async function uploadFileCore(
   pool: unknown,
   captureThoughtFn: CaptureThoughtFn | undefined,
-  args: { key: string; content: string; content_type: string; binary: boolean },
+  args: { key: string; content: string; content_type: string; binary: boolean; thought_category?: string; application_folder?: string },
   chunkContentFn?: ChunkContentFn,
-): Promise<{ key: string; bytes: number }> {
+): Promise<{ key: string; bytes: number; thought_id?: string; thought_category?: string }> {
   const bytes = args.binary
     ? Uint8Array.from(atob(args.content), c => c.charCodeAt(0))
     : new TextEncoder().encode(args.content);
+
+  // Reject 0-byte binary uploads — empty content field causes silent corrupt js_files metadata.
+  if (args.binary && bytes.length === 0) {
+    throw new Error(
+      `Binary upload decoded to 0 bytes — content field is empty or contains invalid base64. ` +
+      `PDF/binary files must be uploaded via REST API with a correctly base64-encoded content field.`,
+    );
+  }
 
   let oldThoughtId: string | null = null;
   {
@@ -179,11 +442,39 @@ export async function uploadFileCore(
     Bucket: BUCKET, Key: args.key, Body: bytes, ContentType: args.content_type,
   }));
 
+  // Phase 3: derive context, extract markdown, infer category, capture thought
+  const filename = args.key.split("/").pop() ?? args.key;
+  const ctx = await deriveUploadContext(args.application_folder ? `applications/${args.application_folder}/` : args.key, pool);
+
+  let cleanText: string | null = null;
+  let thoughtCategory: string | null = args.thought_category ?? null;
+
+  if (args.binary && args.content_type === "application/pdf") {
+    // PDF: Haiku converts to markdown and returns category in one call; fall back to unpdf plain text.
+    const haiku = await extractMarkdownViaHaiku(bytes, filename, ctx);
+    if (haiku) {
+      cleanText = haiku.markdown;
+      if (!thoughtCategory) thoughtCategory = haiku.thought_category;
+    } else {
+      cleanText = await extractAsMarkdown(bytes, args.content_type);
+    }
+  } else if (!args.binary) {
+    cleanText = await extractAsMarkdown(bytes, args.content_type, args.content);
+  } else {
+    cleanText = await extractAsMarkdown(bytes, args.content_type);
+  }
+
   let thoughtId: string | null = null;
-  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && captureThoughtFn) {
+
+  if (cleanText && cleanText.length > 50 && captureThoughtFn) {
+    if (!thoughtCategory) {
+      thoughtCategory = await inferThoughtCategory(cleanText, filename, ctx);
+    }
     try {
-      thoughtId = await captureThoughtFn(args.content, {
+      thoughtId = await captureThoughtFn(cleanText, {
         type: "file", storage_key: args.key, content_type: args.content_type,
+        ...(thoughtCategory ? { thought_category: thoughtCategory } : {}),
+        ...(ctx.profileSlug ? { profile_slug: ctx.profileSlug } : {}),
       });
     } catch { /* best-effort */ }
   }
@@ -192,15 +483,16 @@ export async function uploadFileCore(
     const c = await (pool as any).connect();
     try {
       await c.queryObject(
-        `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO js_files (storage_key, bucket, content_type, file_size, thought_id, thought_category)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (storage_key) DO UPDATE SET
            bucket = EXCLUDED.bucket,
            content_type = EXCLUDED.content_type,
            file_size = EXCLUDED.file_size,
            thought_id = COALESCE(EXCLUDED.thought_id, js_files.thought_id),
+           thought_category = COALESCE(EXCLUDED.thought_category, js_files.thought_category),
            updated_at = now()`,
-        [args.key, BUCKET, args.content_type, bytes.length, thoughtId],
+        [args.key, BUCKET, args.content_type, bytes.length, thoughtId, thoughtCategory],
       );
     } finally { c.release(); }
   }
@@ -213,14 +505,21 @@ export async function uploadFileCore(
     finally { c.release(); }
   }
 
-  // Phase 2: chunk the document at H2 boundaries for section-level retrieval
-  if (!args.binary && isTextType(args.content_type) && args.content.length > 50 && chunkContentFn) {
+  // Phase 2: chunk at H2 boundaries for section-level retrieval.
+  // cleanText is best-effort markdown for all types; fall back to args.content for non-binary if null.
+  const textToChunk = cleanText ?? (!args.binary ? args.content : null);
+  if (textToChunk && textToChunk.length > 50 && chunkContentFn) {
     try {
-      await chunkContentFn(args.content, args.key);
+      await chunkContentFn(textToChunk, args.key);
     } catch { /* best-effort — chunking failure does not fail the upload */ }
   }
 
-  return { key: args.key, bytes: bytes.length };
+  return {
+    key: args.key,
+    bytes: bytes.length,
+    ...(thoughtId ? { thought_id: thoughtId } : {}),
+    ...(thoughtCategory ? { thought_category: thoughtCategory } : {}),
+  };
 }
 
 export async function getFileCore(key: string): Promise<{ bytes: Uint8Array; contentType: string }> {
@@ -257,6 +556,12 @@ export async function deleteFileCore(pool: unknown, key: string): Promise<{ dele
   const client = await (pool as any).connect();
   let thoughtId: string | null = null;
   try {
+    await client.queryObject(`
+      DELETE FROM thoughts WHERE id IN (
+        SELECT jc.thought_id FROM js_chunks jc
+        JOIN js_files jf ON jc.file_id = jf.id
+        WHERE jf.storage_key = $1 AND jc.thought_id IS NOT NULL
+      )`, [key]);
     const r = await client.queryObject(
       `DELETE FROM js_files WHERE storage_key = $1 RETURNING thought_id::text AS thought_id`, [key],
     );
@@ -654,22 +959,22 @@ export async function createApplicationCore(
 ): Promise<{ id: string; company: string; role: string }> {
   const client = await (pool as any).connect();
   try {
-    const { rows: co } = await client.queryObject<{ id: string }>(
+    const { rows: co } = await client.queryObject(
       "SELECT id FROM js_companies WHERE LOWER(name) = LOWER($1) OR slug = LOWER($1) LIMIT 1",
       [args.company_name],
-    );
+    ) as { rows: { id: string }[] };
     const companyId = co[0]?.id ?? null;
 
     let profileId: string | null = null;
     if (args.profile_slug) {
-      const { rows: pr } = await client.queryObject<{ id: string }>(
+      const { rows: pr } = await client.queryObject(
         "SELECT id FROM js_profiles WHERE slug = $1 LIMIT 1",
         [args.profile_slug],
-      );
+      ) as { rows: { id: string }[] };
       profileId = pr[0]?.id ?? null;
     }
 
-    const { rows } = await client.queryObject<{ id: string }>(
+    const { rows } = await client.queryObject(
       `INSERT INTO js_applications
          (company_id, company_name_raw, role_title, profile_id, folder_prefix,
           source_url, status, status_detail, priority)
@@ -677,7 +982,7 @@ export async function createApplicationCore(
        RETURNING id::text AS id`,
       [companyId, args.company_name, args.role_title, profileId, args.folder_prefix,
        args.source_url ?? null, args.status, args.status_detail ?? null, args.priority],
-    );
+    ) as { rows: { id: string }[] };
     return { id: rows[0].id, company: args.company_name, role: args.role_title };
   } finally { client.release(); }
 }
@@ -865,6 +1170,21 @@ export async function logSearchRunCore(pool: unknown, args: LogSearchRunArgs): P
        args.new_after_dedup, args.screened, args.fit_count, args.summary_key ?? null],
     );
     return (rows[0] as any).id as string;
+  } finally { client.release(); }
+}
+
+export interface UpdateSearchRunArgs {
+  id: string;
+  summary_key?: string;
+}
+
+export async function updateSearchRunCore(pool: unknown, args: UpdateSearchRunArgs): Promise<void> {
+  const client = await (pool as any).connect();
+  try {
+    await client.queryObject(
+      `UPDATE js_search_runs SET summary_key = $1 WHERE id = $2`,
+      [args.summary_key ?? null, args.id],
+    );
   } finally { client.release(); }
 }
 
@@ -1174,6 +1494,26 @@ export function registerLogSearchRunTool(server: unknown, pool: unknown) {
   );
 }
 
+export function registerUpdateSearchRunTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "update_search_run",
+    "Update fields on an existing search run record (e.g. attach summary_key after uploading the summary file).",
+    {
+      id: z.string().uuid().describe("UUID of the js_search_runs row to update"),
+      summary_key: z.string().optional().describe("Object store key for the summary .md file"),
+    },
+    async (args: UpdateSearchRunArgs) => {
+      await updateSearchRunCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Search run ${args.id} updated.`,
+        }],
+      };
+    },
+  );
+}
+
 export function registerSearchApplicationsSemanticTool(server: unknown, pool: unknown, searchThoughtsFn?: SearchThoughtsFn) {
   (server as any).tool(
     "search_applications_semantic",
@@ -1399,7 +1739,7 @@ export async function searchChunksSemanticCore(
        FROM js_chunks c
        JOIN thoughts t ON c.thought_id = t.id
        WHERE ($2::text IS NULL OR c.storage_key LIKE $2 || '%')
-         AND (t.embedding <=> $1::vector) < 0.4
+         AND (t.embedding <=> $1::vector) < 0.6
        ORDER BY similarity ASC
        LIMIT $3`,
       [embeddingLiteral, storage_key_prefix ?? null, limit],
@@ -1419,7 +1759,7 @@ export function registerSearchChunksSemanticTool(server: unknown, pool: unknown,
     "search_chunks_semantic",
     "Semantic search across document sections (H2 chunks). Returns scored sections rather than whole files. " +
     "Use storage_key_prefix to scope to a folder (e.g. 'applications/2026-05-15-co-role/'). " +
-    "Results filtered to similarity < 0.4 (cosine distance; lower = more similar).",
+    "Results filtered to similarity < 0.6 (cosine distance; lower = more similar).",
     {
       query: z.string().describe("Natural language query, e.g. 'domain connection fintech compliance'"),
       storage_key_prefix: z.string().nullish().describe(
@@ -1710,8 +2050,751 @@ export function registerGetIngestionHistoryTool(server: unknown, pool: unknown) 
 // Registration helper — call from job-search-server.ts main()
 // ---------------------------------------------------------------------------
 
+// ===========================================================================
+// KNOWLEDGE GRAPH TOOLS (Phase 3 — Knowledge Map)
+// Write/read OB1's entities + edges tables directly via the shared pg connection.
+// Adds 'requires' (company→skill) and 'demonstrates' (achievement→skill) edges.
+// No OB1 server changes required — edges.relation is TEXT, not an enum.
+// ===========================================================================
+
+export interface CreateKnowledgeEdgeArgs {
+  from_entity_type: string;
+  from_entity_name: string;
+  relation: string;
+  to_entity_type: string;
+  to_entity_name: string;
+  thought_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface KnowledgeEdgeResult {
+  from_entity_id: number;
+  to_entity_id: number;
+  edge_id: number;
+  support_count: number;
+  action: "created" | "incremented";
+}
+
+async function upsertEntity(
+  client: any,
+  entity_type: string,
+  canonical_name: string,
+): Promise<number> {
+  const normalized = canonical_name.toLowerCase().trim();
+  const { rows } = await client.queryObject(
+    `INSERT INTO public.entities(entity_type, canonical_name, normalized_name)
+     VALUES($1, $2, $3)
+     ON CONFLICT(entity_type, normalized_name) DO UPDATE
+       SET last_seen_at = now(), updated_at = now()
+     RETURNING id`,
+    [entity_type, canonical_name, normalized],
+  );
+  return Number((rows[0] as any).id);
+}
+
+export async function createKnowledgeEdgeCore(
+  pool: unknown,
+  args: CreateKnowledgeEdgeArgs,
+): Promise<KnowledgeEdgeResult> {
+  const client = await (pool as any).connect();
+  try {
+    const fromId = await upsertEntity(client, args.from_entity_type, args.from_entity_name);
+    const toId   = await upsertEntity(client, args.to_entity_type,   args.to_entity_name);
+
+    const meta = JSON.stringify(args.metadata ?? {});
+    const { rows: erows } = await client.queryObject(
+      `INSERT INTO public.edges(from_entity_id, to_entity_id, relation, metadata)
+       VALUES($1, $2, $3, $4::jsonb)
+       ON CONFLICT(from_entity_id, to_entity_id, relation) DO UPDATE
+         SET support_count = public.edges.support_count + 1,
+             metadata = excluded.metadata,
+             updated_at = now()
+       RETURNING id, support_count`,
+      [fromId, toId, args.relation, meta],
+    );
+    const edge    = erows[0] as any;
+    const edgeId  = Number(edge.id);
+    const sc      = Number(edge.support_count);
+
+    if (args.thought_id) {
+      await client.queryObject(
+        `INSERT INTO public.thought_entities(thought_id, entity_id, mention_role, source)
+         VALUES($1::bigint, $2, 'subject', 'job_search')
+         ON CONFLICT(thought_id, entity_id, mention_role) DO NOTHING`,
+        [args.thought_id, fromId],
+      );
+    }
+
+    return { from_entity_id: fromId, to_entity_id: toId, edge_id: edgeId, support_count: sc,
+             action: sc === 1 ? "created" : "incremented" };
+  } finally { client.release(); }
+}
+
+export function registerCreateKnowledgeEdgeTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "create_knowledge_edge",
+    "Upsert a typed edge in OB1's entity graph. Creates or updates entities and the directed edge between them. " +
+    "Supports 'requires' (company→skill from JD) and 'demonstrates' (achievement→skill from profile). " +
+    "Idempotent: re-calling the same (from, relation, to) triple increments support_count.",
+    {
+      from_entity_type: z.string().describe("'organization' | 'project' | 'tool' | 'topic' | 'person' | 'place'"),
+      from_entity_name: z.string().describe("Canonical name of the source entity"),
+      relation: z.string().describe("Edge type: 'requires' | 'demonstrates' | 'member_of' | any OB1 relation"),
+      to_entity_type: z.string().describe("'tool' | 'topic' | 'organization' | 'person' | 'project' | 'place'"),
+      to_entity_name: z.string().describe("Canonical name of the target entity"),
+      thought_id: z.string().optional().describe("UUID of a thought to link as evidence via thought_entities"),
+      metadata: z.record(z.string(), z.unknown()).optional().describe("e.g. {application_id, source: 'job_search', profile_slug}"),
+    },
+    async (args: CreateKnowledgeEdgeArgs) => {
+      const r = await createKnowledgeEdgeCore(pool, args);
+      return {
+        content: [{
+          type: "text",
+          text: `Edge ${r.action}: ${args.from_entity_name} --[${args.relation}]--> ${args.to_entity_name} ` +
+                `(support_count=${r.support_count}, edge_id=${r.edge_id})`,
+        }],
+      };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface EntityNeighborArgs {
+  entity_name: string;
+  entity_type?: string;
+  relation?: string;
+  direction?: "out" | "in" | "both";
+  limit?: number;
+}
+
+export interface EntityNeighbor {
+  entity_id: number;
+  entity_type: string;
+  entity_name: string;
+  relation: string;
+  support_count: number;
+  metadata: Record<string, unknown>;
+}
+
+export async function getEntityNeighborsCore(
+  pool: unknown,
+  args: EntityNeighborArgs,
+): Promise<EntityNeighbor[]> {
+  const direction = args.direction ?? "out";
+  const limit     = Math.min(args.limit ?? 20, 100);
+  const normalized = args.entity_name.toLowerCase().trim();
+
+  const client = await (pool as any).connect();
+  try {
+    // Resolve the start entity
+    const typeClause = args.entity_type ? " AND e.entity_type = $2" : "";
+    const typeParam  = args.entity_type ? [normalized, args.entity_type] : [normalized];
+    const { rows: erows } = await client.queryObject(
+      `SELECT id FROM public.entities e WHERE e.normalized_name = $1${typeClause} LIMIT 1`,
+      typeParam,
+    );
+    if (!erows.length) return [];
+    const entityId = Number((erows[0] as any).id);
+
+    const relClause = args.relation ? "AND ed.relation = $2" : "";
+    const buildQuery = (fromCol: string, toCol: string) =>
+      `SELECT nb.id AS entity_id, nb.entity_type, nb.canonical_name AS entity_name,
+              ed.relation, ed.support_count, ed.metadata
+       FROM public.edges ed
+       JOIN public.entities nb ON nb.id = ed.${toCol}
+       WHERE ed.${fromCol} = $1 ${relClause}`;
+
+    let query = "";
+    const params: unknown[] = [entityId];
+    if (args.relation) params.push(args.relation);
+
+    if (direction === "out") {
+      query = buildQuery("from_entity_id", "to_entity_id");
+    } else if (direction === "in") {
+      query = buildQuery("to_entity_id", "from_entity_id");
+    } else {
+      query =
+        `SELECT * FROM (${buildQuery("from_entity_id", "to_entity_id")}) q1
+         UNION
+         SELECT * FROM (${buildQuery("to_entity_id", "from_entity_id")}) q2`;
+    }
+    query += ` ORDER BY support_count DESC LIMIT ${limit}`;
+
+    const { rows } = await client.queryObject(query, params);
+    return (rows as any[]).map((r: any) => ({
+      entity_id:     Number(r.entity_id),
+      entity_type:   r.entity_type,
+      entity_name:   r.entity_name,
+      relation:      r.relation,
+      support_count: Number(r.support_count),
+      metadata:      (r.metadata ?? {}) as Record<string, unknown>,
+    }));
+  } finally { client.release(); }
+}
+
+export function registerGetEntityNeighborsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "get_entity_neighbors",
+    "Query direct neighbors of an entity in OB1's knowledge graph. " +
+    "Use direction='out' to find what a company requires (company→skill), " +
+    "direction='in' to find achievements that demonstrate a skill (achievement→skill). " +
+    "Returns entity name, type, relation, and support_count (edge strength).",
+    {
+      entity_name:  z.string().describe("Entity to start from (case-insensitive)"),
+      entity_type:  z.string().optional().describe("Optional type filter: 'organization' | 'tool' | 'topic' | 'person' | 'project'"),
+      relation:     z.string().optional().describe("Optional relation filter: 'requires' | 'demonstrates' | 'member_of'"),
+      direction:    z.enum(["out", "in", "both"]).default("out").describe("'out'=from→to, 'in'=to←from, 'both'=union"),
+      limit:        z.number().int().min(1).max(100).default(20),
+    },
+    async (args: EntityNeighborArgs) => {
+      const results = await getEntityNeighborsCore(pool, args);
+      if (!results.length) {
+        return { content: [{ type: "text", text: `No neighbors found for '${args.entity_name}'${args.relation ? ` (relation: ${args.relation})` : ""}.` }] };
+      }
+      const lines = results.map(r =>
+        `${r.entity_name} [${r.entity_type}] via '${r.relation}' (strength=${r.support_count})`,
+      );
+      return { content: [{ type: "text", text: `Neighbors of '${args.entity_name}':\n${lines.join("\n")}` }] };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface TraverseGraphArgs {
+  start_entity_name: string;
+  start_entity_type?: string;
+  relation_types?: string[];
+  max_depth?: number;
+  direction?: "out" | "in" | "both";
+  limit?: number;
+}
+
+export interface GraphResult {
+  nodes: Array<{ id: number; entity_type: string; entity_name: string }>;
+  edges: Array<{ from_id: number; to_id: number; relation: string; support_count: number }>;
+}
+
+export async function traverseKnowledgeGraphCore(
+  pool: unknown,
+  args: TraverseGraphArgs,
+): Promise<GraphResult> {
+  const maxDepth  = Math.min(args.max_depth ?? 2, 3);
+  const maxNodes  = Math.min(args.limit ?? 50, 200);
+  const direction = args.direction ?? "out";
+
+  // Resolve start entity
+  const startNeighbors = await getEntityNeighborsCore(pool, {
+    entity_name: args.start_entity_name,
+    entity_type: args.start_entity_type,
+    relation: args.relation_types?.[0],
+    direction,
+    limit: 1,
+  });
+
+  const client = await (pool as any).connect();
+  try {
+    const normalized = args.start_entity_name.toLowerCase().trim();
+    const typeClause = args.start_entity_type ? " AND entity_type = $2" : "";
+    const typeParam  = args.start_entity_type ? [normalized, args.start_entity_type] : [normalized];
+    const { rows: sr } = await client.queryObject(
+      `SELECT id, entity_type, canonical_name FROM public.entities WHERE normalized_name = $1${typeClause} LIMIT 1`,
+      typeParam,
+    );
+    if (!sr.length) return { nodes: [], edges: [] };
+
+    const startNode = sr[0] as any;
+    const startId   = Number(startNode.id);
+
+    const visited   = new Set<number>([startId]);
+    const nodes: GraphResult["nodes"] = [{ id: startId, entity_type: startNode.entity_type, entity_name: startNode.canonical_name }];
+    const edges: GraphResult["edges"] = [];
+    let frontier    = [startId];
+
+    for (let depth = 0; depth < maxDepth && frontier.length > 0 && nodes.length < maxNodes; depth++) {
+      const nextFrontier: number[] = [];
+
+      const fromCol   = direction === "in" ? "to_entity_id" : "from_entity_id";
+      const toCol     = direction === "in" ? "from_entity_id" : "to_entity_id";
+      const relFilter = args.relation_types?.length
+        ? `AND ed.relation = ANY($2::text[])`
+        : "";
+
+      const params: unknown[] = [frontier];
+      if (args.relation_types?.length) params.push(args.relation_types);
+
+      const limitClause = maxNodes - nodes.length;
+      const { rows: hopRows } = await client.queryObject(
+        `SELECT ed.${fromCol} AS src_id, ed.${toCol} AS nb_id, ed.relation, ed.support_count,
+                nb.entity_type, nb.canonical_name
+         FROM public.edges ed
+         JOIN public.entities nb ON nb.id = ed.${toCol}
+         WHERE ed.${fromCol} = ANY($1::bigint[]) ${relFilter}
+         ORDER BY ed.support_count DESC
+         LIMIT ${limitClause * frontier.length + 50}`,
+        params,
+      );
+
+      for (const row of hopRows as any[]) {
+        const nbId = Number(row.nb_id);
+        edges.push({ from_id: Number(row.src_id), to_id: nbId, relation: row.relation, support_count: Number(row.support_count) });
+        if (!visited.has(nbId)) {
+          visited.add(nbId);
+          nodes.push({ id: nbId, entity_type: row.entity_type, entity_name: row.canonical_name });
+          nextFrontier.push(nbId);
+          if (nodes.length >= maxNodes) break;
+        }
+      }
+
+      if (direction === "both") {
+        const { rows: inRows } = await client.queryObject(
+          `SELECT ed.to_entity_id AS src_id, ed.from_entity_id AS nb_id, ed.relation, ed.support_count,
+                  nb.entity_type, nb.canonical_name
+           FROM public.edges ed
+           JOIN public.entities nb ON nb.id = ed.from_entity_id
+           WHERE ed.to_entity_id = ANY($1::bigint[]) ${relFilter}
+           ORDER BY ed.support_count DESC
+           LIMIT ${Math.max(1, maxNodes - nodes.length) * frontier.length + 50}`,
+          params,
+        );
+        for (const row of inRows as any[]) {
+          const nbId = Number(row.nb_id);
+          edges.push({ from_id: Number(row.src_id), to_id: nbId, relation: row.relation, support_count: Number(row.support_count) });
+          if (!visited.has(nbId)) {
+            visited.add(nbId);
+            nodes.push({ id: nbId, entity_type: row.entity_type, entity_name: row.canonical_name });
+            nextFrontier.push(nbId);
+            if (nodes.length >= maxNodes) break;
+          }
+        }
+      }
+
+      frontier = nextFrontier;
+    }
+
+    return { nodes, edges };
+  } finally { client.release(); }
+}
+
+export function registerTraverseKnowledgeGraphTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "traverse_knowledge_graph",
+    "BFS traversal from a starting entity in OB1's knowledge graph. " +
+    "Returns all reachable nodes and edges up to max_depth hops. " +
+    "Use to discover cross-application patterns, e.g. which companies share required skills.",
+    {
+      start_entity_name: z.string().describe("Entity to start traversal from"),
+      start_entity_type: z.string().optional().describe("Optional type to disambiguate start entity"),
+      relation_types:    z.array(z.string()).optional().describe("Filter to specific relation types, e.g. ['requires','demonstrates']"),
+      max_depth:         z.number().int().min(1).max(3).default(2),
+      direction:         z.enum(["out", "in", "both"]).default("out"),
+      limit:             z.number().int().min(1).max(200).default(50).describe("Max total nodes to return"),
+    },
+    async (args: TraverseGraphArgs) => {
+      const result = await traverseKnowledgeGraphCore(pool, args);
+      if (!result.nodes.length) {
+        return { content: [{ type: "text", text: `No graph found from '${args.start_entity_name}'.` }] };
+      }
+      const summary = `Graph from '${args.start_entity_name}': ${result.nodes.length} nodes, ${result.edges.length} edges`;
+      const nodeList = result.nodes.map(n => `  [${n.entity_type}] ${n.entity_name}`).join("\n");
+      return { content: [{ type: "text", text: `${summary}\n\nNodes:\n${nodeList}` }] };
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// listThoughtsCore — list thoughts from OB1's thoughts table with optional filters
+// ---------------------------------------------------------------------------
+
+export async function listThoughtsCore(
+  pool: unknown,
+  limit: number,
+  type?: string,
+  topic?: string,
+  person?: string,
+  days?: number,
+): Promise<Array<{ id: string; content: string; metadata: Record<string, unknown>; created_at: string }>> {
+  const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let paramIdx = 1;
+
+  if (type) {
+    conditions.push(`metadata->>'type' = $${paramIdx}`);
+    params.push(type);
+    paramIdx++;
+  }
+  if (topic) {
+    conditions.push(`metadata->'topics' ? $${paramIdx}`);
+    params.push(topic);
+    paramIdx++;
+  }
+  if (person) {
+    conditions.push(`metadata->'people' ? $${paramIdx}`);
+    params.push(person);
+    paramIdx++;
+  }
+  if (days) {
+    conditions.push(`created_at >= NOW() - INTERVAL '${Number(days)} days'`);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const client = await p.connect();
+  try {
+    const result = await client.queryObject<{
+      id: string; content: string; metadata: Record<string, unknown>; created_at: string;
+    }>(
+      `SELECT id::text AS id, content, metadata, created_at
+       FROM thoughts
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${paramIdx}`,
+      [...params, limit],
+    );
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// registerCaptureThoughtTool — capture_thought with rich job-search metadata
+// Exposes captureThoughtFn as a top-level MCP tool so Claude Code and the
+// webapp can call it with structured fields instead of embedding YAML in content.
+// ---------------------------------------------------------------------------
+
+export function registerCaptureThoughtTool(server: unknown, captureThoughtFn?: CaptureThoughtFn) {
+  (server as any).tool(
+    "capture_thought",
+    "Capture a thought in OB1 with structured job-search metadata. " +
+    "Returns the thought ID for use in notes-index.md and knowledge graph edges. " +
+    "Prefer this over mcp__open-brain__capture_thought in job-search sessions — " +
+    "it passes metadata as proper fields rather than embedded YAML frontmatter.",
+    {
+      content: z.string().describe("Thought content to capture"),
+      thought_category: z.string().optional().describe(
+        "Category: jd_analysis | fit_assessment | domain_connection | company_research | " +
+        "resume_strategy | resume_evaluation | interview_prep | email | application_event | achievement",
+      ),
+      source_type: z.string().optional().default("job_search"),
+      application_id: z.string().optional().describe("Application UUID"),
+      application_folder: z.string().optional().describe("Folder slug, e.g. '2026-05-27-wilson-sonsini-senior-ai-risk-advisor'"),
+      company: z.string().optional(),
+      profile_slug: z.string().optional(),
+      extra_metadata: z.record(z.string(), z.unknown()).optional().describe("Any additional metadata fields"),
+    },
+    async (args: {
+      content: string;
+      thought_category?: string;
+      source_type?: string;
+      application_id?: string;
+      application_folder?: string;
+      company?: string;
+      profile_slug?: string;
+      extra_metadata?: Record<string, unknown>;
+    }) => {
+      if (!captureThoughtFn) {
+        return { content: [{ type: "text", text: "capture_thought: captureThought callback not configured" }] };
+      }
+      const metadata: Record<string, unknown> = {
+        source_type: args.source_type ?? "job_search",
+        ...(args.thought_category ? { thought_category: args.thought_category } : {}),
+        ...(args.application_id ? { application_id: args.application_id } : {}),
+        ...(args.application_folder ? { application_folder: args.application_folder } : {}),
+        ...(args.company ? { company: args.company } : {}),
+        ...(args.profile_slug ? { profile_slug: args.profile_slug } : {}),
+        ...(args.extra_metadata ?? {}),
+      };
+      try {
+        const thoughtId = await captureThoughtFn(args.content, metadata);
+        return { content: [{ type: "text", text: `Thought captured: ${thoughtId}` }] };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// registerSearchThoughtsTool — search_thoughts with thought IDs in output
+// ---------------------------------------------------------------------------
+
+export function registerSearchThoughtsTool(server: unknown, searchThoughtsFn?: SearchThoughtsFn) {
+  (server as any).tool(
+    "search_thoughts",
+    "Semantically search OB1 thoughts. Returns thought ID in each result for use with reference or update operations.",
+    {
+      query: z.string().describe("What to search for"),
+      limit: z.number().optional().default(10),
+      type_filter: z.string().optional().describe("Optional: filter results by metadata.type post-query"),
+      source_filter: z.string().optional().describe("Optional: filter by metadata.source"),
+    },
+    async (args: { query: string; limit: number; type_filter?: string; source_filter?: string }) => {
+      if (!searchThoughtsFn) {
+        return { content: [{ type: "text", text: "search_thoughts: searchThoughts callback not configured" }] };
+      }
+      const { query, limit, type_filter: typeFilter, source_filter: sourceFilter } = args;
+      try {
+        const filter: Record<string, unknown> = {};
+        if (sourceFilter) filter.source = sourceFilter;
+        let results = await searchThoughtsFn(query, limit, filter);
+        if (typeFilter) {
+          results = results.filter(t => String((t.metadata || {}).type || "") === typeFilter);
+        }
+
+        if (!results.length) {
+          return { content: [{ type: "text", text: `No thoughts found matching "${query}".` }] };
+        }
+
+        const blocks = results.map((t, i) => {
+          const m = (t.metadata || {}) as Record<string, unknown>;
+          const parts = [
+            `--- Result ${i + 1} (${(t.similarity * 100).toFixed(1)}% match) ---`,
+            `ID: ${t.id}`,
+            `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
+            `Type: ${String(m.type || "unknown")}`,
+          ];
+          if (Array.isArray(m.topics) && m.topics.length)
+            parts.push(`Topics: ${(m.topics as string[]).join(", ")}`);
+          if (Array.isArray(m.people) && m.people.length)
+            parts.push(`People: ${(m.people as string[]).join(", ")}`);
+          if (Array.isArray(m.action_items) && m.action_items.length)
+            parts.push(`Actions: ${(m.action_items as string[]).join("; ")}`);
+          parts.push(`\n${t.content}`);
+          return parts.join("\n");
+        });
+
+        return {
+          content: [{ type: "text", text: `Found ${results.length} thought(s):\n\n${blocks.join("\n\n")}` }],
+        };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// registerListThoughtsTool — list_thoughts with thought IDs in output
+// ---------------------------------------------------------------------------
+
+export function registerListThoughtsTool(server: unknown, listThoughtsFn?: ListThoughtsFn) {
+  (server as any).tool(
+    "list_thoughts",
+    "List recently captured thoughts with optional filters. Returns thought IDs for reference operations.",
+    {
+      limit: z.number().optional().default(10),
+      type: z.string().optional().describe("Filter by type: observation, task, idea, reference, person_note"),
+      topic: z.string().optional().describe("Filter by topic tag"),
+      person: z.string().optional().describe("Filter by person mentioned"),
+      days: z.number().optional().describe("Only thoughts from the last N days"),
+    },
+    async (args: { limit: number; type?: string; topic?: string; person?: string; days?: number }) => {
+      if (!listThoughtsFn) {
+        return { content: [{ type: "text", text: "list_thoughts: listThoughts callback not configured" }] };
+      }
+      const { limit, type, topic, person, days } = args;
+      try {
+        const rows = await listThoughtsFn(limit, type, topic, person, days);
+
+        if (!rows.length) {
+          return { content: [{ type: "text", text: "No thoughts found." }] };
+        }
+
+        const entries = rows.map((t, i) => {
+          const m = (t.metadata || {}) as Record<string, unknown>;
+          const tags = Array.isArray(m.topics) ? (m.topics as string[]).join(", ") : "";
+          return `${i + 1}. [${new Date(t.created_at).toLocaleDateString()}] (${String(m.type || "??")}${tags ? " - " + tags : ""}) [id:${t.id}]\n   ${t.content}`;
+        });
+
+        return {
+          content: [{ type: "text", text: `${rows.length} recent thought(s):\n\n${entries.join("\n\n")}` }],
+        };
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OB1 compatibility tools — absorbed from OB1 MCP server
+// These replace mcp__open-brain__* with mcp__job-search__* equivalents so that
+// only one MCP server is needed. All thought IDs are returned as strings (::text
+// cast) to avoid BigInt serialization errors from the BIGSERIAL id column.
+// ---------------------------------------------------------------------------
+
+function ob1ThoughtTitle(content: string, createdAt?: string): string {
+  const firstLine = content.replace(/\s+/g, " ").trim().slice(0, 80);
+  const datePrefix = createdAt ? new Date(createdAt).toLocaleDateString() : "Open Brain";
+  return firstLine ? `${datePrefix} - ${firstLine}` : `${datePrefix} thought`;
+}
+
+function ob1ThoughtUrl(id: string): string {
+  return `${CITATION_BASE_URL.replace(/\/$/, "")}/${id}`;
+}
+
+export function registerSearchTool(server: unknown, pool: unknown, embedQueryFn?: EmbedQueryFn) {
+  (server as any).tool(
+    "search",
+    "Search Open Brain memories by meaning. Read-only ChatGPT-connector-compatible tool; pair with fetch to retrieve full content.",
+    {
+      query: z.string().describe("The search query to run against Open Brain thoughts"),
+    },
+    async ({ query }: { query: string }) => {
+      if (!embedQueryFn) {
+        return { content: [{ type: "text", text: "search: embedQuery callback not configured" }] };
+      }
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const qEmb = await embedQueryFn(query);
+        const embStr = `[${qEmb.join(",")}]`;
+        const client = await p.connect();
+        try {
+          const result = await client.queryObject<{ id: string; content: string; created_at: string }>(
+            `SELECT id::text AS id, content, created_at
+             FROM thoughts
+             WHERE 1 - (embedding <=> $1::vector) >= 0.5
+             ORDER BY embedding <=> $1::vector
+             LIMIT $2`,
+            [embStr, 10],
+          );
+          const results = result.rows.map((t) => ({
+            id: t.id,
+            title: ob1ThoughtTitle(t.content, t.created_at),
+            url: ob1ThoughtUrl(t.id),
+          }));
+          return { content: [{ type: "text", text: JSON.stringify({ results }) }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+export function registerFetchTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "fetch",
+    "Fetch one Open Brain thought by ID. Use after search to retrieve full text and metadata for citation.",
+    {
+      id: z.string().describe("The thought ID returned by the search tool"),
+    },
+    async ({ id }: { id: string }) => {
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const client = await p.connect();
+        try {
+          const result = await client.queryObject<{
+            id: string; content: string; metadata: Record<string, unknown>;
+            created_at: string; updated_at: string | null;
+          }>(
+            `SELECT id::text AS id, content, metadata, created_at, updated_at
+             FROM thoughts
+             WHERE id = $1
+             LIMIT 1`,
+            [id],
+          );
+          const thought = result.rows[0];
+          if (!thought) {
+            return { content: [{ type: "text", text: `No thought found for ID ${id}.` }], isError: true };
+          }
+          const document = {
+            id: thought.id,
+            title: ob1ThoughtTitle(thought.content, thought.created_at),
+            text: thought.content,
+            url: ob1ThoughtUrl(thought.id),
+            metadata: {
+              ...thought.metadata,
+              created_at: thought.created_at,
+              updated_at: thought.updated_at,
+            },
+          };
+          return { content: [{ type: "text", text: JSON.stringify(document) }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
+export function registerThoughtStatsTool(server: unknown, pool: unknown) {
+  (server as any).tool(
+    "thought_stats",
+    "Get a summary of all captured thoughts: total count, type breakdown, top topics, and people mentioned.",
+    {},
+    async () => {
+      const p = pool as { connect(): Promise<{ queryObject<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>; release(): void }> };
+      try {
+        const client = await p.connect();
+        try {
+          const countResult = await client.queryObject<{ count: number }>(
+            "SELECT COUNT(*)::int AS count FROM thoughts",
+          );
+          const dataResult = await client.queryObject<{
+            metadata: Record<string, unknown>; created_at: string;
+          }>(
+            "SELECT metadata, created_at FROM thoughts ORDER BY created_at DESC",
+          );
+
+          const count = countResult.rows[0]?.count ?? 0;
+          const data = dataResult.rows;
+          const types: Record<string, number> = {};
+          const topics: Record<string, number> = {};
+          const people: Record<string, number> = {};
+
+          for (const r of data) {
+            const m = r.metadata || {};
+            if (m.type) types[m.type as string] = (types[m.type as string] || 0) + 1;
+            if (Array.isArray(m.topics))
+              for (const t of m.topics) topics[t as string] = (topics[t as string] || 0) + 1;
+            if (Array.isArray(m.people))
+              for (const per of m.people) people[per as string] = (people[per as string] || 0) + 1;
+          }
+
+          const sort = (o: Record<string, number>): [string, number][] =>
+            Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+          const lines: string[] = [
+            `Total thoughts: ${count}`,
+            `Date range: ${
+              data.length
+                ? new Date(data[data.length - 1].created_at).toLocaleDateString() +
+                  " -> " + new Date(data[0].created_at).toLocaleDateString()
+                : "N/A"
+            }`,
+            "",
+            "Types:",
+            ...sort(types).map(([k, v]) => `  ${k}: ${v}`),
+          ];
+          if (Object.keys(topics).length) {
+            lines.push("", "Top topics:");
+            for (const [k, v] of sort(topics)) lines.push(`  ${k}: ${v}`);
+          }
+          if (Object.keys(people).length) {
+            lines.push("", "People mentioned:");
+            for (const [k, v] of sort(people)) lines.push(`  ${k}: ${v}`);
+          }
+
+          return { content: [{ type: "text", text: lines.join("\n") }] };
+        } finally {
+          client.release();
+        }
+      } catch (err: unknown) {
+        return { content: [{ type: "text", text: `Error: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+}
+
 export function registerJobSearchTools(server: unknown, pool: unknown, callbacks: JobSearchCallbacks = {}) {
-  const { captureThought, searchThoughts, embedQuery, chunkContent } = callbacks;
+  const { captureThought, searchThoughts, listThoughts, embedQuery, chunkContent } = callbacks;
 
   // File tools
   registerUploadFileTool(server, pool, captureThought, chunkContent);
@@ -1734,6 +2817,7 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   registerUpsertCompanyTool(server, pool);
   registerUpsertProfileTool(server, pool);
   registerLogSearchRunTool(server, pool);
+  registerUpdateSearchRunTool(server, pool);
   registerGetSearchRunsTool(server, pool);
   registerSearchApplicationsSemanticTool(server, pool, searchThoughts);
 
@@ -1743,6 +2827,21 @@ export function registerJobSearchTools(server: unknown, pool: unknown, callbacks
   // Phase 3: structured metadata + cross-app pattern matching
   registerUpdateApplicationFieldsTool(server, pool);
   registerFindSimilarApplicationsTool(server, pool, embedQuery);
+
+  // Phase 3: Knowledge Map — explicit entity graph edges
+  registerCreateKnowledgeEdgeTool(server, pool);
+  registerGetEntityNeighborsTool(server, pool);
+  registerTraverseKnowledgeGraphTool(server, pool);
+
+  // Thought tools (capture + query; job-search variants include thought IDs in output)
+  registerCaptureThoughtTool(server, captureThought);
+  registerSearchThoughtsTool(server, searchThoughts);
+  registerListThoughtsTool(server, listThoughts);
+
+  // OB1 compatibility tools (absorbed from OB1 MCP server — eliminates open-brain dependency)
+  registerSearchTool(server, pool, embedQuery);
+  registerFetchTool(server, pool);
+  registerThoughtStatsTool(server, pool);
 
   // Ingest tracking tools (Phase 1 — replaces seen-jobs.json)
   registerCheckPositionSeenTool(server, pool);

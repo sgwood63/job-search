@@ -7,6 +7,7 @@ import { dispatchStageChange } from './SetupView'
 const topLinks = [
   { to: '/', label: 'Tracker', icon: '📋', end: true },
   { to: '/ingestion', label: 'Ingestion Results', icon: '🔍', end: false },
+  { to: '/thoughts', label: 'Thoughts', icon: '🧠', end: false },
   { to: '/sessions', label: 'Sessions', icon: '💬', end: false },
   { to: '/files', label: 'Applicant Files', icon: '📄', end: false },
 ]

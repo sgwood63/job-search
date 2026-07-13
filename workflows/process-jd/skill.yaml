@@ -2,23 +2,24 @@ name: process-jd
 kind: workflow
 description: >
   Core JD processing module — screen via jd-evaluation (Haiku), derive folder slug,
-  compose job-description.md / jd-*.md / notes.md stub / search-result.json (if provided),
-  save per storage-routing, and register in tracker. Called by create-application,
-  search-jobs, and search-jobs-linkedin.
+  compose job-description.md / jd-*.md / notes-index.md / search-result.json (if provided),
+  save per storage-routing, capture OB1 thoughts, write knowledge graph edges, and register
+  in tracker. Called by create-application, search-jobs, and search-jobs-linkedin.
 status: active
-pinned: v1
-latest: v1
+pinned: v5
+latest: v5
 policies:
   - storage-routing
   - factuality
   - evidence-grounding
   - company-descriptors
 inputs:
-  - jd_content          # full JD text, already fetched by caller
+  - jd_content          # full JD text, already fetched by caller — verbatim, unmodified
   - source_url          # apply URL or canonical source reference
   - source_name         # e.g. "SearchAPI / Google Jobs", "LinkedIn Recommendations", "Manual"
   - profile_hint        # optional profile slug; jd-evaluation may override
   - source_metadata     # optional dict: {via?, posted_at?, job_id?, raw_source_json?}
+  - kg_context          # optional — pre-fetched KG neighbors (passed by callers that run Step 0 themselves)
 outputs:
   - folder_slug         # YYYY-MM-DD-company-role
   - application_id      # OB1 UUID or local folder path
@@ -26,6 +27,42 @@ outputs:
   - score               # 1-10
   - profile_match       # profile slug selected by jd-evaluation
 changelog:
+  - version: v5
+    date: 2026-07-13
+    summary: >
+      Step 1: screening context is now explicit — caller constructs a verbatim prompt block
+      from PROFILES-QUICK-REFERENCE.md ## Location Check and ## Hard Stops sections; output
+      contract reference updated to jd-evaluation's new 19-field contract (adds
+      location_extracted, location_verdict). New Step 2.5 (fit jobs only): 1-2 WebSearches
+      feed a combined ## Company & Market Context section (replaces ## Company Overview)
+      plus a Role type line in ## Role Summary; no-fit jobs keep the thin overview.
+      company_research OB1 thought eliminated from create-application — company context now
+      fully covered here. jd_content input documented as verbatim/unmodified end-to-end.
+  - version: v4
+    date: 2026-06-21
+    summary: >
+      New Step 0 (OB1 only): KG context lookup via get_entity_neighbors before Haiku screening;
+      surfaces prior skill signals, existing applications, and known contacts; result injected into
+      Haiku prompt as kg_context. Performance: Step 4 OB1 uploads (upload_file ×N +
+      update_application_fields) now issued in one parallel turn; Step 5 thought captures
+      (jd_analysis + fit_assessment) issued in one parallel turn; Step 6 KG edges all issued in
+      one parallel turn instead of a serial loop.
+  - version: v3
+    date: 2026-06-19
+    summary: >
+      Knowledge Map Phase 3 + OB1 IA Phase 3: Haiku screening gains domain_tags and
+      jd_requirements_structured fields. New Step 4.5 (OB1 only): calls
+      update_application_fields to store domain_tags + jd_requirements on js_applications.
+      New Step 6 (OB1 only): creates company→requires→skill edges in OB1 entity graph via
+      create_knowledge_edge (capped at 15 per application, idempotent). Draft promoted to v3.
+  - version: v2
+    date: 2026-06-18
+    summary: >
+      Knowledge map (feat/ob1-knowledge-map): replaces notes.md stub with notes-index.md
+      (lightweight header + OB1 thought key registry). New Step 5 (OB1 only): captures
+      jd_analysis and fit_assessment thoughts via mcp__job_search__capture_thought;
+      updates notes-index.md with returned thought IDs. Local mode unchanged (still writes
+      notes.md v1 stub). Callers now call skills/application-summary to generate notes.md.
   - version: v1
     date: 2026-06-12
     summary: >

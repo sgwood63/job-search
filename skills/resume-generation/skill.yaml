@@ -2,8 +2,8 @@ name: resume-generation
 kind: skill
 description: Generate a tailored, factual resume from profile content for a screened JD, with verification gate and evaluation report
 status: active
-pinned: v3
-latest: v3
+pinned: v5
+latest: v5
 policies:
   - factuality
   - evidence-grounding
@@ -16,6 +16,24 @@ outputs:
   - resume_md            # the resume markdown artifact
   - evaluation_report    # JD-coverage scoring + Recruiter & ATS Appeal Analysis (written to notes.md)
 changelog:
+  - version: v5
+    date: 2026-07-13
+    summary: >
+      Context Loading — Session Reuse section added: do-not-re-read guard for this skill
+      and its four companion policies across repeated invocations, with reuse when
+      storage-routing was already loaded by a caller (e.g. create-application); compact
+      guidance (run /compact every 3 resumes) for batch generation. OB1 PDF upload step
+      clarified: always route directly to REST API (never attempt upload_file MCP first for
+      PDFs), verify bytes is non-zero after upload, hard-stop and regenerate if the upload
+      is corrupt.
+  - version: v4
+    date: 2026-06-19
+    summary: >
+      Knowledge Map Phase 3: adds Phase 0.25 Entity Graph Enrichment (OB1 mode only).
+      Before content retrieval, calls get_entity_neighbors for company→requires→skill edges
+      and skill→demonstrates→achievement edges to build a priority_map. Phase 0.5
+      per-requirement semantic queries process graph-linked requirements first. Gracefully
+      degrades to standard retrieval order when no edges found for the company.
   - version: v3
     date: 2026-06-15
     summary: Added Phase 0.5 per-requirement semantic retrieval (search_chunks_semantic) and structural anchor fall-back (OB1 mode); added Phase 0.75 cross-app domain patterns via find_similar_applications; local mode falls back to full file reads

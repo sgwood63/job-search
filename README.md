@@ -55,7 +55,7 @@ Applicant data is kept out of git to protect personal information and keep the p
 
 - **New to the system?** Start with [QUICK-START.md](QUICK-START.md).
 - **Day-to-day usage?** See [USER-GUIDE.md](USER-GUIDE.md) — workflows, commands, and examples.
-- **Modifying the system?** See [DEVELOPER-README.md](DEVELOPER-README.md) — architecture, DEV_MODE, hooks, scripts, and settings.
+- **Modifying the system?** See [DEVELOPER-README.md](DEVELOPER-README.md) — architecture, APP_DIR write gating, hooks, scripts, and settings.
 - **Choosing a deployment model?** See [DEPLOYMENT.md](DEPLOYMENT.md) — explains the five deployment dimensions (data backend, OB1 infrastructure, app driver, webapp location) and provides end-to-end instructions for each tested configuration.
 - **OB1 deployment?** See [integrations/ob1/README.md](integrations/ob1/README.md) — full K8s manifest reference. For a higher-level walkthrough including Docker Compose and decision guidance, see [DEPLOYMENT.md](DEPLOYMENT.md).
 

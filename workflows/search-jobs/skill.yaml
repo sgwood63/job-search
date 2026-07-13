@@ -5,8 +5,8 @@ description: >
   (Haiku via process-jd); deduplicate against seen-jobs.json; save fit jobs as
   application stubs for review. Reports a per-run summary file and CSV log entry.
 status: active
-pinned: v2
-latest: v2
+pinned: v4
+latest: v4
 policies:
   - storage-routing
   - factuality
@@ -16,8 +16,27 @@ inputs:
   - batch_size      # optional; defaults to SEARCH_BATCH_SIZE env var (default 10)
 outputs:
   - summary_file    # $APPLICANT_DIR/search/YYYY-MM-DD-HHMMSS-<profile>-summary.md
-  - search_log_entry # appended to search-log.csv or logged via log_search_run()
+  - search_log_entry # OB1: update_search_run call; local: appended to search-log.csv
 changelog:
+  - version: v4
+    date: 2026-07-13
+    summary: >
+      Two-pass location support: Step 1 looks up the profile's location_mode from
+      PROFILES-QUICK-REFERENCE.md ## Location Modes (default us-only); Step 3 adds an outer
+      loop over location passes (onsite + remote for bay-area-plus-remote mode) with
+      cross-pass dedup via check_position_seen (OB1) or an in-memory set (local). New Step
+      3c-pre snippet pre-screen: skip JD fetch for obvious non-tech signals in
+      company/title/description snippet before fetching. Summary output now lists location
+      passes alongside sub-queries.
+  - version: v3
+    date: 2026-06-21
+    summary: >
+      log_search_run moved to Step 2 (before processing loop) so search_run_id is valid for all
+      log_ingested_position calls; final counters patched via update_search_run in Step 4b.
+      New Step 3c-ii: prior-assessment gate via search_thoughts — skips re-fetch if a fresh fit
+      assessment exists (< 30 days). JD content handling rule (full_jd_content stays in memory,
+      no temp files). Raw data rule (no per-company raw JSON files; analysis runs in subprocesses).
+      Companion doc pre-load in Step 1 (process-jd workflow + storage-routing policy).
   - version: v2
     date: 2026-06-14
     summary: OB1 transition — log_search_run returns UUID; Step 4 now generates per-run summary .md (uploaded to OB1 as summary_key) before calling log_search_run; positions link to search_run_id

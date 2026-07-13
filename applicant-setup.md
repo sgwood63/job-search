@@ -215,9 +215,9 @@ For any maintenance update, consult this registry to determine which files are a
 - Update when: Contact details change; preferences, deal-breakers, or work style shift; domain expertise updated; career direction affects how JDs should be screened
 
 **`profiles/PROFILES-QUICK-REFERENCE.md`**
-- Contains: One-row profile summary per profile; scoring rules; hard stops; `## Search Queries` table (one OR-query per profile for `/ingest`)
-- Read by: Haiku screening agent for profile selection and fit scoring; `search-jobs.py` for `/ingest` query lookup
-- Update when: Profile added or removed; scoring rules change; new JD signals identified; hard stops change; target roles or title focus changes (also update the corresponding `## Search Queries` row); profile removed (also remove its Search Queries row)
+- Contains: One-row profile summary per profile; scoring rules; hard stops; `## Search Queries` table (one OR-query per profile for `/ingest`); `## Location Modes` table (one row per profile, maps to location filtering mode used by search workflows)
+- Read by: Haiku screening agent for profile selection and fit scoring; `search-jobs.py` for `/ingest` query lookup; search workflows for location mode detection
+- Update when: Profile added or removed (also update `## Location Modes` row); scoring rules change; new JD signals identified; hard stops change; target roles or title focus changes (also update the corresponding `## Search Queries` row); profile removed (also remove its Search Queries rows and Location Modes row)
 
 **`profiles/[profile]/[profile].md`** (one per profile, in its own subdirectory)
 - Contains: Positioning strategy, framing guidance, what to emphasize/compress/omit, target companies, keywords
@@ -259,9 +259,9 @@ For any maintenance update, consult this registry to determine which files are a
 
 The File Registry and Cross-Profile Propagation Rule cover the general case. Two specific operations require explicit step-by-step checklists because they consistently produce missed updates when reasoned from the registry alone. See `memory/feedback_profile_maintenance.md` for the full checklists.
 
-**Operation A — New Achievement Added** (4 steps: role-achievements.md → EXPERIENCE-REFERENCE.md → cross-profile CONTENT propagation for all active profiles → applicant-maintenance.md log). Do not update career-advice.md §1 Profile Fit Scores for an achievement addition.
+**Operation A — New Achievement Added** (5 steps: role-achievements.md → EXPERIENCE-REFERENCE.md → cross-profile CONTENT propagation for all active profiles → OB1 thought capture + demonstrates edges [A3.5, OB1 only] → applicant-maintenance.md log). Do not update career-advice.md §1 Profile Fit Scores for an achievement addition.
 
-**Operation B — New Profile Created** (6 steps + B4.5: create strategy file → create CONTENT file → add profile column to role-achievements.md for all existing achievements → update PROFILES-QUICK-REFERENCE.md matching table row → add Search Queries table row → add profile row and scoring rationale to career-advice.md §1 and §5 → applicant-maintenance.md log). career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations) are always updated when a profile is created — this is not optional. See `memory/feedback_profile_maintenance.md` for the full checklist including step B4.5.
+**Operation B — New Profile Created** (6 steps + B4.5: create strategy file → create CONTENT file → add profile column to role-achievements.md for all existing achievements → update PROFILES-QUICK-REFERENCE.md matching table row → add Search Queries table row + add Location Modes row → add profile row and scoring rationale to career-advice.md §1 and §5 → applicant-maintenance.md log). career-advice.md §1 (Profile Fit Scores) and §5 (Compensation Expectations) are always updated when a profile is created — this is not optional. See `memory/feedback_profile_maintenance.md` for the full checklist including step B4.5.
 
 Before closing a session that performed either operation, output a confirmation line naming which steps were completed. If a step was not applicable, state why.
 

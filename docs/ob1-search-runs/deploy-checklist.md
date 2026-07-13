@@ -21,7 +21,7 @@ All code changes are complete on branch `hermes` (18 files changed, 2121 inserti
 ## Steps (in order)
 
 ### 0. Pre-deployment
-- [ ] Set `DEV_MODE=false` in `.env`
+- [ ] Set `READONLY_DEPLOYMENT=true` in `.env`
 - [ ] Optionally run tests locally first (see Verification section)
 
 ### 1. Commit

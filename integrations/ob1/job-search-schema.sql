@@ -1,9 +1,14 @@
--- Job Search OB1 Extension Schema
--- Run against the OB1 PostgreSQL instance after base OB1 setup.
--- Assumes the base `thoughts` table already exists (from OB1 core schema).
+-- Job Search Extension Schema — js_* tables only
 --
--- Apply with:
---   kubectl exec -n openbrain openbrain-0 -c postgres -- \
+-- For fresh deployments, use full-schema.sql instead — it includes all three
+-- layers (OB1 core + entities/edges + js_*) and is fully idempotent.
+--
+-- This file is the authoritative definition for js_* tables. Incremental
+-- schema changes (new columns, indexes) should be made here first, then
+-- reflected in Layer 3 of full-schema.sql.
+--
+-- Apply (existing deployment — safe to re-run):
+--   kubectl exec -n openbrain openbrain-0 -c db -- \
 --     psql -U postgres -d openbrain < integrations/ob1/job-search-schema.sql
 
 -- ---------------------------------------------------------------------------
@@ -12,18 +17,22 @@
 -- No file bytes are stored here — content lives in MinIO or Supabase Storage.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS js_files (
-  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  storage_key  text        UNIQUE NOT NULL,  -- logical path, e.g. 'applications/2026-05-15-co/notes.md'
-  bucket       text        NOT NULL DEFAULT 'job-search',
-  content_type text        NOT NULL,         -- 'text/markdown', 'application/pdf', etc.
-  file_size    int,
-  thought_id   bigint      REFERENCES thoughts(id) ON DELETE SET NULL,  -- semantic ref for text files
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now()
+  id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  storage_key      text        UNIQUE NOT NULL,  -- logical path, e.g. 'applications/2026-05-15-co/notes.md'
+  bucket           text        NOT NULL DEFAULT 'job-search',
+  content_type     text        NOT NULL,         -- 'text/markdown', 'application/pdf', etc.
+  file_size        int,
+  thought_id       bigint      REFERENCES thoughts(id) ON DELETE SET NULL,  -- semantic ref for text files
+  thought_category text,                         -- inferred or explicit category (e.g. 'exercise', 'email')
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS js_files_key_idx    ON js_files(storage_key);
-CREATE INDEX IF NOT EXISTS js_files_prefix_idx ON js_files(storage_key text_pattern_ops);
-CREATE INDEX IF NOT EXISTS js_files_thought_idx ON js_files(thought_id) WHERE thought_id IS NOT NULL;
+-- Phase 3: add thought_category to existing deployments (must precede the index below)
+ALTER TABLE js_files ADD COLUMN IF NOT EXISTS thought_category text;
+CREATE INDEX IF NOT EXISTS js_files_key_idx      ON js_files(storage_key);
+CREATE INDEX IF NOT EXISTS js_files_prefix_idx   ON js_files(storage_key text_pattern_ops);
+CREATE INDEX IF NOT EXISTS js_files_thought_idx  ON js_files(thought_id) WHERE thought_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS js_files_category_idx ON js_files(thought_category) WHERE thought_category IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- js_applicant: core applicant profile (one row)
@@ -291,3 +300,13 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Phase 3: Knowledge Graph Edge Indexes (Knowledge Map)
+-- Composite indexes on OB1's shared `edges` table for job-search query patterns.
+-- (1) company → requires → skill  (2) skill ← demonstrates ← achievement
+-- Safe to apply idempotently; does not alter OB1 table definitions.
+-- Apply before rolling out job-search-mcp with Phase 3 graph tools.
+-- ---------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_edges_relation_from ON public.edges(relation, from_entity_id);
+CREATE INDEX IF NOT EXISTS idx_edges_relation_to   ON public.edges(relation, to_entity_id);

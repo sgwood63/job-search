@@ -184,7 +184,7 @@ Each turn is automatically classified by inspecting the tool_use blocks in the r
 | Trigger | Phase tag |
 |---|---|
 | Skill: `ingest`, `linkedin-ingest`, `status`, `apply`, `audit`, `interview`, `context`, `memory` | `phase:operations` |
-| Any `mcp__job-search__*` or `mcp__open-brain__*` MCP tool called | `phase:operations` |
+| Any `mcp__job-search__*` MCP tool called | `phase:operations` |
 | Skill: `code-review`, `simplify`, `verify`, `run`, `security-review`, `init` | `phase:development` |
 | Bash with `kubectl`, `docker build`, `docker compose`, or `helm` | `phase:development` |
 | Plain text response, no significant tool use | *(no phase tag)* |

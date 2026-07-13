@@ -18,15 +18,14 @@ USAGE
 AUTH FLOW
     First time for a site (e.g. LinkedIn):
         python3 scripts/fetch-jd.py --setup 'https://www.linkedin.com/jobs/view/123'
-        → opens your default browser → log in → press Enter
-        → cookies are scanned from all installed browsers automatically
-        → if auto-scan fails (sandboxed browser), prompts for manual cookie paste
+        → tries Firefox profile scan first (works automatically, no window needed)
+        → if that fails (Atlas, Chrome, Arc, Edge, Brave, etc.): opens a headed
+          Playwright Chromium window → log in → press Enter in the terminal
+        → saves the full session state (all cookies + localStorage) for the domain
 
     If already logged in on Firefox:
         python3 scripts/fetch-jd.py --import linkedin.com
         → scans Firefox profiles on disk, no browser window needed
-        (Chromium-family browsers encrypt cookies with the OS keychain —
-         use --setup instead, which falls back to manual cookie entry)
 
     Subsequent fetches (called automatically by Claude):
         python3 scripts/fetch-jd.py 'https://www.linkedin.com/jobs/view/123'
@@ -70,11 +69,15 @@ except ImportError:
     )
     sys.exit(1)
 
-_applicant_dir = os.environ.get("APPLICANT_DIR")
-if not _applicant_dir:
-    print("[error] APPLICANT_DIR not set — source $APP_DIR/.env before running", file=sys.stderr)
+def _resolve_auth_dir() -> Path:
+    if (v := os.environ.get("AUTH_DIR")):
+        return Path(v)
+    if (app := os.environ.get("APP_DIR")):
+        return Path(app) / ".auth"
+    print("[error] AUTH_DIR or APP_DIR not set — source $APP_DIR/.env before running", file=sys.stderr)
     sys.exit(1)
-AUTH_DIR = Path(_applicant_dir) / ".auth"
+
+AUTH_DIR = _resolve_auth_dir()
 
 # Chromium epoch starts 1601-01-01; Unix epoch starts 1970-01-01
 _CHROMIUM_EPOCH_OFFSET_US = 11_644_473_600_000_000
@@ -108,6 +111,209 @@ JOB_CLOSED_BODY_SIGNALS = [
     "application is closed",
     "this job has expired",
 ]
+
+_DEFAULT_CHROME_PROFILE_DARWIN = str(
+    Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default"
+)
+_DEFAULT_CHROME_PROFILE_LINUX = str(Path.home() / ".config" / "google-chrome" / "Default")
+
+
+def _default_chrome_profile() -> str:
+    import platform
+    return _DEFAULT_CHROME_PROFILE_DARWIN if platform.system() == "Darwin" else _DEFAULT_CHROME_PROFILE_LINUX
+
+
+def _connect_or_launch(p, chrome_profile: str, cdp_port: int):
+    """Try CDP connect to existing Chrome; fall back to launching with real profile.
+
+    Returns (ctx, page, is_cdp).
+    is_cdp=True  → close only `page` when done (leave browser running).
+    is_cdp=False → close `ctx` when done.
+    """
+    try:
+        browser = p.chromium.connect_over_cdp(f"http://localhost:{cdp_port}")
+        contexts = browser.contexts
+        ctx = contexts[0] if contexts else browser.new_context()
+        page = ctx.new_page()
+        return ctx, page, True
+    except Exception:
+        pass
+
+    ctx = p.chromium.launch_persistent_context(
+        user_data_dir=chrome_profile,
+        headless=False,
+        channel="chrome",
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ],
+    )
+    page = ctx.new_page()
+    return ctx, page, False
+
+
+# LinkedIn job description CSS selectors, tried in priority order.
+# LinkedIn frequently changes class names; keeping a fallback chain makes this more resilient.
+_LINKEDIN_JD_SELECTORS = (
+    "#job-details",
+    ".jobs-description__content",
+    ".jobs-description",
+    ".description__text",
+    # Newer LinkedIn DOM variants (added 2026-06):
+    ".jobs-box__html-content",
+    "[class*='jobs-description']",
+)
+
+# Text markers that indicate the start of the actual job content on LinkedIn pages.
+# Used as a last resort when all CSS selectors fail (LinkedIn frequently restructures).
+_LINKEDIN_CONTENT_MARKERS = ("About the job", "About this job", "Job description")
+
+# LinkedIn "See more" expand button selectors, tried in priority order.
+# LinkedIn frequently A/B tests button classes; keeping a fallback chain is necessary.
+_LINKEDIN_EXPAND_SELECTORS = (
+    "button[aria-label='Click to see more description']",        # canonical aria-label, 2023-2025
+    "button[aria-label='Show more, visually expands previously read content']",  # 2026 redesign
+    ".jobs-description__footer-button",                           # stable BEM class, ~2023+
+    "[class*='jobs-description'][class*='footer']",               # covers renamed A/B variants
+    ".jobs-description button.inline-show-more-text__button",     # "…more" inline link variant
+    ".jobs-description button[aria-expanded='false']",            # aria contract: collapsed button
+)
+
+# Footer markers: text that signals the end of job content on LinkedIn full-page extracts.
+# Content is trimmed at the first occurrence of any of these.
+_LINKEDIN_FOOTER_MARKERS = (
+    "\nSelect language\n",              # language-selector nav
+    "\nLanguage\n",                     # variant
+    "\nSet alert for similar jobs",     # job alert prompt; appears immediately after JD
+    "\nMore jobs\n",                    # similar-jobs sidebar section heading
+    "\nBenefits found in job post\n",   # LinkedIn benefits section below JD
+    "\nSee how you compare",            # skills-match widget for logged-in users
+    "\nLooking for talent?\n",          # LinkedIn Recruiter ad copy
+    "\nLinkedIn Corporation",           # legal footer
+    "\n© LinkedIn",                     # alternate legal footer form
+)
+
+DEFAULT_MAX_CHARS = 12000
+
+
+def _expand_linkedin_jd(page) -> bool:
+    """Try to click the LinkedIn "See more" expand button for the job description.
+
+    Iterates through _LINKEDIN_EXPAND_SELECTORS in priority order. Clicks the
+    first button that is visible and not disabled, then waits 800ms for the DOM
+    to update. Returns True if clicked, False otherwise.
+
+    Called at the top of the LinkedIn branch in _extract_body() before the CSS
+    selector chain so extraction runs against the expanded DOM.
+    """
+    for sel in _LINKEDIN_EXPAND_SELECTORS:
+        try:
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible() and not btn.is_disabled():
+                btn.click()
+                page.wait_for_timeout(800)
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _extract_body(page, url: str, max_chars: int | None = DEFAULT_MAX_CHARS) -> str:
+    """Extract page body text with LinkedIn-targeted content selection.
+
+    For LinkedIn URLs, tries job-description-specific CSS selectors to avoid
+    returning navigation/sidebar boilerplate alongside the actual JD. When all
+    selectors miss, scans the body text for a known content marker ("About the
+    job", etc.) and extracts from that point. Falls back to full body inner_text
+    when no marker is found or for non-LinkedIn URLs.
+    Truncates to max_chars if set (default: 12000).
+    """
+    body = ""
+    if "linkedin.com" in url:
+        _expand_linkedin_jd(page)
+        for sel in _LINKEDIN_JD_SELECTORS:
+            try:
+                el = page.query_selector(sel)
+                if el:
+                    text = (el.inner_text() or "").strip()
+                    if text:
+                        body = text
+                        break
+            except Exception:
+                continue
+        if not body:
+            full = page.inner_text("body") or ""
+            for marker in _LINKEDIN_CONTENT_MARKERS:
+                idx = full.find(marker)
+                if idx != -1:
+                    body = full[idx:]
+                    break
+            if not body:
+                body = full  # no marker found; use full body to avoid a second inner_text("body") call
+        if body:
+            for footer in _LINKEDIN_FOOTER_MARKERS:
+                fidx = body.find(footer)
+                if fidx != -1:
+                    body = body[:fidx].rstrip()
+                    break
+    if not body:
+        body = page.inner_text("body") or ""
+    if max_chars and len(body) > max_chars:
+        body = body[:max_chars] + f"\n\n[truncated at {max_chars} chars]"
+    return body
+
+
+def _fetch_with_real_chrome(
+    url: str, md_out: str | None, chrome_profile: str, cdp_port: int,
+    max_chars: int | None = DEFAULT_MAX_CHARS,
+) -> None:
+    """Fetch a URL using the user's real Chrome browser (CDP or profile launch)."""
+    with sync_playwright() as p:
+        ctx, page, is_cdp = _connect_or_launch(p, chrome_profile, cdp_port)
+        try:
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(2000)
+            except Exception as e:
+                print(f"[error] Navigation failed: {e}", file=sys.stderr)
+                sys.exit(1)
+
+            title = page.title()
+            final_url = page.url
+            body = _extract_body(page, url, max_chars)
+
+            if md_out:
+                content = f"# {title}\n\nSource: {final_url}\n\n{body}"
+                if md_out == "-":
+                    print(content)
+                else:
+                    Path(md_out).write_text(content, encoding="utf-8")
+        finally:
+            if is_cdp:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            else:
+                try:
+                    ctx.close()
+                except Exception:
+                    pass
+
+    if is_auth_wall(final_url, title, body):
+        print(f"[auth-expired] LinkedIn session expired in Chrome.", file=sys.stderr)
+        print("Log into LinkedIn in Chrome and retry.", file=sys.stderr)
+        sys.exit(2)
+
+    if is_job_closed(title, body):
+        print(f"[job-closed] Job posting is no longer available.", file=sys.stderr)
+        sys.exit(3)
+
+    print(f"URL: {final_url}")
+    print(f"Title: {title}")
+    print()
+    print(body)
 
 
 # ---------------------------------------------------------------------------
@@ -476,12 +682,58 @@ def _manual_cookie_entry(domain: str) -> None:
         sys.exit(1)
 
 
+def _playwright_interactive_login(url: str, domain: str) -> None:
+    """Open a headed Playwright Chromium window, wait for login, save full storage state."""
+    print(f"\n[setup] Opening a Playwright Chromium window for {domain}...", file=sys.stderr)
+    print(f"[setup] Log in in the browser window that appears, then press Enter here.", file=sys.stderr)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        ctx = browser.new_context()
+        page = ctx.new_page()
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            print(f"[setup] Navigation warning: {e}", file=sys.stderr)
+
+        input("[setup] Press Enter when you are logged in... ")
+
+        state = ctx.storage_state()
+        ctx.close()
+        browser.close()
+
+    domain_cookies = [c for c in state.get("cookies", []) if domain in c.get("domain", "")]
+    if not domain_cookies:
+        print(f"[setup] No cookies found for {domain} — did the login complete?", file=sys.stderr)
+        print(f"[setup] Falling back to manual entry.", file=sys.stderr)
+        _manual_cookie_entry(domain)
+        return
+
+    # Save the full storage state (cookies + localStorage) for richer session context
+    auth_file(domain).parent.mkdir(parents=True, exist_ok=True)
+    auth_file(domain).write_text(json.dumps(state, indent=2) + "\n")
+    print(f"[setup] Saved {len(domain_cookies)} cookies + localStorage for {domain}.", file=sys.stderr)
+
+
 # ---------------------------------------------------------------------------
 # Main commands
 # ---------------------------------------------------------------------------
 
-def fetch(url: str, md_out: str | None = None) -> None:
-    """Fetch a URL headlessly using saved auth. Exits with code 2 if auth needed."""
+def fetch(
+    url: str,
+    md_out: str | None = None,
+    use_real_chrome: bool = False,
+    chrome_profile: str | None = None,
+    cdp_port: int = 9222,
+    max_chars: int | None = DEFAULT_MAX_CHARS,
+) -> None:
+    """Fetch a URL using saved auth (default) or real Chrome (--use-real-chrome)."""
+    if use_real_chrome:
+        if not chrome_profile:
+            chrome_profile = _default_chrome_profile()
+        _fetch_with_real_chrome(url, md_out, chrome_profile, cdp_port, max_chars)
+        return
+
     domain = get_domain(url)
     saved = auth_file(domain)
 
@@ -501,7 +753,7 @@ def fetch(url: str, md_out: str | None = None) -> None:
 
         title = page.title()
         final_url = page.url
-        body = page.inner_text("body") or ""
+        body = _extract_body(page, url, max_chars)
 
         if md_out:
             content = f"# {title}\n\nSource: {final_url}\n\n{body}"
@@ -530,19 +782,15 @@ def fetch(url: str, md_out: str | None = None) -> None:
 
 
 def setup(url: str) -> None:
-    """Open OS default browser for login, then auto-import session cookies."""
+    """Authenticate for a domain and save session cookies.
+
+    Tries in order:
+    1. Firefox profile scan (works automatically — Firefox stores cookies unencrypted).
+    2. Playwright interactive login — opens a headed Chromium window; works for any
+       browser including Atlas, Arc, Chrome, Edge, Brave (their cookies are encrypted
+       and cannot be scanned automatically).
+    """
     domain = get_domain(url)
-    system = platform.system()
-
-    if system == "Darwin":
-        subprocess.run(["open", url])
-    elif system == "Linux":
-        subprocess.run(["xdg-open", url])
-    else:  # Windows
-        os.startfile(url)
-
-    print(f"[setup] Log in to {domain} in the browser that just opened.", file=sys.stderr)
-    input("[setup] Press Enter when done... ")
 
     print(f"[setup] Scanning browser profiles for {domain} cookies...", file=sys.stderr)
     cookies = import_browser_cookies(domain)
@@ -550,7 +798,7 @@ def setup(url: str) -> None:
         _save_auth(domain, cookies)
         print(f"[setup] Saved {len(cookies)} cookies for {domain}.", file=sys.stderr)
     else:
-        _manual_cookie_entry(domain)
+        _playwright_interactive_login(url, domain)
 
 
 def cmd_import(domain: str) -> None:
@@ -591,7 +839,34 @@ def list_auth() -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
+    # Pre-scan for real-Chrome flags and --max-chars before existing arg dispatch
+    _use_real_chrome = False
+    _chrome_profile: str | None = os.environ.get("CHROME_PROFILE")
+    _cdp_port = int(os.environ.get("LINKEDIN_CDP_PORT", "9222"))
+    _max_chars: int | None = DEFAULT_MAX_CHARS
+    _raw = list(sys.argv[1:])
+    _filtered = []
+    _i = 0
+    while _i < len(_raw):
+        if _raw[_i] == "--use-real-chrome":
+            _use_real_chrome = True
+            _i += 1
+        elif _raw[_i] == "--chrome-profile" and _i + 1 < len(_raw):
+            _chrome_profile = _raw[_i + 1]
+            _i += 2
+        elif _raw[_i] == "--cdp-port" and _i + 1 < len(_raw):
+            _cdp_port = int(_raw[_i + 1])
+            _i += 2
+        elif _raw[_i] == "--max-chars" and _i + 1 < len(_raw):
+            _max_chars = int(_raw[_i + 1])
+            _i += 2
+        elif _raw[_i] == "--no-max-chars":
+            _max_chars = None
+            _i += 1
+        else:
+            _filtered.append(_raw[_i])
+            _i += 1
+    args = _filtered
 
     if not args:
         print(__doc__)
@@ -622,7 +897,9 @@ if __name__ == "__main__":
         if len(args) < 3:
             print("Usage: fetch-jd.py --md-out <filepath> <url>", file=sys.stderr)
             sys.exit(1)
-        fetch(args[2], md_out=args[1])
+        fetch(args[2], md_out=args[1], use_real_chrome=_use_real_chrome,
+              chrome_profile=_chrome_profile, cdp_port=_cdp_port, max_chars=_max_chars)
 
     else:
-        fetch(args[0])
+        fetch(args[0], use_real_chrome=_use_real_chrome,
+              chrome_profile=_chrome_profile, cdp_port=_cdp_port, max_chars=_max_chars)
