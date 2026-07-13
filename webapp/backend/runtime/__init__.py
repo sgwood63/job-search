@@ -10,6 +10,7 @@ from .registry import Registry, RegistryError, ResolvedSkill, load_registry, res
 from .composer import compose_prompt, render_task
 from .adapter import AdapterUnavailable, AgentAdapter
 from .events import record_event
+from .version_map import build_version_map, load_version_map, merge_version_map, write_version_map
 
 __all__ = [
     'Artifact', 'ComposedPrompt', 'SkillRunRequest', 'SkillRunResult',
@@ -17,4 +18,5 @@ __all__ = [
     'compose_prompt', 'render_task',
     'AdapterUnavailable', 'AgentAdapter',
     'record_event',
+    'build_version_map', 'load_version_map', 'merge_version_map', 'write_version_map',
 ]

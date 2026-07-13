@@ -13,6 +13,29 @@ os.environ.setdefault("DATA_BACKEND", "local")
 os.environ.setdefault("APPLICANT_DIR", "/tmp/test-applicant")
 os.environ.setdefault("APP_DIR", str(Path(__file__).parent.parent.parent.parent))
 
+from runtime import build_version_map, load_registry, load_version_map, merge_version_map
+
+
+@pytest.fixture(scope='session')
+def real_registry():
+    """The live repo registry — session-scoped since it's read-only and
+    reloading per-test buys nothing (resolve() always re-reads version files
+    fresh regardless)."""
+    return load_registry(Path(os.environ['APP_DIR']))
+
+
+@pytest.fixture(scope='session')
+def version_map(real_registry) -> dict:
+    """name -> version to use in tests. Defaults to live pinned state; if
+    SKILL_VERSION_MAP points at a JSON file, its entries override the default
+    for a specific, opt-in coherent combination (frozen baseline or candidate
+    version test) — everything not mentioned stays at current pinned."""
+    default = build_version_map(real_registry, mode='pinned')
+    override_path = os.environ.get('SKILL_VERSION_MAP')
+    if override_path:
+        default = merge_version_map(default, load_version_map(override_path))
+    return default
+
 
 @pytest.fixture
 def tmp_applicant(tmp_path: Path) -> Path:

@@ -32,10 +32,11 @@ customer-facing demos and POCs; SaaS analytics background.
 """
 
 
-async def test_jd_evaluation_smoke():
+async def test_jd_evaluation_smoke(version_map):
     repo_root = Path(os.environ['APP_DIR'])
     reg = load_registry(repo_root)
-    resolved = resolve(reg, 'jd-evaluation', mode='webapp')
+    version = version_map['jd-evaluation']
+    resolved = resolve(reg, 'jd-evaluation', version=version, mode='webapp')
     prompt = compose_prompt(resolved, reg, 'webapp')
     adapter = ClaudeRunnerAdapter(app_dir=repo_root, env_path=repo_root / '.env')
 
@@ -49,4 +50,4 @@ async def test_jd_evaluation_smoke():
     assert result.status == 'ok', result.error
     text = result.output_text.lower()
     assert 'fit' in text  # verdict (fit or no-fit) must appear
-    assert result.version == 'v1'
+    assert result.version == version

@@ -291,6 +291,16 @@ pytest tests/test_api.py::test_health_ok
 pytest -v   # verbose output
 ```
 
+**Testing against a specific version combination:**
+Skill/policy/workflow tests default to whatever is currently `pinned` in the
+real registry (`skills/registry.yaml` + each `skill.yaml`) — no hardcoded
+version literals. To test a frozen baseline or a candidate version override:
+```bash
+python -m runtime.version_map --mode pinned --out /tmp/baseline.json
+# edit /tmp/baseline.json, e.g. change "jd-evaluation": "v2" -> "v3"
+SKILL_VERSION_MAP=/tmp/baseline.json pytest
+```
+
 What's covered:
 
 | File | Tests | Covers |
