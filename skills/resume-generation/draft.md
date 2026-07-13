@@ -7,6 +7,19 @@ description: Generate a tailored, factual resume from profile content for a scre
 
 Source only from `profiles/[profile]/[profile]-CONTENT.md` and `profiles/EXPERIENCE-REFERENCE.md` (see evidence-grounding policy). All file reads/writes follow the storage-routing policy.
 
+## Context Loading — Session Reuse
+
+This skill and its companion policies (`factuality`, `evidence-grounding`, `company-descriptors`, `storage-routing`) are loaded once per session, not once per invocation. When resume-generation runs a second (or later) time in the same session — e.g. generating resumes for several stub applications back-to-back — do not re-read this document or its companion policies; reuse what is already in context.
+
+If resume-generation is invoked from `create-application`, `storage-routing` may already be loaded (it is also create-application's companion policy) — do not reload it a second time for this call.
+
+Re-read a document only when:
+- It has not been loaded yet this session
+- An auto-compaction event has occurred since it was last loaded
+- The user asked to draft or promote a new version of this skill or a companion policy mid-session
+
+**Compact guidance:** When generating several resumes back-to-back in one session, run `/compact` after every 3 resumes if no manual compact has occurred recently. Profile content, JD content, and the evaluation report per resume are substantial; unmanaged growth risks unpredictable auto-compaction that busts the cache prefix and forces a full reload of this document and its four companion policies. (Pattern from `workflows/search-jobs/v3.md` Step 1 / Phase 3-PROCESS.)
+
 ## Length
 
 - **2 pages default** for enterprise/consulting/governance/direct applications
