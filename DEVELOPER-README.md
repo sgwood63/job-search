@@ -174,7 +174,7 @@ $APPLICANT_DIR/
 │
 ├── applications/                # One folder per application
 │   └── YYYY-MM-DD-company-role/
-│       ├── notes-index.md             # PRIMARY: header block + OB1 thought key registry (v4+ model)
+│       ├── notes-index.md             # Identity/provenance + OB1 thought key manifest (v4+ model; no status)
 │       ├── notes.md                   # GENERATED VIEW: rendered from OB1 thoughts by application-summary skill
 │       ├── job-description.md         # Processed JD + extracted key info
 │       ├── jd-<company>-<role>.md     # Original JD full text (URL/pasted source)

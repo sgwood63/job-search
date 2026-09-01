@@ -349,13 +349,13 @@ Corrections are saved to your profile so they don't reappear in future resumes.
 
 ### Step 3: Check it's ready to submit
 
-Before submitting on the company portal, run:
+**You normally don't need to do anything here.** Completeness is checked automatically before the resume reaches you — the assistant will not hand over a PDF that fails its checks. If something is wrong, you'll hear about it then, not later.
+
+To inspect a folder yourself at any time:
 
 ```
 /audit [company-name]
 ```
-
-This confirms everything is in order. If anything is missing, it tells you exactly what to fix.
 
 **Example:**
 ```
@@ -375,6 +375,10 @@ After you submit on the company's portal:
 ```
 
 This logs the submission and sets a follow-up reminder for two weeks out. You can add the portal URL as a fourth argument.
+
+You can also just say "applied" — the assistant recognises it and records the submission. It never refuses to log one, even if the folder has gaps; anything outstanding is reported alongside the confirmation.
+
+Worth mentioning which portal you actually submitted through. A job board's "Apply Now" button often hands off to the employer's own system, and which one you landed in is a useful signal — a staffing system paired with an hourly rate usually means contract rather than a permanent role.
 
 **Examples:**
 ```

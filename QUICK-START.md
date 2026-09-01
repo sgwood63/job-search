@@ -69,7 +69,7 @@ There are two ways jobs enter your pipeline — use either or both:
 
 **Option B — Individual posting:** Provide a job description (URL, PDF, or paste). Claude screens for fit, matches to the best profile, and generates a tailored resume if it's a match.
 
-For either path, once a job is in your pipeline: review the JD stub, request a resume if proceeding, run `/audit [folder]` before submitting, and `/apply "Company" "Role" "date"` after.
+For either path, once a job is in your pipeline: review the JD stub, request a resume if proceeding, and record it with `/apply "Company" "Role" "date"` (or just say "applied") after you submit. Folder completeness is checked automatically before the resume is handed to you — `/audit [folder]` is available if you want to inspect one yourself.
 
 See [USER-GUIDE.md → Finding Jobs Proactively](USER-GUIDE.md) and [USER-GUIDE.md → Working With a Job Posting](USER-GUIDE.md) for full workflow details.
 

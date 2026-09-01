@@ -6,6 +6,7 @@
 - [fetch-jd.py](#fetch-jdpy)
 - [generate-pdf.py](#generate-pdfpy)
 - [search-jobs.py](#search-jobspy)
+- [audit-application.sh](#audit-applicationsh)
 - [check-md-hygiene.sh](#check-md-hygienesh)
 - [check-dev-mode.sh](#check-dev-modesh)
 - [install-hooks.sh](#install-hookssh)
@@ -135,6 +136,27 @@ Required env: `APP_DIR`, `APPLICANT_DIR`, `SEARCHAPI_KEY`
 Optional env: `SEARCH_BATCH_SIZE` (default 10)
 
 ---
+
+## audit-application.sh
+
+Deterministic completeness checks for an application folder. Runs the mechanical half of the application audit; judgment calls (is the JD genuinely verbatim? is Company Research a placeholder?) stay with the model.
+
+```bash
+bash scripts/audit-application.sh <folder-slug> [--tier=folder|release|submission|all]
+```
+
+Reads `DATA_BACKEND` from `.env` and fetches files over the job-search REST API in OB1 mode, or from `$APPLICANT_DIR` in local mode. An already-exported environment variable overrides `.env`, which is how the tiers are tested against fixtures.
+
+| Tier | Runs at | Blocking |
+|---|---|---|
+| `folder` | Gate 1 — end of `workflows/process-jd` | No — advisory, so an ingest run is never halted by one bad folder |
+| `release` | Gate 2 — `skills/resume-generation`, post-`.md` and post-PDF | **Yes** — last gate before the resume is handed over |
+| `submission` | `/apply`, after the user has already submitted | No — advisory |
+| `all` | Manual invocation (default) | Reports everything |
+
+Checks include file presence, resume filename convention (`<FirstName_LastName>_<Role>`), `.md`/`.pdf` basename match, required section headings, and **JD completeness** — comparing the Required-bullet count in `jd-*.md` against `job-description.md`, which catches a truncated capture that still reads as natural prose.
+
+Exit codes: `0` no failures (warnings may be present), `1` one or more failures, `2` usage or environment error. Only the `release` tier can exit 1; `folder` and `submission` downgrade failures to warnings by design.
 
 ## check-md-hygiene.sh
 
