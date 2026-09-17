@@ -290,6 +290,30 @@ class ObRestClient:
 
 _ob_rest: ObRestClient | None = None
 
+
+async def _ob1_call(awaitable):
+    """Translate ObRestClient failures into real HTTP status codes.
+
+    Without this, any non-2xx from the OB1 REST backend (a 404 for a
+    since-deleted record, a 413 from the ingress body-size cap, a 5xx from
+    OB1 itself) raises httpx.HTTPStatusError uncaught, which FastAPI turns
+    into a bare 500 with no detail — indistinguishable from a bug in this
+    codebase. Wrap every `_ob_rest.*` call site in this.
+    """
+    try:
+        return await awaitable
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
+            raise HTTPException(status_code=404, detail='Not found')
+        if status in (400, 403, 413, 422):
+            raise HTTPException(status_code=status, detail=exc.response.text[:200] or 'Upstream request rejected')
+        raise HTTPException(status_code=502, detail='OB1 backend error')
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail='OB1 backend unavailable')
+
 # Local-mode store (used only when DATA_BACKEND != 'ob1')
 _local_store = None
 
@@ -467,7 +491,7 @@ async def get_tracker():
     if DATA_BACKEND != 'ob1':
         return await asyncio.get_event_loop().run_in_executor(None, _local_tracker)
 
-    raw_rows = await _ob_rest.get_tracker(limit=200)
+    raw_rows = await _ob1_call(_ob_rest.get_tracker(limit=200))
     result_rows = []
     for r in raw_rows:
         display_date = r.get('applied_date') or (r.get('created_at') or '')[:10]
@@ -500,7 +524,7 @@ async def get_root_files():
         rows = await asyncio.to_thread(lambda: _local_scan(''))
         return [r for r in rows if '/' not in r['key']]
 
-    all_files = await _ob_rest.list_files(prefix='')
+    all_files = await _ob1_call(_ob_rest.list_files(prefix=''))
     return [
         {'name': f['key'], 'path': f['key'], 'size': f['size']}
         for f in all_files if '/' not in f['key']
@@ -532,8 +556,8 @@ async def get_profiles():
         return {'profiles': profiles, 'reference_files': reference_files}
 
     profile_rows, file_rows = await asyncio.gather(
-        _ob_rest.get_profiles(),
-        _ob_rest.list_files(prefix='profiles/'),
+        _ob1_call(_ob_rest.get_profiles()),
+        _ob1_call(_ob_rest.list_files(prefix='profiles/')),
     )
 
     profiles = []
@@ -567,7 +591,7 @@ async def get_applications():
         ))
         return [{'name': name, 'path': f'applications/{name}'} for name in folders]
 
-    rows = await _ob_rest.get_tracker(limit=200)
+    rows = await _ob1_call(_ob_rest.get_tracker(limit=200))
     return [
         {
             'name': (r.get('folder_prefix') or '').removeprefix('applications/').rstrip('/'),
@@ -590,8 +614,8 @@ async def get_application(folder: str):
         }
 
     files, app_record = await asyncio.gather(
-        _ob_rest.list_files(prefix=prefix),
-        _ob_rest.get_application(folder),
+        _ob1_call(_ob_rest.list_files(prefix=prefix)),
+        _ob1_call(_ob_rest.get_application(folder)),
     )
     if not files:
         raise HTTPException(status_code=404, detail='Application folder not found')
@@ -611,7 +635,7 @@ async def get_base_documents():
         rows = await asyncio.to_thread(lambda: _local_scan('base-documents'))
         return _rows_to_tree(rows)
 
-    files = await _ob_rest.list_files(prefix='base-documents/')
+    files = await _ob1_call(_ob_rest.list_files(prefix='base-documents/'))
     return _rows_to_tree(files)
 
 
@@ -621,7 +645,7 @@ async def get_search_results():
         rows = await asyncio.to_thread(lambda: _local_scan('search'))
         return _rows_to_tree(rows)
 
-    files = await _ob_rest.list_files(prefix='search/')
+    files = await _ob1_call(_ob_rest.list_files(prefix='search/'))
     return _rows_to_tree(files)
 
 
@@ -687,7 +711,7 @@ async def put_file(path: str = Query(...), body: FileBody = None):
     key = _validate_key(path)
     _t0 = time.monotonic()
     if DATA_BACKEND == 'ob1':
-        await _ob_rest.put_file(key, body.content, 'text/markdown')
+        await _ob1_call(_ob_rest.put_file(key, body.content, 'text/markdown'))
     else:
         await _get_local_store().put(key, body.content.encode('utf-8'), 'text/markdown')
     _dur = int((time.monotonic() - _t0) * 1000)
@@ -714,11 +738,11 @@ async def upload_file(
     _t0 = time.monotonic()
     ob_result: dict = {}
     if DATA_BACKEND == 'ob1':
-        ob_result = await _ob_rest.put_file(
+        ob_result = await _ob1_call(_ob_rest.put_file(
             key, data, mime,
             thought_category=thought_category,
             application_folder=application_folder,
-        )
+        ))
     else:
         await _get_local_store().put(key, data, mime)
     _dur = int((time.monotonic() - _t0) * 1000)
@@ -748,7 +772,7 @@ async def get_docs():
                 results.append({'name': name, 'size': path.stat().st_size})
         return results
 
-    files = await _ob_rest.list_files(prefix='docs/')
+    files = await _ob1_call(_ob_rest.list_files(prefix='docs/'))
     return [
         {'name': f['key'].replace('docs/', ''), 'size': f['size']}
         for f in files
@@ -840,7 +864,7 @@ async def get_contacts(company: Optional[str] = Query(None)):
     if DATA_BACKEND != 'ob1':
         return []
 
-    rows = await _ob_rest.get_contacts(company=company)
+    rows = await _ob1_call(_ob_rest.get_contacts(company=company))
     return [
         {
             'id': str(r.get('id', '')),
@@ -862,10 +886,10 @@ async def get_contacts(company: Optional[str] = Query(None)):
 async def semantic_search(body: dict):
     if DATA_BACKEND != 'ob1':
         raise HTTPException(status_code=501, detail='Semantic search requires OB1 backend')
-    results = await _ob_rest.search(
+    results = await _ob1_call(_ob_rest.search(
         query=body.get('query', ''),
         limit=body.get('limit', 5),
-    )
+    ))
     return results
 
 
@@ -875,13 +899,13 @@ async def semantic_search(body: dict):
 async def patch_application_fields(folder: str, body: dict):
     if not _ob_rest:
         raise HTTPException(status_code=404, detail='OB1 not configured')
-    app_record = await _ob_rest.get_application(folder)
+    app_record = await _ob1_call(_ob_rest.get_application(folder))
     if not app_record:
         raise HTTPException(status_code=404, detail='Application not found')
     allowed = {k: v for k, v in body.items() if k in ('domain_connection', 'domain_tags', 'jd_requirements')}
     if not allowed:
         raise HTTPException(status_code=422, detail='No valid fields provided')
-    result = await _ob_rest.update_application_fields(str(app_record['id']), **allowed)
+    result = await _ob1_call(_ob_rest.update_application_fields(str(app_record['id']), **allowed))
     return result
 
 
@@ -891,11 +915,11 @@ async def patch_application_fields(folder: str, body: dict):
 async def chunk_search(body: dict):
     if not _ob_rest:
         raise HTTPException(status_code=404, detail='OB1 not configured')
-    results = await _ob_rest.search_chunks(
+    results = await _ob1_call(_ob_rest.search_chunks(
         body.get('query', ''),
         storage_key_prefix=body.get('storage_key_prefix'),
         limit=int(body.get('limit', 10)),
-    )
+    ))
     return {'results': results}
 
 
@@ -905,11 +929,11 @@ async def chunk_search(body: dict):
 async def similar_applications(body: dict):
     if not _ob_rest:
         raise HTTPException(status_code=404, detail='OB1 not configured')
-    results = await _ob_rest.find_similar_applications(
+    results = await _ob1_call(_ob_rest.find_similar_applications(
         body.get('query', ''),
         exclude_id=body.get('exclude_id'),
         limit=int(body.get('limit', 5)),
-    )
+    ))
     return {'results': results}
 
 
@@ -924,9 +948,9 @@ async def ingestion_history(
 ):
     if not _ob_rest:
         return {'records': []}
-    records = await _ob_rest.get_ingestion_history(
+    records = await _ob1_call(_ob_rest.get_ingestion_history(
         profile_slug=profile_slug, outcome=outcome, limit=min(limit, 200), direct_only=direct_only
-    )
+    ))
     return {'records': records}
 
 
@@ -938,9 +962,9 @@ async def search_runs(
 ):
     if not _ob_rest:
         return {'records': []}
-    records = await _ob_rest.get_search_runs(
+    records = await _ob1_call(_ob_rest.get_search_runs(
         profile_slug=profile_slug, since=since, limit=min(limit, 200)
-    )
+    ))
     return {'records': records}
 
 
@@ -950,21 +974,21 @@ async def search_runs(
 async def thoughts_stats():
     if not _ob_rest:
         raise HTTPException(status_code=503, detail='OB1 not configured')
-    return await _ob_rest.get_thought_stats()
+    return await _ob1_call(_ob_rest.get_thought_stats())
 
 
 @app.get('/api/thoughts/{thought_id}/connections')
 async def thought_connections(thought_id: str, limit: int = Query(10)):
     if not _ob_rest:
         raise HTTPException(status_code=503, detail='OB1 not configured')
-    return await _ob_rest.get_thought_connections(thought_id, limit=limit)
+    return await _ob1_call(_ob_rest.get_thought_connections(thought_id, limit=limit))
 
 
 @app.get('/api/thoughts/{thought_id}')
 async def get_thought(thought_id: str):
     if not _ob_rest:
         raise HTTPException(status_code=503, detail='OB1 not configured')
-    return await _ob_rest.get_thought(thought_id)
+    return await _ob1_call(_ob_rest.get_thought(thought_id))
 
 
 @app.get('/api/thoughts')
@@ -976,18 +1000,18 @@ async def list_thoughts(
 ):
     if not _ob_rest:
         raise HTTPException(status_code=503, detail='OB1 not configured')
-    return await _ob_rest.get_thoughts(limit=min(limit, 200), offset=offset, sort=sort, filter_type=type)
+    return await _ob1_call(_ob_rest.get_thoughts(limit=min(limit, 200), offset=offset, sort=sort, filter_type=type))
 
 
 @app.post('/api/thoughts/search')
 async def search_thoughts(body: dict):
     if not _ob_rest:
         raise HTTPException(status_code=503, detail='OB1 not configured')
-    return await _ob_rest.search_thoughts(
+    return await _ob1_call(_ob_rest.search_thoughts(
         query=body.get('query', ''),
         limit=min(int(body.get('limit', 20)), 100),
         mode=body.get('mode', 'semantic'),
-    )
+    ))
 
 
 # ── Delete file ───────────────────────────────────────────────────────────────
