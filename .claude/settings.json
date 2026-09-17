@@ -43,7 +43,7 @@
           },
           {
             "type": "command",
-            "command": "python3 .claude/hooks/scope-before-write.py"
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && python3 .claude/hooks/scope-before-write.py'"
           }
         ]
       }
@@ -88,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/classify-intent-before-plan.py"
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null)\" && python3 .claude/hooks/classify-intent-before-plan.py'"
           }
         ]
       }
